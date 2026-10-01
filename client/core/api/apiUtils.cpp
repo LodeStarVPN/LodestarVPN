@@ -61,6 +61,8 @@ apiDefs::ConfigType apiUtils::getConfigType(const QJsonObject &serverConfigObjec
         constexpr QLatin1String servicePremium("amnezia-premium");
         constexpr QLatin1String serviceFree("amnezia-free");
         constexpr QLatin1String serviceExternalPremium("external-premium");
+        // our gateway's subscription: an account with devices, like external premium
+        constexpr QLatin1String serviceOurVpn("our-vpn");
 
         auto apiConfigObject = serverConfigObject.value(apiDefs::key::apiConfig).toObject();
         auto serviceType = apiConfigObject.value(apiDefs::key::serviceType).toString();
@@ -69,7 +71,7 @@ apiDefs::ConfigType apiUtils::getConfigType(const QJsonObject &serverConfigObjec
             return apiDefs::ConfigType::AmneziaPremiumV2;
         } else if (serviceType == serviceFree) {
             return apiDefs::ConfigType::AmneziaFreeV3;
-        } else if (serviceType == serviceExternalPremium) {
+        } else if (serviceType == serviceExternalPremium || serviceType == serviceOurVpn) {
             return apiDefs::ConfigType::ExternalPremium;
         }
     }

@@ -60,6 +60,8 @@ public:
         ConnectionEnvRole,
         CountryCodeRole,
         CountryNameRole,
+        // the row text of the server list: a subscription entry's country
+        ListNameRole,
         NodeIpsRole,
         HealthLatencyRole
     };

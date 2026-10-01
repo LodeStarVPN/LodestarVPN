@@ -497,7 +497,8 @@ void ConnectionController::connectToServerIndex(int serverIndex)
     // not the node - swapping in node IPs would break the connect, so no pool
     if (ips.size() > 1 && !isVlessCdnRow(serverIndex)) {
         const QString protocol = serverConfig.value(QStringLiteral("api_config")).toObject().value(QStringLiteral("service_protocol")).toString();
-        m_ipPool = weightedOrder(ips, protocol, serverConfig.value(QStringLiteral("node_weights")).toObject());
+        m_ipPool = weightedOrder(ips, protocol, serverConfig.value(QStringLiteral("node_weights")).toObject(),
+                                 serverConfig.value(QStringLiteral("node_ids")).toObject());
         const QVariantMap failed = m_settings->failedEndpoints();
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         std::stable_partition(m_ipPool.begin(), m_ipPool.end(), [&](const QString &ip) {
@@ -786,7 +787,8 @@ QList<ConnectionController::AutoCandidate> ConnectionController::buildAutoCandid
     return candidates;
 }
 
-QStringList ConnectionController::weightedOrder(const QStringList &ips, const QString &protocol, const QJsonObject &storedWeights) const
+QStringList ConnectionController::weightedOrder(const QStringList &ips, const QString &protocol, const QJsonObject &storedWeights,
+                                                const QJsonObject &nodeIds) const
 {
     // weight: the gateway's latest answer, else what came with the config;
     // an unknown one counts as the average of the known
@@ -794,7 +796,7 @@ QStringList ConnectionController::weightedOrder(const QStringList &ips, const QS
     double known = 0;
     int knownCount = 0;
     for (const QString &ip : ips) {
-        double w = m_apiConfigsController ? m_apiConfigsController->nodeWeight(ip, protocol) : -1;
+        double w = m_apiConfigsController ? m_apiConfigsController->nodeWeight(nodeIds.value(ip).toString(), protocol) : -1;
         if (w < 0) {
             w = storedWeights.value(ip).toDouble(-1);
         }

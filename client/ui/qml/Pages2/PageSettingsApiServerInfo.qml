@@ -18,7 +18,8 @@ PageType {
     id: root
 
     property list<QtObject> labelsModel: [
-        statusObject
+        statusObject,
+        devicesObject
     ]
 
     QtObject {
@@ -28,6 +29,16 @@ PageType {
         readonly property string contentKey: "subscriptionStatus"
         readonly property string objectImageSource: "qrc:/images/controls/info.svg"
         readonly property bool isRichText: true
+    }
+
+    QtObject {
+        id: devicesObject
+
+        // "2 out of 5": one limit for the subscription over every protocol
+        readonly property string title: qsTr("Devices")
+        readonly property string contentKey: "connectedDevices"
+        readonly property string objectImageSource: "qrc:/images/controls/monitor.svg"
+        readonly property bool isRichText: false
     }
 
     property var processedServer

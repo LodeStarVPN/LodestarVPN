@@ -43,6 +43,8 @@ private:
 
         QString countryName;
         QString countryCode;
+
+        bool isCurrent = false;   // the gateway says it is this device
     };
 
     QVector<IssuedConfigInfo> m_issuedConfigs;

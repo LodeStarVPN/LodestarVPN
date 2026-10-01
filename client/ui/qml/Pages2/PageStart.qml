@@ -176,7 +176,9 @@ PageType {
 
         function onInstallServerFromApiFinished(message) {
             if (!ConnectionController.isConnected) {
-                ServersModel.setDefaultServerIndex(ServersModel.getServersCount() - 1);
+                // a subscription import selects its main protocol's entry
+                var imported = ApiConfigsController.importedDefaultIndex()
+                ServersModel.setDefaultServerIndex(imported >= 0 ? imported : ServersModel.getServersCount() - 1);
                 ServersModel.processedIndex = ServersModel.defaultIndex
             }
 

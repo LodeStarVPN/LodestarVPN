@@ -45,6 +45,7 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
     auto processedIndex = m_serversModel->getProcessedServerIndex();
     auto serverConfig = m_serversModel->getServerConfig(processedIndex);
     auto apiConfig = serverConfig.value(configKey::apiConfig).toObject();
+    m_apiAccountInfoModel->setLocale(m_settings->getAppLanguage());
 
     // Shared connections authenticate by share_token, which the backend accepts
     // ONLY on /v1/config - any other endpoint (incl. account_info) returns 403.
@@ -97,11 +98,11 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
 
     auto rootAuthData = serverConfig.value(configKey::authData).toObject();
 
+    // keys only: auth data holds the subscription id
     qDebug().noquote() << "[ACCOUNT INFO] serverIndex:" << processedIndex
                        << "configVersion:" << serverConfig.value("config_version").toInt()
                        << "apiConfig keys:" << apiConfig.keys()
-                       << "rootAuthData keys:" << rootAuthData.keys()
-                       << "rootAuthData:" << QJsonDocument(rootAuthData).toJson(QJsonDocument::Compact);
+                       << "rootAuthData keys:" << rootAuthData.keys();
 
     QJsonObject authData = apiConfig.value(configKey::authData).toObject();
     if (authData.isEmpty()) {
@@ -111,7 +112,7 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
         authData[apiDefs::key::apiKey] = authData.value(apiDefs::key::id);
     }
 
-    qDebug().noquote() << "[ACCOUNT INFO] authData after fix:" << QJsonDocument(authData).toJson(QJsonDocument::Compact);
+    qDebug().noquote() << "[ACCOUNT INFO] authData keys after fix:" << authData.keys();
 
     // Nothing to authenticate with (e.g. the start-up warm-up fired before a
     // default server was selected, processedIndex == -1): skip quietly instead
@@ -133,6 +134,8 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
     apiPayload[configKey::authData] = authData;
     apiPayload[apiDefs::key::cliVersion] = QString(APP_VERSION);
     apiPayload[apiDefs::key::appLanguage] = m_settings->getAppLanguage().name().split("_").first();
+    // which of the subscription's devices is this one
+    apiPayload[apiDefs::key::installationUuid] = m_settings->getInstallationUuid(true);
 
     // async: the UI thread must not block on the gateway round-trip; the result
     // is applied from the continuation (cache/inFlight bookkeeping lives there)

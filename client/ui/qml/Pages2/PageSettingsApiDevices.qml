@@ -19,6 +19,17 @@ import "../Components"
 PageType {
     id: root
 
+    // "2 out of 5", re-read whenever the account info comes
+    property string devicesInUse: ApiAccountInfoModel.data("connectedDevices")
+
+    Connections {
+        target: ApiAccountInfoModel
+
+        function onModelReset() {
+            root.devicesInUse = ApiAccountInfoModel.data("connectedDevices")
+        }
+    }
+
     ListViewType {
         id: listView
 
@@ -43,19 +54,11 @@ PageType {
                 Layout.leftMargin: 16
 
                 headerText: qsTr("Active Devices")
-                descriptionText: qsTr("Manage currently connected devices")
-            }
-
-            WarningType {
-                Layout.topMargin: 16
-                Layout.rightMargin: 16
-                Layout.leftMargin: 16
-                Layout.fillWidth: true
-
-                textString: qsTr("You can find the identifier on the Support tab or, for older versions of the app, "
-                                 + "by tapping '+' and then the three dots at the top of the page.")
-
-                iconPath: "qrc:/images/controls/alert-circle.svg"
+                // one limit for the whole subscription, whatever the protocol
+                descriptionText: {
+                    var text = qsTr("Devices using your subscription. Unlink one you no longer use to free its place.")
+                    return root.devicesInUse !== "" ? qsTr("In use: %1").arg(root.devicesInUse) + "\n" + text : text
+                }
             }
         }
 
@@ -66,8 +69,10 @@ PageType {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
 
-                text: osVersion + (isCurrentDevice ? qsTr(" (current device)") : "")
-                descriptionText: qsTr("Support tag: ") + "\n" + supportTag + "\n" + qsTr("Last updated: ") + lastUpdate
+                // the OS the device reported and when it was last active; its id
+                // (supportTag) is only used to unlink it, never shown
+                text: (osVersion !== "" ? osVersion : qsTr("Device")) + (isCurrentDevice ? qsTr(" (current device)") : "")
+                descriptionText: lastUpdate !== "" ? qsTr("Last active: %1").arg(lastUpdate) : ""
                 rightImageSource: "qrc:/images/controls/trash.svg"
 
                 clickedFunction: function() {
@@ -82,7 +87,7 @@ PageType {
                     var noButtonText = qsTr("Cancel")
 
                     var yesButtonFunction = function() {
-                        Qt.callLater(deactivateExternalDevice, supportTag, countryCode)
+                        Qt.callLater(unlinkDevice, supportTag, countryCode, isCurrentDevice)
                     }
                     var noButtonFunction = function() {
                     }
@@ -95,10 +100,14 @@ PageType {
         }
     }
 
-    function deactivateExternalDevice(supportTag, countryCode) {
+    function unlinkDevice(supportTag, countryCode, isCurrentDevice) {
         PageController.showBusyIndicator(true)
-        if (ApiConfigsController.deactivateExternalDevice(supportTag, countryCode)) {
-            ApiSettingsController.getAccountInfo(true)
+        // this device unlinks itself by its own id (the list has only a hash of it)
+        var done = isCurrentDevice ? ApiConfigsController.deactivateDevice(false)
+                                   : ApiConfigsController.deactivateExternalDevice(supportTag, countryCode)
+        if (done) {
+            // past the cache: the list must show the change
+            ApiSettingsController.getAccountInfo(true, true)
         }
         PageController.showBusyIndicator(false)
     }

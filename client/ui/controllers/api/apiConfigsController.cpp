@@ -144,6 +144,9 @@ namespace
             QJsonObject obj;
             if (!osVersion.isEmpty()) {
                 obj[configKey::osVersion] = osVersion;
+                // the OS as people know it ("Windows 10 Version 22H2"): the
+                // name of this device in the subscription's device list
+                obj[QStringLiteral("os_name")] = QSysInfo::prettyProductName();
             }
             if (!appVersion.isEmpty()) {
                 obj[configKey::appVersion] = appVersion;
@@ -423,9 +426,12 @@ namespace
             // how busy each address was when the config came (spare capacity),
             // used when there is no fresher answer from v1/load
             serverConfig[QStringLiteral("node_weights")] = response.value(QStringLiteral("node_weights")).toObject();
+            // the opaque ids v1/load names these addresses by (it never sends addresses)
+            serverConfig[QStringLiteral("node_ids")] = response.value(QStringLiteral("node_ids")).toObject();
         } else {
             serverConfig.remove(QStringLiteral("node_ips"));
             serverConfig.remove(QStringLiteral("node_weights"));
+            serverConfig.remove(QStringLiteral("node_ids"));
         }
 
         if (newServerConfig.value(config_key::configVersion).toInt() == apiDefs::ConfigSource::AmneziaGateway) {
@@ -1089,8 +1095,11 @@ bool ApiConfigsController::restoreSerivceFromAppStore()
     return true;
 }
 
-bool ApiConfigsController::importServiceForCountry(const QString &serverCountryCode, const ProtocolData &protocolData)
+bool ApiConfigsController::importServiceForCountry(const QString &serverCountryCode, const QString &protocol,
+                                                   const QJsonObject &connection)
 {
+    const ProtocolData protocolData = generateProtocolData(protocol);
+
     QJsonObject authData;
     authData[apiDefs::key::apiKey] = m_subscriptionId.isEmpty() ? m_settings->getInstallationUuid(true) : m_subscriptionId;
     authData[apiDefs::key::id] = m_subscriptionId.isEmpty() ? m_settings->getInstallationUuid(true) : m_subscriptionId;
@@ -1104,10 +1113,10 @@ bool ApiConfigsController::importServiceForCountry(const QString &serverCountryC
                                             userCountryCode,
                                             serverCountryCode,
                                             m_apiServicesModel->getSelectedServiceType(),
-                                            m_apiServicesModel->getSelectedServiceProtocol(),
+                                            protocol,
                                             authData };
 
-    qDebug() << "[API IMPORT] selected service protocol:" << gatewayRequestData.serviceProtocol
+    qDebug() << "[API IMPORT] protocol:" << gatewayRequestData.serviceProtocol
              << "userCountryCode:" << userCountryCode << "serverCountryCode:" << serverCountryCode;
 
     if (m_serversModel->isServerFromApiAlreadyExists(serverCountryCode, gatewayRequestData.serviceType,
@@ -1116,7 +1125,13 @@ bool ApiConfigsController::importServiceForCountry(const QString &serverCountryC
         return true;
     }
 
+    const QString connectionUuid = connection.value(QStringLiteral("connection_uuid")).toString();
+    const QString nodeId = connection.value(QStringLiteral("node_id")).toString();
+
     QJsonObject apiPayload = gatewayRequestData.toJsonObject();
+    if (!connectionUuid.isEmpty()) {
+        apiPayload[QStringLiteral("connection_id")] = connectionUuid;
+    }
     appendProtocolDataToApiPayload(gatewayRequestData.serviceProtocol, protocolData, apiPayload);
 
     ErrorCode errorCode;
@@ -1142,9 +1157,16 @@ bool ApiConfigsController::importServiceForCountry(const QString &serverCountryC
         // Prefer the protocol reported by the gateway for this specific config;
         // the service card protocol ("vless" for the merged premium card) is only a fallback.
         if (apiConfig.value(configKey::serviceProtocol).toString().isEmpty()) {
-            apiConfig.insert(configKey::serviceProtocol, m_apiServicesModel->getSelectedServiceProtocol());
+            apiConfig.insert(configKey::serviceProtocol, protocol);
         }
         apiConfig.insert(configKey::authData, authData);
+        // refreshes ask for this very entry (country and protocol), and a reload
+        // of the subscription knows it as one of its own
+        if (!connectionUuid.isEmpty()) {
+            apiConfig.insert(QStringLiteral("connection_uuid"), connectionUuid);
+            apiConfig.insert(QStringLiteral("node_id"), nodeId);
+            apiConfig.insert(QStringLiteral("env"), connection.value(QStringLiteral("env")).toString());
+        }
 
         serverConfig.insert(configKey::apiConfig, apiConfig);
         serverConfig.insert(configKey::authData, authData);
@@ -1169,24 +1191,68 @@ bool ApiConfigsController::importServiceForCountry(const QString &serverCountryC
         m_serversModel->addServer(serverConfig);
         return true;
     } else {
-        qWarning() << "[API IMPORT] request failed for" << serverCountryCode << "error:" << static_cast<int>(errorCode);
+        qWarning() << "[API IMPORT] request failed for" << serverCountryCode << protocol << "error:" << static_cast<int>(errorCode);
+        // the reason (e.g. the subscription's device limit) for the caller to show
+        m_lastImportError = errorCode;
         return false;
     }
 }
 
 bool ApiConfigsController::importServiceFromGateway()
 {
-    ProtocolData protocolData = generateProtocolData(m_apiServicesModel->getSelectedServiceProtocol());
-
     QString userCountryCode = m_apiServicesModel->getCountryCode();
     QString serverCountryCode = m_selectedServerCountryCode;
+    m_lastImportError = ErrorCode::NoError;
+    m_importedDefaultIndex = -1;
 
+    // One subscription, several ways to connect: the card's connections are
+    // its countries over each protocol (each with its own). A server entry is
+    // made for every protocol of the chosen countries, and the server list
+    // switches between protocols; the subscription and its device limit are
+    // the same for all of them.
+    const QJsonArray connections = m_apiServicesModel->getSelectedServiceConnections();
+    bool perProtocol = false;
+    for (const auto &value : connections) {
+        if (!value.toObject().value(configKey::serviceProtocol).toString().isEmpty()) {
+            perProtocol = true;
+            break;
+        }
+    }
+    if (perProtocol) {
+        if (!m_importAllCountries && serverCountryCode.isEmpty()) {
+            serverCountryCode = connections.first().toObject().value(configKey::countryCode).toString();
+        }
+        bool anySuccess = false;
+        for (const auto &value : connections) {
+            const QJsonObject connection = value.toObject();
+            const QString countryCode = connection.value(configKey::countryCode).toString();
+            const QString protocol = connection.value(configKey::serviceProtocol).toString();
+            if (protocol.isEmpty() || (!m_importAllCountries && countryCode != serverCountryCode)) {
+                continue;
+            }
+            const int index = m_serversModel->getServersCount();
+            if (importServiceForCountry(countryCode, protocol, connection)) {
+                if (!anySuccess && m_serversModel->getServersCount() > index) {
+                    m_importedDefaultIndex = index;   // connections come main protocol first
+                }
+                anySuccess = true;
+            }
+        }
+        if (anySuccess) {
+            emit installServerFromApiFinished(tr("%1 installed successfully.").arg(m_apiServicesModel->getSelectedServiceName()));
+            return true;
+        }
+        emit errorOccurred(m_lastImportError != ErrorCode::NoError ? m_lastImportError : ErrorCode::ApiConfigEmptyError);
+        return false;
+    }
+
+    const QString protocol = m_apiServicesModel->getSelectedServiceProtocol();
     if (m_importAllCountries) {
         auto availableCountries = m_apiServicesModel->getSelectedServiceCountries();
         bool anySuccess = false;
         for (const auto &country : availableCountries) {
             auto countryCode = country.toObject().value(configKey::countryCode).toString();
-            if (importServiceForCountry(countryCode, protocolData)) {
+            if (importServiceForCountry(countryCode, protocol, {})) {
                 anySuccess = true;
             }
         }
@@ -1195,7 +1261,7 @@ bool ApiConfigsController::importServiceFromGateway()
             emit installServerFromApiFinished(tr("%1 installed successfully.").arg(m_apiServicesModel->getSelectedServiceName()));
             return true;
         } else {
-            emit errorOccurred(ErrorCode::ApiConfigEmptyError);
+            emit errorOccurred(m_lastImportError != ErrorCode::NoError ? m_lastImportError : ErrorCode::ApiConfigEmptyError);
             return false;
         }
     }
@@ -1216,13 +1282,18 @@ bool ApiConfigsController::importServiceFromGateway()
         }
     }
 
-    if (importServiceForCountry(serverCountryCode, protocolData)) {
+    if (importServiceForCountry(serverCountryCode, protocol, {})) {
         emit installServerFromApiFinished(tr("%1 installed successfully.").arg(m_apiServicesModel->getSelectedServiceName()));
         return true;
     } else {
-        emit errorOccurred(ErrorCode::ApiConfigEmptyError);
+        emit errorOccurred(m_lastImportError != ErrorCode::NoError ? m_lastImportError : ErrorCode::ApiConfigEmptyError);
         return false;
     }
+}
+
+int ApiConfigsController::importedDefaultIndex() const
+{
+    return m_importedDefaultIndex;
 }
 
 void ApiConfigsController::prepareGatewayConfigUpdate(const int serverIndex, const QString &newCountryCode,
@@ -2270,7 +2341,12 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
             const QJsonObject serviceObject = item.serviceObject;
             const QJsonObject connectionObject = item.connectionObject;
             QString serviceType = serviceObject.value(configKey::serviceType).toString();
-            QString serviceProtocol = serviceObject.value(configKey::serviceProtocol).toString();
+            // a card may offer its countries over several protocols: the
+            // connection's own protocol decides the request and the key type
+            QString serviceProtocol = connectionObject.value(configKey::serviceProtocol).toString();
+            if (serviceProtocol.isEmpty()) {
+                serviceProtocol = serviceObject.value(configKey::serviceProtocol).toString();
+            }
             QString serverCountryCode = connectionObject.value(configKey::countryCode).toString();
             QString connectionUuid = connectionObject.value("connection_uuid").toString();
             QString connectionLabel = connectionObject.value("connection_label").toString();
@@ -2353,18 +2429,15 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
             QString displayLabel = connectionLabel;
             displayLabel.remove(QChar(0x200D)).replace("<200d>", "");
 
-            // connection_label comes as "<name> · <protocol details>" (e.g. "Suomi · AmneziaWG",
-            // "Czech Republic Fast · VLESS TCP Reality"): keep only the name in the title and
-            // move the protocol details to the small description line.
-            QString name = displayLabel;
+            // connection_label comes as "<country> · <protocol details>" (e.g. "Германия ·
+            // AmneziaWG"): the protocol details go to the small description line. The entry
+            // is named after the product, as on the first import; the server list shows
+            // its country (ServersModel listName).
+            QString name = QStringLiteral(APPLICATION_DISPLAY_NAME);
             QString protocolDetails;
             const int separatorPos = displayLabel.indexOf(QStringLiteral(" · "));
             if (separatorPos > 0) {
-                name = displayLabel.left(separatorPos);
                 protocolDetails = displayLabel.mid(separatorPos + 3);
-            }
-            if (name.isEmpty()) {
-                name = QStringLiteral(APPLICATION_DISPLAY_NAME);
             }
             if (protocolDetails.isEmpty() || !protocolVariant.isEmpty()) {
                 protocolDetails = protocolVariant.isEmpty() ? protocolName : protocolVariant;
@@ -2590,8 +2663,10 @@ bool ApiConfigsController::installSubscriptionConfig(int index)
     QString serverName = serverConfig.value(config_key::name).toString();
     QString serverDescription = serverConfig.value(config_key::description).toString();
 
-    if (m_serversModel->isServerFromApiAlreadyExists(serverName, serverDescription)) {
-        qDebug() << "[SUBSCRIPTION] duplicate name/description:" << serverName << serverDescription;
+    const bool installed = connectionUuid.isEmpty() ? m_serversModel->isServerFromApiAlreadyExists(serverName, serverDescription)
+                                                    : m_serversModel->isServerFromApiAlreadyExists(connectionUuid);
+    if (installed) {
+        qDebug() << "[SUBSCRIPTION] already installed:" << serverName << serverDescription;
     } else {
         qDebug() << "[SUBSCRIPTION] adding server" << serverName;
         m_serversModel->addServer(serverConfig);
@@ -2742,12 +2817,12 @@ double ApiConfigsController::countryLoad(const QString &countryCode, const QStri
     return m_countryLoads.value(countryCode.toUpper() + "|" + protocol.toLower(), -1);
 }
 
-double ApiConfigsController::nodeWeight(const QString &address, const QString &protocol) const
+double ApiConfigsController::nodeWeight(const QString &nodeId, const QString &protocol) const
 {
-    if (QDateTime::currentMSecsSinceEpoch() - m_loadFetchedAt > kLoadMaxAgeMs) {
+    if (nodeId.isEmpty() || QDateTime::currentMSecsSinceEpoch() - m_loadFetchedAt > kLoadMaxAgeMs) {
         return -1;
     }
-    return m_nodeWeights.value(protocol.toLower() + "|" + address, -1);
+    return m_nodeWeights.value(protocol.toLower() + "|" + nodeId, -1);
 }
 
 void ApiConfigsController::executeRequestAsync(const QString &endpoint, const QJsonObject &apiPayload, bool isTestPurchase,

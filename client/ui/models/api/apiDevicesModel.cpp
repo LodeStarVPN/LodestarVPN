@@ -40,10 +40,19 @@ QVariant ApiDevicesModel::data(const QModelIndex &index, int role) const
         return issuedConfigInfo.countryCode;
     }
     case LastUpdateRole: {
-        return QDateTime::fromString(issuedConfigInfo.lastDownloaded, Qt::ISODate).toLocalTime().toString("d MMM yyyy");
+        // when the device was last active, in the app's language
+        QDateTime when = QDateTime::fromString(issuedConfigInfo.lastDownloaded, Qt::ISODateWithMs);
+        if (!when.isValid()) {
+            when = QDateTime::fromString(issuedConfigInfo.lastDownloaded, Qt::ISODate);
+        }
+        if (!when.isValid()) {
+            return QString();
+        }
+        return m_settings->getAppLanguage().toString(when.toLocalTime().date(), QStringLiteral("d MMMM yyyy"));
     }
     case IsCurrentDeviceRole: {
-        return issuedConfigInfo.installationUuid == m_settings->getInstallationUuid(false);
+        // our gateway lists devices by a hash of the installation id and marks this one
+        return issuedConfigInfo.isCurrent || issuedConfigInfo.installationUuid == m_settings->getInstallationUuid(false);
     }
     }
 
@@ -71,6 +80,7 @@ void ApiDevicesModel::updateModel(const QJsonArray &issuedConfigs)
 
         issuedConfigInfo.countryName = issuedConfigObject.value(apiDefs::key::serverCountryName).toString();
         issuedConfigInfo.countryCode = issuedConfigObject.value(apiDefs::key::serverCountryCode).toString();
+        issuedConfigInfo.isCurrent = issuedConfigObject.value(QStringLiteral("is_current")).toBool();
 
         m_issuedConfigs.push_back(issuedConfigInfo);
     }

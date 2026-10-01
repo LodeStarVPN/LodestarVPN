@@ -206,6 +206,12 @@ QJsonArray ApiServicesModel::getSelectedServiceCountries()
     return service.availableCountries;
 }
 
+QJsonArray ApiServicesModel::getSelectedServiceConnections()
+{
+    auto service = m_services.at(m_selectedServiceIndex);
+    return service.connections;
+}
+
 QString ApiServicesModel::getCountryCode()
 {
     return m_countryCode;
@@ -283,6 +289,7 @@ ApiServicesModel::ApiServicesData ApiServicesModel::getApiServicesData(const QJs
 
     serviceData.serviceInfo.object = serviceInfo;
     serviceData.availableCountries = availableCountries;
+    serviceData.connections = data.value(QStringLiteral("connections")).toArray();
 
     serviceData.subscription.endDate = subscriptionObject.value(configKey::endDate).toString();
 

@@ -4,6 +4,7 @@
 #include <QAbstractListModel>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLocale>
 
 #include "core/api/apiDefs.h"
 
@@ -27,6 +28,9 @@ public:
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+
+    // the app's language, for dates
+    void setLocale(const QLocale &locale) { m_locale = locale; }
 
 public slots:
     void updateModel(const QJsonObject &accountInfoObject, const QJsonObject &serverConfig);
@@ -59,6 +63,7 @@ private:
     };
 
     AccountInfoData m_accountInfoData;
+    QLocale m_locale;
     QJsonArray m_availableCountries;
     QJsonArray m_issuedConfigsInfo;
     QJsonObject m_supportInfo;

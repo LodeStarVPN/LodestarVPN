@@ -240,6 +240,17 @@ QVariant ServersModel::data(const QModelIndex &index, int role) const
         }
         return countryName;
     }
+    case ListNameRole: {
+        // subscription entries are all named after the product (the home card's
+        // title): the list tells them apart by country. A name the user gave wins.
+        if (configVersion && !server.value(config_key::nameOverriddenByUser).toBool()) {
+            const QString country = data(index, CountryNameRole).toString();
+            if (!country.isEmpty()) {
+                return country;
+            }
+        }
+        return data(index, NameRole);
+    }
     case NodeIpsRole: {
         // all entry addresses of a multi-IP node (empty for single-address nodes)
         QStringList ips;
@@ -635,6 +646,7 @@ QHash<int, QByteArray> ServersModel::roleNames() const
     roles[ConnectionEnvRole] = "connectionEnv";
     roles[CountryCodeRole] = "countryCode";
     roles[CountryNameRole] = "countryName";
+    roles[ListNameRole] = "listName";
     roles[NodeIpsRole] = "nodeIps";
     roles[HealthLatencyRole] = "healthLatency";
 

@@ -347,7 +347,7 @@ ListViewType {
 
                     Layout.fillWidth: true
 
-                    text: name
+                    text: listName
                     // no address/protocol/country here - technical details live
                     // on the server details card; legacy servers keep services
                     descriptionText: isServerFromGatewayApi ? "" : serverDescription

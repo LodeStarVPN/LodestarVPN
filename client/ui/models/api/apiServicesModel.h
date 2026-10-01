@@ -41,6 +41,8 @@ public slots:
     QString getSelectedServiceProtocol();
     QString getSelectedServiceName();
     QJsonArray getSelectedServiceCountries();
+    // every (country, protocol) entry of the card, each with its own protocol
+    QJsonArray getSelectedServiceConnections();
 
     QString getCountryCode();
 
@@ -86,6 +88,7 @@ private:
         Subscription subscription;
 
         QJsonArray availableCountries;
+        QJsonArray connections;
     };
 
     ApiServicesData getApiServicesData(const QJsonObject &data);

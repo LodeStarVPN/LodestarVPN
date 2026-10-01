@@ -190,7 +190,8 @@ private:
     // load of the row's country over its protocol (gateway v1/load), -1 unknown
     double rowLoad(int row) const;
     // the addresses in a random order weighted by spare capacity
-    QStringList weightedOrder(const QStringList &ips, const QString &protocol, const QJsonObject &storedWeights) const;
+    QStringList weightedOrder(const QStringList &ips, const QString &protocol, const QJsonObject &storedWeights,
+                              const QJsonObject &nodeIds) const;
 
     HealthCheckController *m_healthCheckController = nullptr;
     ApiConfigsController *m_apiConfigsController = nullptr;

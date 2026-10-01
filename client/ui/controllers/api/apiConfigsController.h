@@ -54,6 +54,9 @@ public slots:
     bool importSerivceFromAppStore();
     bool restoreSerivceFromAppStore();
     bool importServiceFromGateway();
+    // the entry to select after importServiceFromGateway (the first one made:
+    // the card's main protocol), -1 when it made none
+    int importedDefaultIndex() const;
 
     QString getSubscriptionId() const;
     void setSubscriptionId(const QString &subscriptionId);
@@ -71,7 +74,8 @@ public slots:
     // or too old.
     Q_INVOKABLE void refreshLoadIfStale();
     double countryLoad(const QString &countryCode, const QString &protocol) const;
-    double nodeWeight(const QString &address, const QString &protocol) const;
+    // by the opaque server id from the config's node_ids
+    double nodeWeight(const QString &nodeId, const QString &protocol) const;
 
     bool updateServiceFromGateway(const int serverIndex, const QString &newCountryCode, const QString &newCountryName,
                                   bool reloadServiceConfig = false, bool silent = false);
@@ -160,7 +164,9 @@ private:
                              const std::function<void(ErrorCode, const QByteArray &)> &callback);
     ErrorCode importServiceFromBilling(const QByteArray &responseBody, const bool isTestPurchase);
 
-    bool importServiceForCountry(const QString &serverCountryCode, const ProtocolData &protocolData);
+    // one server entry: the country over one protocol; connection is the card's
+    // entry for it (its id pins the country on later refreshes), may be empty
+    bool importServiceForCountry(const QString &serverCountryCode, const QString &protocol, const QJsonObject &connection);
 
     // m_subscriptionId, or recovered from an already imported gateway server
     QString resolveSubscriptionId() const;
@@ -192,6 +198,10 @@ private:
     // subscriptionConfigsChanged - the local tail of the async fetch chain
     void finalizeSubscriptionConfigs();
 
+    // why the last importServiceForCountry failed
+    ErrorCode m_lastImportError = ErrorCode::NoError;
+    int m_importedDefaultIndex = -1;
+
     QList<QString> m_qrCodes;
     QString m_vpnKey;
     QString m_shortCode;
@@ -204,7 +214,7 @@ private:
     QString m_selectedServerCountryCode;
 
     QHash<QString, double> m_countryLoads; // "DE|awg" -> 0..1
-    QHash<QString, double> m_nodeWeights;  // "awg|1.2.3.4" -> spare capacity
+    QHash<QString, double> m_nodeWeights;  // "awg|<node id>" -> spare capacity
     qint64 m_loadFetchedAt = 0;
     bool m_loadRequestInFlight = false;
     static constexpr qint64 kLoadRefreshMs = 5 * 60 * 1000;

@@ -43,7 +43,7 @@ QVariant ApiAccountInfoModel::data(const QModelIndex &index, int role) const
             endDate = QDateTime::fromString(m_accountInfoData.subscriptionEndDate, Qt::ISODate).toLocalTime();
         }
         if (endDate.isValid()) {
-            return tr("Active · until %1").arg(endDate.toString("d MMM yyyy"));
+            return tr("Active · until %1").arg(m_locale.toString(endDate.date(), QStringLiteral("d MMMM yyyy")));
         }
         return tr("Active");
     }
@@ -52,11 +52,16 @@ QVariant ApiAccountInfoModel::data(const QModelIndex &index, int role) const
             return "";
         }
 
-        return QDateTime::fromString(m_accountInfoData.subscriptionEndDate, Qt::ISODate).toLocalTime().toString("d MMM yyyy");
+        const QDateTime endDate = QDateTime::fromString(m_accountInfoData.subscriptionEndDate, Qt::ISODate).toLocalTime();
+        return endDate.isValid() ? m_locale.toString(endDate.date(), QStringLiteral("d MMMM yyyy")) : QString();
     }
     case ConnectedDevicesRole: {
         if (m_accountInfoData.configType == apiDefs::ConfigType::AmneziaFreeV3) {
             return "";
+        }
+        if (m_accountInfoData.maxDeviceCount <= 0) {
+            // not known yet (local data), or a subscription without a limit
+            return m_accountInfoData.activeDeviceCount > 0 ? QString::number(m_accountInfoData.activeDeviceCount) : QString();
         }
         return tr("%1 out of %2").arg(m_accountInfoData.activeDeviceCount).arg(m_accountInfoData.maxDeviceCount);
     }
