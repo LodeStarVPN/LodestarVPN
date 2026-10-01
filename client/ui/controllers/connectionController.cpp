@@ -224,6 +224,10 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
         }
     });
 
+    m_deviceCheckTimer = new QTimer(this);
+    m_deviceCheckTimer->setInterval(kDeviceCheckIntervalMs);
+    connect(m_deviceCheckTimer, &QTimer::timeout, this, &ConnectionController::checkDevice);
+
     m_manualConnectTimer = new QTimer(this);
     m_manualConnectTimer->setSingleShot(true);
     connect(m_manualConnectTimer, &QTimer::timeout, this, [this]() {
@@ -553,6 +557,7 @@ void ConnectionController::connectToServerIndexWithIp(int serverIndex, const QSt
     if (!ip.isEmpty()) {
         patchServerConfigAddress(serverConfig, ip);
     }
+    m_tunnelRow = serverIndex;
 
     VpnConfigurationsController vpnConfigurationController(m_settings);
 
@@ -670,13 +675,36 @@ void ConnectionController::onPoolRefreshed(int row, const QByteArray &connection
         qDebug() << "[IPPOOL] gateway config for row" << row << "unchanged - giving up";
         m_isConnectionInProgress = false;
         m_connectionStateText = tr("Connect");
-        emit connectionErrorOccurred(m_vpnConnection->lastError());
+        // the subscription refused this device: say that, not "server unreachable"
+        const ErrorCode refusal = m_apiConfigsController ? m_apiConfigsController->takeDeviceRefusal() : ErrorCode::NoError;
+        emit connectionErrorOccurred(refusal != ErrorCode::NoError ? refusal : m_vpnConnection->lastError());
         emit connectionStateChanged();
         return;
     }
     // the addresses that just failed are remembered, so new ones go first
     qDebug() << "[IPPOOL] gateway returned a changed config for row" << row << "- retrying";
     connectToServerIndex(row);
+}
+
+void ConnectionController::checkDevice()
+{
+    if (!m_apiConfigsController || !m_isConnected || m_tunnelRow < 0) {
+        return;
+    }
+    const quint64 attempt = m_connectAttempt;
+    const int row = m_tunnelRow;
+    m_apiConfigsController->checkDeviceAsync(row, [this, attempt, row](ErrorCode errorCode) {
+        // only a definite answer counts: a failed request leaves the VPN on
+        if (!ApiConfigsController::isDeviceRefusal(errorCode) || attempt != m_connectAttempt || !m_isConnected) {
+            return;
+        }
+        qWarning() << "[DEVICE] the subscription refuses this device:" << errorCode << "- disconnecting";
+        closeConnection();
+        if (errorCode != ErrorCode::ApiSubscriptionExpiredError) {
+            m_apiConfigsController->removeSubscriptionServers(row, errorCode);
+        }
+        emit connectionErrorOccurred(errorCode);
+    });
 }
 
 bool ConnectionController::retryWithNextIp()
@@ -1286,6 +1314,8 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
         m_isConnected = true;
         m_connectionStateText = tr("Connected");
         m_manualConnectTimer->stop(); // the traffic watchdogs take it from here
+        checkDevice();
+        m_deviceCheckTimer->start();
         if (m_autoPhase == AutoPhase::Connecting && m_autoAwaitingTraffic
             && m_autoCandidatePos < m_autoCandidates.size()) {
             // A WG/AWG "Connected" is emitted only AFTER a verified handshake
@@ -1327,6 +1357,7 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
         m_isConnectionInProgress = m_poolRefreshInFlight;
         m_connectionStateText = m_poolRefreshInFlight ? tr("Connecting...") : tr("Connect");
         m_currentEndpoint.clear();
+        m_deviceCheckTimer->stop();
         if (!m_connectionSwitching) {
             m_manualConnectTimer->stop();
         }

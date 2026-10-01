@@ -777,6 +777,11 @@ bool ApiConfigsController::fillAvailableServices()
 {
     QJsonObject apiPayload;
     apiPayload[configKey::osVersion] = QSysInfo::productType();
+    // entering the key adds this device to the subscription (if it has a
+    // free place): which device, and how it is named in the device list
+    apiPayload[configKey::uuid] = m_settings->getInstallationUuid(true);
+    apiPayload[QStringLiteral("os_name")] = QSysInfo::prettyProductName();
+    apiPayload[configKey::appVersion] = QString(APP_VERSION);
     apiPayload[apiDefs::key::appLanguage] = m_settings->getAppLanguage().name().split("_").first();
     // the services answer depends on the subscription (its protocols,
     // countries and status): send the entered ID, as the config request does
@@ -1129,6 +1134,8 @@ bool ApiConfigsController::importServiceForCountry(const QString &serverCountryC
     const QString nodeId = connection.value(QStringLiteral("node_id")).toString();
 
     QJsonObject apiPayload = gatewayRequestData.toJsonObject();
+    // the user adds the subscription: a device unlinked before may come back
+    apiPayload[QStringLiteral("explicit_add")] = true;
     if (!connectionUuid.isEmpty()) {
         apiPayload[QStringLiteral("connection_id")] = connectionUuid;
     }
@@ -1412,6 +1419,11 @@ void ApiConfigsController::prepareGatewayConfigUpdate(const int serverIndex, con
     if (isConnectEvent) {
         apiPayload.insert(configKey::isConnectEvent, true);
     }
+    // "Reload API config" pressed by the user adds the subscription again;
+    // background refreshes don't bring back an unlinked device
+    if (reloadServiceConfig && !silent) {
+        apiPayload.insert(QStringLiteral("explicit_add"), true);
+    }
 
     update.isTestPurchase = apiConfig.value(apiDefs::key::isTestPurchase).toBool(false);
     update.apiPayload = apiPayload;
@@ -1428,6 +1440,19 @@ bool ApiConfigsController::finishGatewayConfigUpdate(const GatewayConfigUpdate &
     const auto silent = update.silent;
     const bool hasUsable = m_serversModel->serverHasUsableConfig(serverIndex);
     const bool keepLocalQuietly = hasUsable && !reloadServiceConfig && newCountryName.isEmpty();
+
+    // the list may have changed while the request was out (a refusal removes
+    // a subscription's entries): write back only into the same entry
+    auto identity = [](const QJsonObject &config) {
+        const QJsonObject api = config.value(configKey::apiConfig).toObject();
+        return QStringList { api.value(QStringLiteral("connection_uuid")).toString(), api.value(configKey::serviceProtocol).toString(),
+                             api.value(configKey::userCountryCode).toString(), config.value(config_key::crc).toVariant().toString() };
+    };
+    if (serverIndex < 0 || serverIndex >= m_serversModel->getServersCount()
+        || identity(m_serversModel->getServerConfig(serverIndex)) != identity(serverConfig)) {
+        qWarning() << "[UPDATE GATEWAY] the entry is gone or moved, update dropped";
+        return false;
+    }
 
     QJsonObject newServerConfig;
     if (errorCode == ErrorCode::NoError) {
@@ -1519,6 +1544,20 @@ bool ApiConfigsController::finishGatewayConfigUpdate(const GatewayConfigUpdate &
         }
         return true;
     } else {
+        if (isDeviceRefusal(errorCode)) {
+            // the subscription's definite "no" for this device (unlinked, no
+            // free place, subscription ended): the stored config is not used
+            qWarning() << "[UPDATE GATEWAY] the subscription refuses this device:" << errorCode;
+            m_lastRefusal = errorCode;
+            m_lastRefusalAt = QDateTime::currentMSecsSinceEpoch();
+            if (errorCode != ErrorCode::ApiSubscriptionExpiredError) {
+                removeSubscriptionServers(serverIndex, errorCode);
+            }
+            if (!silent) {
+                emit errorOccurred(errorCode);
+            }
+            return false;
+        }
         if (keepLocalQuietly) {
             qWarning() << "[UPDATE GATEWAY] config fetch failed (" << errorCode
                        << "), falling back to the locally stored config";
@@ -1985,6 +2024,89 @@ bool ApiConfigsController::isConfigValid()
     return true;
 }
 
+void ApiConfigsController::checkDeviceAsync(const int serverIndex, const std::function<void(ErrorCode)> &callback)
+{
+    if (serverIndex < 0 || serverIndex >= m_serversModel->getServersCount()) {
+        callback(ErrorCode::NoError);
+        return;
+    }
+    const QJsonObject serverConfig = m_serversModel->getServerConfig(serverIndex);
+    const QJsonObject apiConfig = serverConfig.value(configKey::apiConfig).toObject();
+    QJsonObject authData = apiConfig.value(configKey::authData).toObject();
+    if (authData.isEmpty()) {
+        authData = serverConfig.value(configKey::authData).toObject();
+    }
+    // only our gateway's subscriptions (shares authenticate by share_token)
+    if (apiUtils::getConfigSource(serverConfig) != apiDefs::ConfigSource::AmneziaGateway
+        || apiConfig.value(configKey::serviceType).toString() != QLatin1String("our-vpn")
+        || !authData.contains(apiDefs::key::id)) {
+        callback(ErrorCode::NoError);
+        return;
+    }
+    if (!authData.contains(apiDefs::key::apiKey)) {
+        authData[apiDefs::key::apiKey] = authData.value(apiDefs::key::id);
+    }
+
+    GatewayRequestData gatewayRequestData { QSysInfo::productType(),
+                                            QString(APP_VERSION),
+                                            m_settings->getAppLanguage().name().split("_").first(),
+                                            m_settings->getInstallationUuid(true),
+                                            apiConfig.value(configKey::userCountryCode).toString(),
+                                            QString(),
+                                            apiConfig.value(configKey::serviceType).toString(),
+                                            QString(),
+                                            authData };
+    const bool isTestPurchase = apiConfig.value(apiDefs::key::isTestPurchase).toBool(false);
+    executeRequestAsync(QString("%1v1/device_check"), gatewayRequestData.toJsonObject(), isTestPurchase,
+                        [callback](ErrorCode errorCode, const QByteArray &) { callback(errorCode); });
+}
+
+bool ApiConfigsController::isDeviceRefusal(ErrorCode errorCode)
+{
+    return errorCode == ErrorCode::ApiDeviceUnlinkedError || errorCode == ErrorCode::ApiConfigLimitError
+            || errorCode == ErrorCode::ApiSubscriptionExpiredError || errorCode == ErrorCode::ApiSubscriptionNotFoundError;
+}
+
+void ApiConfigsController::removeSubscriptionServers(const int serverIndex, ErrorCode reason)
+{
+    auto subscriptionOf = [](const QJsonObject &serverConfig) {
+        QString id = serverConfig.value(configKey::apiConfig).toObject().value(configKey::authData).toObject().value(apiDefs::key::id).toString();
+        if (id.isEmpty()) {
+            id = serverConfig.value(configKey::authData).toObject().value(apiDefs::key::id).toString();
+        }
+        return id;
+    };
+    if (serverIndex < 0 || serverIndex >= m_serversModel->getServersCount()) {
+        return;
+    }
+    const QString subscription = subscriptionOf(m_serversModel->getServerConfig(serverIndex));
+    if (subscription.isEmpty()) {
+        return;
+    }
+    // every entry of the subscription: the refusal is the device's, not a server's
+    int removed = 0;
+    for (int i = m_serversModel->getServersCount() - 1; i >= 0; --i) {
+        if (subscriptionOf(m_serversModel->getServerConfig(i)) == subscription) {
+            m_serversModel->removeServer(i);
+            ++removed;
+        }
+    }
+    // queued background refreshes name entries by index: void now
+    m_pendingSubscriptionRefresh.clear();
+    qWarning() << "[DEVICE] the subscription refuses this device (" << reason << "):" << removed << "entries removed";
+    if (removed) {
+        emit subscriptionServersRemoved();
+    }
+}
+
+ErrorCode ApiConfigsController::takeDeviceRefusal()
+{
+    const ErrorCode refusal = m_lastRefusal;
+    const bool recent = QDateTime::currentMSecsSinceEpoch() - m_lastRefusalAt < 60000;
+    m_lastRefusal = ErrorCode::NoError;
+    return recent ? refusal : ErrorCode::NoError;
+}
+
 void ApiConfigsController::setCurrentProtocol(const QString &protocolName)
 {
     auto serverIndex = m_serversModel->getProcessedServerIndex();
@@ -2258,7 +2380,7 @@ void ApiConfigsController::fetchSubscriptionConfigs(const QString &subscriptionI
 
 void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscriptionId, const std::function<void(bool)> &callback)
 {
-    qDebug() << "[SUBSCRIPTION] fetching configs for" << subscriptionId;
+    qDebug() << "[SUBSCRIPTION] fetching configs";
     m_subscriptionConfigs = QJsonArray();
     emit subscriptionConfigsChanged();
 
@@ -2268,6 +2390,9 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
 
     QJsonObject servicesPayload;
     servicesPayload[configKey::osVersion] = QSysInfo::productType();
+    servicesPayload[configKey::uuid] = m_settings->getInstallationUuid(true);
+    servicesPayload[QStringLiteral("os_name")] = QSysInfo::prettyProductName();
+    servicesPayload[configKey::appVersion] = QString(APP_VERSION);
     servicesPayload[apiDefs::key::appLanguage] = m_settings->getAppLanguage().name().split("_").first();
     servicesPayload[configKey::authData] = authData;
 
@@ -2374,6 +2499,8 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
                                                     authData };
 
             QJsonObject apiPayload = gatewayRequestData.toJsonObject();
+            // a reload of the subscription by the user: an explicit add
+            apiPayload[QStringLiteral("explicit_add")] = true;
             if (!connectionUuid.isEmpty()) {
                 apiPayload["connection_id"] = connectionUuid;
             }

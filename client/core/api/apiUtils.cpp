@@ -124,7 +124,18 @@ amnezia::ErrorCode apiUtils::checkNetworkReplyErrors(const QList<QSslError> &ssl
             messageFromBody = jsonObj.value("message").toString();
         }
         const int effectiveStatus = httpStatusFromBody > 0 ? httpStatusFromBody : httpStatusCode;
+        const QString errorFromBody = jsonDoc.isObject() ? jsonDoc.object().value("error").toString() : QString();
 
+        // our gateway's word on this device or subscription (not a failed request)
+        if (effectiveStatus == 403 && errorFromBody == QLatin1String("device_unlinked")) {
+            return amnezia::ErrorCode::ApiDeviceUnlinkedError;
+        }
+        if (effectiveStatus == 402 && errorFromBody == QLatin1String("subscription_expired")) {
+            return amnezia::ErrorCode::ApiSubscriptionExpiredError;
+        }
+        if (effectiveStatus == httpStatusCodeNotFound && errorFromBody == QLatin1String("subscription_not_found")) {
+            return amnezia::ErrorCode::ApiSubscriptionNotFoundError;
+        }
         if (effectiveStatus == httpStatusCodeConflict) {
             return amnezia::ErrorCode::ApiConfigLimitError;
         } else if (effectiveStatus == httpStatusCodeNotFound || messageFromBody == QLatin1String("node_not_found")) {

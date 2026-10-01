@@ -76,34 +76,34 @@
 <context>
     <name>ApiConfigsController</name>
     <message>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="963"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1242"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1261"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1286"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1570"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1667"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="968"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1249"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1268"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1293"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1609"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1706"/>
         <source>%1 installed successfully.</source>
         <translation>%1 установлено успешно.</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1089"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1094"/>
         <source>Subscription restored successfully.</source>
         <translation>Подписка успешно восстановлена.</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1503"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1514"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1528"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1539"/>
         <source>API config reloaded</source>
         <translation>Настройки подписки обновлены</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1505"/>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1516"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1530"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1541"/>
         <source>Successfully changed the country of connection to %1</source>
         <translation>Страна подключения изменена на %1</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1645"/>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="1684"/>
         <source>Shared connection</source>
         <translation>Общее подключение</translation>
     </message>
@@ -179,20 +179,20 @@
  Пожалуйста, установите протокол</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.cpp" line="659"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="699"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1282"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1328"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="664"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="727"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1310"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1358"/>
         <source>Connecting...</source>
         <translation>Подключение...</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.cpp" line="1287"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1315"/>
         <source>Connected</source>
         <translation>Подключено</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.cpp" line="1355"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1386"/>
         <source>Preparing...</source>
         <translation>Подготовка...</translation>
     </message>
@@ -213,32 +213,32 @@
         <translation type="vanished">не удалось создать конфигурацию</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.cpp" line="1317"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1347"/>
         <source>Reconnecting...</source>
         <translation>Переподключение...</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.h" line="227"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="242"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="672"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1075"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1118"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1200"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1226"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1264"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1328"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1360"/>
-        <location filename="../ui/controllers/connectionController.cpp" line="1367"/>
+        <location filename="../ui/controllers/connectionController.h" line="240"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="246"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="677"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1103"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1146"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1228"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1254"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1292"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1358"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1391"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1398"/>
         <source>Connect</source>
         <translation>Подключиться</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.cpp" line="1350"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="1381"/>
         <source>Disconnecting...</source>
         <translation>Отключение...</translation>
     </message>
     <message>
-        <location filename="../ui/controllers/connectionController.cpp" line="943"/>
+        <location filename="../ui/controllers/connectionController.cpp" line="971"/>
         <source>Searching
 for the best server...</source>
         <translation>Поиск
@@ -4492,7 +4492,7 @@ Already installed containers were found on the server. All installed containers 
         <translation>ChatGPT, Claude, Gemini, Perplexity, DeepSeek, Grok</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="81"/>
+        <location filename="../core/errorstrings.cpp" line="83"/>
         <source>The server did not respond in time. Try another server, or open the server card and tap Reload API config.</source>
         <translation>Сервер не ответил вовремя. Попробуйте другой сервер или откройте карточку сервера и нажмите «Обновить настройки подписки».</translation>
     </message>
@@ -4586,7 +4586,7 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../core/errorstrings.cpp" line="60"/>
-        <location filename="../core/errorstrings.cpp" line="69"/>
+        <location filename="../core/errorstrings.cpp" line="71"/>
         <source>Error when retrieving configuration from API</source>
         <translation>Ошибка при получении конфигурации из API</translation>
     </message>
@@ -4596,7 +4596,7 @@ Already installed containers were found on the server. All installed containers 
         <translation>Данная конфигурация уже была добавлена в приложение</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="99"/>
+        <location filename="../core/errorstrings.cpp" line="101"/>
         <source>ErrorCode: %1. </source>
         <translation>Код ошибки: %1. </translation>
     </message>
@@ -4747,21 +4747,21 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../core/errorstrings.cpp" line="68"/>
-        <source>The limit of allowed configurations per subscription has been exceeded</source>
-        <translation>Превышен лимит конфигураций для подписки</translation>
+        <source>The subscription has no free place for this device, so its servers were removed from the app. Unlink a device you no longer use in the app on another device (subscription settings, Active devices), then enter the subscription key here again.</source>
+        <translation>На подписке нет свободного места для этого устройства, поэтому её серверы удалены из приложения. Отвяжите ненужное устройство в приложении на другом устройстве (настройки подписки, «Активные устройства») и введите ключ подписки здесь снова.</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="70"/>
+        <location filename="../core/errorstrings.cpp" line="72"/>
         <source>A migration error has occurred. Please contact our technical support</source>
         <translation>Произошла ошибка миграции. Пожалуйста, обратитесь в техническую поддержку</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="71"/>
+        <location filename="../core/errorstrings.cpp" line="73"/>
         <source>Please update the application to use this feature</source>
         <translation>Пожалуйста, обновите приложение для использования этой функции</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="72"/>
+        <location filename="../core/errorstrings.cpp" line="74"/>
         <source>Your LodestarVPN subscription has expired.
  Please check your email for renewal instructions.
  If you haven&apos;t received an email, please contact our support.</source>
@@ -4770,47 +4770,47 @@ Already installed containers were found on the server. All installed containers 
  Если вы не получили письмо, пожалуйста, свяжитесь с нашей поддержкой.</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="73"/>
+        <location filename="../core/errorstrings.cpp" line="75"/>
         <source>Unable to process purchase</source>
         <translation>Невозможно обработать покупку</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="75"/>
+        <location filename="../core/errorstrings.cpp" line="77"/>
         <source>No VPN configuration on this server. Open the server card and tap Reload API config.</source>
         <translation>На этом сервере нет VPN-конфигурации. Откройте карточку сервера и нажмите «Обновить настройки подписки».</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="87"/>
+        <location filename="../core/errorstrings.cpp" line="89"/>
         <source>QFile error: The file could not be opened</source>
         <translation>Ошибка QFile: не удалось открыть файл</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="88"/>
+        <location filename="../core/errorstrings.cpp" line="90"/>
         <source>QFile error: An error occurred when reading from the file</source>
         <translation>Ошибка QFile: произошла ошибка при чтении из файла</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="89"/>
+        <location filename="../core/errorstrings.cpp" line="91"/>
         <source>QFile error: The file could not be accessed</source>
         <translation>Ошибка QFile: не удалось получить доступ к файлу</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="90"/>
+        <location filename="../core/errorstrings.cpp" line="92"/>
         <source>QFile error: An unspecified error occurred</source>
         <translation>Ошибка QFile: произошла неизвестная ошибка</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="91"/>
+        <location filename="../core/errorstrings.cpp" line="93"/>
         <source>QFile error: A fatal error occurred</source>
         <translation>Ошибка QFile: произошла фатальная ошибка</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="92"/>
+        <location filename="../core/errorstrings.cpp" line="94"/>
         <source>QFile error: The operation was aborted</source>
         <translation>Ошибка QFile: операция была прервана</translation>
     </message>
     <message>
-        <location filename="../core/errorstrings.cpp" line="96"/>
+        <location filename="../core/errorstrings.cpp" line="98"/>
         <source>Internal error</source>
         <translation>Внутренняя ошибка</translation>
     </message>
@@ -5476,6 +5476,16 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <location filename="../core/controllers/coreController.cpp" line="48"/>
         <source>All configurations have already been added</source>
         <translation>Все конфигурации уже были добавлены</translation>
+    </message>
+    <message>
+        <location filename="../core/errorstrings.cpp" line="70"/>
+        <source>This device is no longer linked to the subscription, so its servers were removed from the app. To use it here again, enter the subscription key: it works if the subscription has a free place.</source>
+        <translation>Это устройство больше не привязано к подписке, поэтому её серверы удалены из приложения. Чтобы снова пользоваться ею здесь, введите ключ подписки — получится, если на подписке есть свободное место.</translation>
+    </message>
+    <message>
+        <location filename="../core/errorstrings.cpp" line="69"/>
+        <source>There is no subscription with this key any more (it was deleted or its key was changed), so its servers were removed from the app. If you have a new key, enter it.</source>
+        <translation>Подписки с этим ключом больше нет (её удалили или сменили ключ), поэтому её серверы удалены из приложения. Если у вас есть новый ключ, введите его.</translation>
     </message>
 </context>
 <context>

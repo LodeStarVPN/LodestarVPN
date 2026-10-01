@@ -174,7 +174,8 @@ GatewayController::DecryptionResult GatewayController::tryDecryptResponseBody(co
         QSimpleCrypto::QBlockCipher blockCipher;
         result.decryptedBody = blockCipher.decryptAesBlockCipher(encryptedResponseBody, key, iv, "", salt);
         result.isDecryptionSuccessful = true;
-        qDebug().noquote() << "[AGW RESPONSE] decrypted:" << result.decryptedBody;
+        // the body holds keys and configs: not in the log
+        qDebug().noquote() << "[AGW RESPONSE] decrypted," << result.decryptedBody.size() << "bytes";
     } catch (...) {
         result.decryptedBody = encryptedResponseBody;
         result.isDecryptionSuccessful = false;
@@ -462,12 +463,25 @@ bool GatewayController::shouldBypassProxy(const QNetworkReply::NetworkError &rep
 {
     const QByteArray &responseBody = decryptedResponseBody;
 
+    // no proxy storage in this build (PROD_S3_ENDPOINT / DEV_S3_ENDPOINT
+    // unset): there is nothing to route around with, the answer stands
+    if (QString(m_isDevEnvironment ? DEV_S3_ENDPOINT : PROD_S3_ENDPOINT).trimmed().isEmpty()) {
+        return false;
+    }
+
     int httpStatus = -1;
     if (isDecryptionSuccessful) {
         QJsonDocument jsonDoc = QJsonDocument::fromJson(responseBody);
         if (jsonDoc.isObject()) {
             QJsonObject jsonObj = jsonDoc.object();
             httpStatus = jsonObj.value("http_status").toInt(-1);
+            // our gateway's word on this device or subscription: encrypted
+            // with this request's key, so it is the gateway's own answer
+            const QString error = jsonObj.value("error").toString();
+            if (error == QLatin1String("device_unlinked") || error == QLatin1String("device_limit")
+                || error == QLatin1String("subscription_expired") || error == QLatin1String("subscription_not_found")) {
+                return false;
+            }
         }
     } else {
         qDebug() << "failed to decrypt the data";

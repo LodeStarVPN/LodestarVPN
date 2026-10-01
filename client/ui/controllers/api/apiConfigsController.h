@@ -36,6 +36,22 @@ public:
     Q_PROPERTY(int selectedPlanIndex READ selectedPlanIndex WRITE setSelectedPlanIndex NOTIFY selectedPlanIndexChanged)
     Q_PROPERTY(QString shortCode READ getShortCode NOTIFY shortCodeChanged)
 
+    // Asks the gateway whether this device is still one of the subscription's
+    // (on every connection, and now and then while connected). The callback
+    // gets ApiDeviceUnlinkedError / ApiConfigLimitError / ApiSubscriptionNotFoundError /
+    // ApiSubscriptionExpiredError for a refusal, another error when the
+    // gateway could not be asked, NoError otherwise (also for entries that
+    // are not our gateway's subscription).
+    void checkDeviceAsync(const int serverIndex, const std::function<void(ErrorCode)> &callback);
+    static bool isDeviceRefusal(ErrorCode errorCode);
+    // the subscription refused this device (unlinked, no free place, no such
+    // subscription any more): all of
+    // the subscription's countries/servers are removed from the app; it comes
+    // back when the key is entered again and the subscription has a place
+    void removeSubscriptionServers(const int serverIndex, ErrorCode reason);
+    // a refusal met by a background config refresh in the last minute, once
+    ErrorCode takeDeviceRefusal();
+
 public slots:
     bool exportNativeConfig(const QString &serverCountryCode, const QString &fileName);
     bool revokeNativeConfig(const QString &serverCountryCode);
@@ -151,6 +167,8 @@ signals:
 
     void vpnKeyExportReady();
     void shortCodeChanged();
+    // removeSubscriptionServers took entries out of the server list
+    void subscriptionServersRemoved();
 
 private:
     QList<QString> getQrCodes();
@@ -201,6 +219,8 @@ private:
     // why the last importServiceForCountry failed
     ErrorCode m_lastImportError = ErrorCode::NoError;
     int m_importedDefaultIndex = -1;
+    ErrorCode m_lastRefusal = ErrorCode::NoError;
+    qint64 m_lastRefusalAt = 0;
 
     QList<QString> m_qrCodes;
     QString m_vpnKey;

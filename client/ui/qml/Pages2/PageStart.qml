@@ -174,6 +174,12 @@ PageType {
     Connections {
         target: ApiConfigsController
 
+        // the subscription refused this device: its servers are gone, so
+        // leave whatever page showed them (home shows the start without servers)
+        function onSubscriptionServersRemoved() {
+            PageController.goToPageHome()
+        }
+
         function onInstallServerFromApiFinished(message) {
             if (!ConnectionController.isConnected) {
                 // a subscription import selects its main protocol's entry

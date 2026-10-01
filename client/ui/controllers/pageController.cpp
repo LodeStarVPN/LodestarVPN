@@ -169,6 +169,13 @@ void PageController::onShowErrorMessage(ErrorCode errorCode)
 {
     const auto fullErrorMessage = errorString(errorCode);
     const auto errorMessage = fullErrorMessage.mid(fullErrorMessage.indexOf(". ") + 1); // remove ErrorCode %1.
+    // the subscription's word on this device or on the subscription is a
+    // notice for the user, not a malfunction to look up: no code
+    if (errorCode == ErrorCode::ApiDeviceUnlinkedError || errorCode == ErrorCode::ApiConfigLimitError
+        || errorCode == ErrorCode::ApiSubscriptionExpiredError || errorCode == ErrorCode::ApiSubscriptionNotFoundError) {
+        emit showErrorMessage(errorMessage.trimmed());
+        return;
+    }
     const auto errorUrl = QStringLiteral("troubleshooting/error-codes/#error-%1-%2").arg(static_cast<int>(errorCode)).arg(utils::enumToString(errorCode).toLower());
     const auto fullMessage = QStringLiteral("<a href=\"%1\" style=\"color: #FBB26A;\">ErrorCode: %2</a>. %3").arg(errorUrl).arg(static_cast<int>(errorCode)).arg(errorMessage);
 

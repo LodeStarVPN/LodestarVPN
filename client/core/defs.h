@@ -113,6 +113,8 @@ namespace amnezia
         ApiSubscriptionExpiredError = 1112,
         ApiPurchaseError = 1113,
         ApiLocalConfigMissingError = 1114,
+        ApiDeviceUnlinkedError = 1115,
+        ApiSubscriptionNotFoundError = 1116,
 
         // connection errors
         ServerConnectionTimeoutError = 1300,

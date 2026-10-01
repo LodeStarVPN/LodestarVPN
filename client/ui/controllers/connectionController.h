@@ -105,6 +105,19 @@ private:
     // connect in between voids the retry.
     void beginPoolRefresh(int row);
     void onPoolRefreshed(int row, const QByteArray &connectionBefore, bool ok);
+
+    // --- device check ---
+    // On every connection and every kDeviceCheckIntervalMs while connected the
+    // gateway is asked whether this device is still one of the subscription's.
+    // A refusal (unlinked, no free place) disconnects and removes the
+    // subscription's servers from the app (an ended subscription only
+    // disconnects); a failed request changes nothing, so
+    // an unreachable gateway never takes the VPN away. This is what keeps an
+    // unlinked device off VLESS, whose servers cannot tell devices apart.
+    void checkDevice();
+    QTimer *m_deviceCheckTimer = nullptr;
+    static constexpr int kDeviceCheckIntervalMs = 15 * 60 * 1000;
+    int m_tunnelRow = -1; // the entry the current tunnel was started for
     static QByteArray connectionFingerprint(const QJsonObject &serverConfig);
     quint64 m_connectAttempt = 0;
     bool m_poolRefreshAttempted = false; // at most once per user connect
