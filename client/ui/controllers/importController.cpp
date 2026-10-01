@@ -1,0 +1,964 @@
+#include "importController.h"
+
+#include <QFile>
+#include <QFileInfo>
+#include <QQuickItem>
+#include <QRandomGenerator>
+#include <QSet>
+#include <QStandardPaths>
+#include <QThread>
+#include <QUrlQuery>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+
+#include "dopamine_application.h"
+#include "core/api/apiDefs.h"
+#include "core/api/apiUtils.h"
+#include "core/errorstrings.h"
+#include "core/qrCodeUtils.h"
+#include "core/serialization/serialization.h"
+#include "protocols/protocols_defs.h"
+#include "systemController.h"
+#include "utilities.h"
+
+#ifdef Q_OS_ANDROID
+    #include "platforms/android/android_controller.h"
+#endif
+#if defined(Q_OS_IOS) || defined(MACOS_NE)
+    #include <CoreFoundation/CoreFoundation.h>
+#endif
+
+namespace
+{
+    QString decodeIfBase64(const QByteArray &input)
+    {
+        if (input.isEmpty())
+            return QString();
+
+        if (input.contains("://")) {
+            return QString::fromUtf8(input);
+        }
+
+        QByteArray decoded = QByteArray::fromBase64(input, QByteArray::Base64Encoding);
+        if (decoded.isEmpty()) {
+            return QString::fromUtf8(input);
+        }
+
+        QString result = QString::fromUtf8(decoded);
+        if (result.toUtf8() != decoded) {
+            return QString::fromUtf8(input);
+        }
+
+        return result;
+    }
+
+    ConfigTypes checkConfigFormat(const QString &config)
+    {
+        const QString xrayConfigPatternInbound = "inbounds";
+        const QString xrayConfigPatternOutbound = "outbounds";
+
+        const QString amneziaConfigPattern = "containers";
+        const QString amneziaConfigPatternHostName = "hostName";
+        const QString amneziaConfigPatternUserName = "userName";
+        const QString amneziaConfigPatternPassword = "password";
+        const QString amneziaFreeConfigPattern = "api_key";
+        const QString amneziaPremiumConfigPattern = "auth_data";
+        const QString backupPattern = "Servers/serversList";
+
+        if (config.contains(backupPattern)) {
+            return ConfigTypes::Backup;
+        } else if (config.contains(amneziaConfigPattern) || config.contains(amneziaFreeConfigPattern)
+                   || config.contains(amneziaPremiumConfigPattern)
+                   || (config.contains(amneziaConfigPatternHostName) && config.contains(amneziaConfigPatternUserName)
+                       && config.contains(amneziaConfigPatternPassword))) {
+            return ConfigTypes::Amnezia;
+        } else if (config.toLower().contains(QLatin1String("[interface]")) && config.toLower().contains(QLatin1String("[peer]"))) {
+            return ConfigTypes::WireGuard;
+        } else if ((config.contains(xrayConfigPatternInbound)) && (config.contains(xrayConfigPatternOutbound))) {
+            return ConfigTypes::Xray;
+        }
+        return ConfigTypes::Invalid;
+    }
+
+#if defined Q_OS_ANDROID
+    ImportController *mInstance = nullptr;
+#endif
+} // namespace
+
+ImportController::ImportController(const QSharedPointer<ServersModel> &serversModel, const QSharedPointer<ContainersModel> &containersModel,
+                                   const std::shared_ptr<Settings> &settings, QObject *parent)
+    : QObject(parent), m_serversModel(serversModel), m_containersModel(containersModel), m_settings(settings)
+{
+#ifdef Q_OS_ANDROID
+    mInstance = this;
+#endif
+}
+
+bool ImportController::extractConfigFromFile(const QString &fileName)
+{
+    QString data;
+    if (!SystemController::readFile(fileName, data)) {
+        emit importErrorOccurred(ErrorCode::ImportOpenConfigError, false);
+        return false;
+    }
+    m_configFileName = QFileInfo(QFile(fileName).fileName()).fileName();
+#ifdef Q_OS_ANDROID
+    if (m_configFileName.isEmpty()) {
+        m_configFileName = AndroidController::instance()->getFileName(fileName);
+    }
+#endif
+    return extractConfigFromData(data);
+}
+
+bool ImportController::extractConfigFromData(QString data)
+{
+    m_maliciousWarningText.clear();
+
+    QString config = data;
+    if (config.startsWith(QChar(0xFEFF))) {
+        config.remove(0, 1);
+    }
+    QString prefix;
+    QString errormsg;
+
+    if (config.startsWith("vless://")) {
+        m_configType = ConfigTypes::Xray;
+        m_config = extractXrayConfig(
+                Utils::JsonToString(serialization::vless::Deserialize(config, &prefix, &errormsg), QJsonDocument::JsonFormat::Compact),
+                prefix);
+        return m_config.empty() ? false : true;
+    }
+
+    if (config.startsWith("vmess://") && config.contains("@")) {
+        m_configType = ConfigTypes::Xray;
+        m_config = extractXrayConfig(
+                Utils::JsonToString(serialization::vmess_new::Deserialize(config, &prefix, &errormsg), QJsonDocument::JsonFormat::Compact),
+                prefix);
+        return m_config.empty() ? false : true;
+    }
+
+    if (config.startsWith("vmess://")) {
+        m_configType = ConfigTypes::Xray;
+        m_config = extractXrayConfig(
+                Utils::JsonToString(serialization::vmess::Deserialize(config, &prefix, &errormsg), QJsonDocument::JsonFormat::Compact),
+                prefix);
+        return m_config.empty() ? false : true;
+    }
+
+    if (config.startsWith("trojan://")) {
+        m_configType = ConfigTypes::Xray;
+        m_config = extractXrayConfig(
+                Utils::JsonToString(serialization::trojan::Deserialize(config, &prefix, &errormsg), QJsonDocument::JsonFormat::Compact),
+                prefix);
+        return m_config.empty() ? false : true;
+    }
+
+    if (config.startsWith("ss://") && !config.contains("plugin=")) {
+        m_configType = ConfigTypes::ShadowSocks;
+        m_config = extractXrayConfig(
+                Utils::JsonToString(serialization::ss::Deserialize(config, &prefix, &errormsg), QJsonDocument::JsonFormat::Compact), prefix);
+        return m_config.empty() ? false : true;
+    }
+
+    if (config.startsWith("ssd://")) {
+        QStringList tmp;
+        QList<std::pair<QString, QJsonObject>> servers = serialization::ssd::Deserialize(config, &prefix, &tmp);
+        m_configType = ConfigTypes::ShadowSocks;
+        // Took only first config from list
+        if (!servers.isEmpty()) {
+            m_config = extractXrayConfig(servers.first().first);
+        }
+        return m_config.empty() ? false : true;
+    }
+
+    // Subscription link / subscription ID detection - all resolved through our
+    // own gateway (AGW flow); nothing is sent to third-party backends
+    {
+        QString urlCandidate = config.trimmed();
+
+        // lodestar://sub/<id> - subscription deep link, protocol selection follows
+        if (urlCandidate.startsWith("lodestar://sub/")) {
+            QString subscriptionId = urlCandidate.mid(15);
+            emit frknSubscriptionLinkDetected(subscriptionId);
+            return false;
+        }
+
+        // lodestar://conn/<token> - shared single connection (AGW share_token flow)
+        if (urlCandidate.startsWith("lodestar://conn/")) {
+            // Crockford base32, 16 chars after stripping dashes/spaces; the backend
+            // normalizes o→0, i/l→1 itself, so we only strip and lowercase
+            QString shareToken = urlCandidate.mid(16);
+            shareToken.remove(QRegularExpression(QStringLiteral("[\\s-]")));
+            shareToken = shareToken.toLower();
+            static const QRegularExpression shareTokenRegex(QStringLiteral("^[0-9a-tv-z]{16}$"));
+            if (shareTokenRegex.match(shareToken).hasMatch()) {
+                emit frknShareLinkDetected(shareToken);
+            } else {
+                qWarning() << "[AGW] malformed share token in lodestar://conn/ link:" << shareToken;
+                emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
+            }
+            return false;
+        }
+
+        // Direct URL to subscription endpoint
+        if (urlCandidate.startsWith("http://") || urlCandidate.startsWith("https://")) {
+            fetchAndImportFromUrl(urlCandidate);
+            return false;
+        }
+
+        // Plain string without spaces and without :// - a subscription ID (UUID or
+        // the panel's short id), same flow as the "Subscription ID" field
+        if (!urlCandidate.contains(' ') && !urlCandidate.contains("://") && !urlCandidate.isEmpty()) {
+            emit frknSubscriptionLinkDetected(urlCandidate);
+            return false;
+        }
+    }
+
+    const QString lowered = config.toLower();
+    const bool staticConfig = (lowered.contains(QLatin1String("[interface]")) && lowered.contains(QLatin1String("[peer]")))
+            || config.contains(QLatin1String("vpn://"))
+            || config.contains(QLatin1String("\"containers\""))
+            || config.contains(QLatin1String("Servers/serversList"));
+    if (!staticConfig) {
+        const QString unrecognized = config.trimmed();
+        if (!unrecognized.isEmpty()) {
+            emit unknownFormatDetected(unrecognized);
+            return false;
+        }
+    }
+
+    m_configType = checkConfigFormat(config);
+    if (m_configType == ConfigTypes::Invalid) {
+        config.replace("vpn://", "");
+        QByteArray ba = QByteArray::fromBase64(config.toUtf8(), QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+        QByteArray baUncompressed = qUncompress(ba);
+        if (!baUncompressed.isEmpty()) {
+            ba = baUncompressed;
+        }
+
+        config = ba;
+        m_configType = checkConfigFormat(config);
+    }
+
+    switch (m_configType) {
+    case ConfigTypes::Awg:
+    case ConfigTypes::WireGuard: {
+        m_config = extractWireGuardConfig(config);
+        return m_config.empty() ? false : true;
+    }
+    case ConfigTypes::Xray: {
+        m_config = extractXrayConfig(config);
+        return m_config.empty() ? false : true;
+    }
+    case ConfigTypes::Amnezia: {
+        m_config = QJsonDocument::fromJson(config.toUtf8()).object();
+
+        if (apiUtils::isServerFromApi(m_config)) {
+            auto apiConfig = m_config.value(apiDefs::key::apiConfig).toObject();
+            apiConfig[apiDefs::key::vpnKey] = data;
+            m_config[apiDefs::key::apiConfig] = apiConfig;
+        }
+
+        processAmneziaConfig(m_config);
+        if (!m_config.empty()) {
+            return true;
+        }
+        return false;
+    }
+    case ConfigTypes::Backup: {
+        if (!m_serversModel->getServersCount()) {
+            emit restoreAppConfig(config.toUtf8());
+        } else {
+            emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
+        }
+        break;
+    }
+    case ConfigTypes::Invalid: {
+        emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
+        m_configFileName.clear();
+        break;
+    }
+    case ConfigTypes::ShadowSocks:
+        break;
+    }
+    return false;
+}
+
+bool ImportController::extractConfigFromQr(const QByteArray &data)
+{
+    QJsonObject dataObj = QJsonDocument::fromJson(data).object();
+    if (!dataObj.isEmpty()) {
+        m_config = dataObj;
+        return true;
+    }
+
+    QByteArray ba_uncompressed = qUncompress(data);
+    if (!ba_uncompressed.isEmpty()) {
+        m_config = QJsonDocument::fromJson(ba_uncompressed).object();
+        if (!m_config.isEmpty())
+            return true;
+    }
+
+    m_configType = checkConfigFormat(data);
+    if (m_configType == ConfigTypes::Invalid) {
+        QByteArray ba = QByteArray::fromBase64(data, QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+        QByteArray baUncompressed = qUncompress(ba);
+
+        if (!baUncompressed.isEmpty()) {
+            ba = baUncompressed;
+        }
+
+        if (!ba.isEmpty()) {
+            QJsonObject obj = QJsonDocument::fromJson(ba).object();
+            if (!obj.isEmpty()) {
+                m_config = obj;
+                return true;
+            }
+        }
+    }
+
+    QString text = QString::fromUtf8(data).trimmed();
+    if (!text.isEmpty()) {
+        return extractConfigFromData(text);
+    }
+
+    return false;
+}
+
+QString ImportController::getConfig()
+{
+    return QJsonDocument(m_config).toJson(QJsonDocument::Indented);
+}
+
+QString ImportController::getConfigFileName()
+{
+    return m_configFileName;
+}
+
+QString ImportController::getMaliciousWarningText()
+{
+    return m_maliciousWarningText;
+}
+
+bool ImportController::isNativeWireGuardConfig()
+{
+    return m_configType == ConfigTypes::WireGuard;
+}
+
+void ImportController::processNativeWireGuardConfig()
+{
+    auto containers = m_config.value(config_key::containers).toArray();
+    if (!containers.isEmpty()) {
+        auto container = containers.at(0).toObject();
+        auto serverProtocolConfig = container.value(ContainerProps::containerTypeToProtocolString(DockerContainer::WireGuard)).toObject();
+        auto clientProtocolConfig = QJsonDocument::fromJson(serverProtocolConfig.value(config_key::last_config).toString().toUtf8()).object();
+
+        QString junkPacketCount = QString::number(QRandomGenerator::global()->bounded(4, 7));
+        QString junkPacketMinSize = QString::number(10);
+        QString junkPacketMaxSize = QString::number(50);
+        clientProtocolConfig[config_key::junkPacketCount] = junkPacketCount;
+        clientProtocolConfig[config_key::junkPacketMinSize] = junkPacketMinSize;
+        clientProtocolConfig[config_key::junkPacketMaxSize] = junkPacketMaxSize;
+        clientProtocolConfig[config_key::initPacketJunkSize] = "0";
+        clientProtocolConfig[config_key::responsePacketJunkSize] = "0";
+        clientProtocolConfig[config_key::initPacketMagicHeader] = "1";
+        clientProtocolConfig[config_key::responsePacketMagicHeader] = "2";
+        clientProtocolConfig[config_key::underloadPacketMagicHeader] = "3";
+        clientProtocolConfig[config_key::transportPacketMagicHeader] = "4";
+
+        clientProtocolConfig[config_key::cookieReplyPacketJunkSize] = "0";
+        clientProtocolConfig[config_key::transportPacketJunkSize] = "0";
+
+        clientProtocolConfig[config_key::specialJunk1] = protocols::awg::defaultSpecialJunk1;
+
+        clientProtocolConfig[config_key::isObfuscationEnabled] = true;
+
+        serverProtocolConfig[config_key::last_config] = QString(QJsonDocument(clientProtocolConfig).toJson());
+        container["wireguard"] = serverProtocolConfig;
+        containers.replace(0, container);
+        m_config[config_key::containers] = containers;
+    }
+}
+
+void ImportController::importConfig()
+{
+    ServerCredentials credentials;
+    credentials.hostName = m_config.value(config_key::hostName).toString();
+    credentials.port = m_config.value(config_key::port).toInt();
+    credentials.userName = m_config.value(config_key::userName).toString();
+    credentials.secretData = m_config.value(config_key::password).toString();
+
+    if (credentials.isValid() || m_config.contains(config_key::containers)) {
+        m_serversModel->addServer(m_config);
+        emit importFinished();
+    } else if (m_config.contains(config_key::configVersion)) {
+        quint16 crc = qChecksum(QJsonDocument(m_config).toJson());
+        if (m_serversModel->isServerFromApiAlreadyExists(crc)) {
+            emit importErrorOccurred(ErrorCode::ApiConfigAlreadyAdded, true);
+        } else {
+            m_config.insert(config_key::crc, crc);
+
+            m_serversModel->addServer(m_config);
+            emit importFinished();
+        }
+    } else {
+        qDebug() << "Failed to import profile";
+        qDebug().noquote() << QJsonDocument(m_config).toJson();
+        emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
+    }
+
+    m_config = {};
+    m_configFileName.clear();
+    m_maliciousWarningText.clear();
+}
+
+void ImportController::clearConfigFileName()
+{
+    m_configFileName.clear();
+}
+
+QJsonObject ImportController::extractWireGuardConfig(const QString &data)
+{
+    QMap<QString, QString> configMap;
+    auto configByLines = data.split("\n");
+    for (const QString &line : configByLines) {
+        const QString trimmedLine = line.trimmed();
+        if (trimmedLine.isEmpty() || trimmedLine.startsWith('#') || trimmedLine.startsWith(';')) {
+            continue;
+        }
+        if (trimmedLine.startsWith('[') && trimmedLine.endsWith(']')) {
+            continue;
+        }
+        const int eq = trimmedLine.indexOf('=');
+        if (eq > 0) {
+            const QString key = trimmedLine.left(eq).trimmed();
+            const QString value = trimmedLine.mid(eq + 1).trimmed();
+            if (!key.isEmpty() && !value.isEmpty()) {
+                configMap[key] = value;
+            }
+        }
+    }
+
+    QJsonObject lastConfig;
+    lastConfig[config_key::config] = data;
+
+    auto url { QUrl::fromUserInput(configMap.value("Endpoint")) };
+    QString hostName;
+    QString port;
+    if (!url.host().isEmpty()) {
+        hostName = url.host();
+    } else {
+        qDebug() << "Key parameter 'Endpoint' is missing or has an invalid format";
+        emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
+        return QJsonObject();
+    }
+
+    if (url.port() != -1) {
+        port = QString::number(url.port());
+    } else {
+        port = protocols::wireguard::defaultPort;
+    }
+
+    lastConfig[config_key::hostName] = hostName;
+    lastConfig[config_key::port] = port.toInt();
+
+    if (!configMap.value("PrivateKey").isEmpty() && !configMap.value("Address").isEmpty() && !configMap.value("PublicKey").isEmpty()) {
+        lastConfig[config_key::client_priv_key] = configMap.value("PrivateKey");
+        lastConfig[config_key::client_ip] = configMap.value("Address");
+
+        if (!configMap.value("PresharedKey").isEmpty()) {
+            lastConfig[config_key::psk_key] = configMap.value("PresharedKey");
+        } else if (!configMap.value("PreSharedKey").isEmpty()) {
+            lastConfig[config_key::psk_key] = configMap.value("PreSharedKey");
+        }
+
+        lastConfig[config_key::server_pub_key] = configMap.value("PublicKey");
+    } else {
+        qDebug() << "One of the key parameters is missing (PrivateKey, Address, PublicKey)";
+        emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
+        return QJsonObject();
+    }
+
+    if (!configMap.value("MTU").isEmpty()) {
+        lastConfig[config_key::mtu] = configMap.value("MTU");
+    }
+
+    if (!configMap.value("PersistentKeepalive").isEmpty()) {
+        lastConfig[config_key::persistent_keep_alive] = configMap.value("PersistentKeepalive");
+    }
+
+    QStringList allowedIps;
+    for (const QString &ip : configMap.value(QStringLiteral("AllowedIPs")).split(',')) {
+        const QString trimmed = ip.trimmed();
+        if (!trimmed.isEmpty()) {
+            allowedIps << trimmed;
+        }
+    }
+    lastConfig[config_key::allowed_ips] = QJsonArray::fromStringList(allowedIps);
+
+    QString protocolName = "wireguard";
+    QString protocolVersion;
+
+    const QStringList requiredJunkFields = { config_key::junkPacketCount,           config_key::junkPacketMinSize,
+                                             config_key::junkPacketMaxSize,         config_key::initPacketJunkSize,
+                                             config_key::responsePacketJunkSize,    config_key::initPacketMagicHeader,
+                                             config_key::responsePacketMagicHeader, config_key::underloadPacketMagicHeader,
+                                             config_key::transportPacketMagicHeader };
+
+    const QStringList optionalJunkFields = { config_key::cookieReplyPacketJunkSize,
+                                             config_key::transportPacketJunkSize,
+                                             config_key::specialJunk1,    config_key::specialJunk2,    config_key::specialJunk3,
+                                             config_key::specialJunk4,    config_key::specialJunk5
+    };
+
+    // AWG 3.0 device-level keys: optional, values may be ints or "lo-hi" ranges
+    const QStringList optionalDeviceFields = { config_key::headerProtectionKey,
+                                               config_key::contentPaddingAddition,
+                                               config_key::rekeyAfterTime,
+                                               config_key::rekeyTimeout,
+                                               config_key::rejectAfterTime,
+                                               config_key::keepaliveTimeout,
+                                               config_key::maxHandshakeAttempts
+    };
+    for (const QString &field : optionalDeviceFields) {
+        if (!configMap.value(field).isEmpty()) {
+            lastConfig[field] = configMap.value(field);
+        }
+    }
+
+    bool hasAllRequiredFields = std::all_of(requiredJunkFields.begin(), requiredJunkFields.end(),
+                                            [&configMap](const QString &field) { return !configMap.value(field).isEmpty(); });
+    if (hasAllRequiredFields) {
+        for (const QString &field : requiredJunkFields) {
+            lastConfig[field] = configMap.value(field);
+        }
+
+        for (const QString &field : optionalJunkFields) {
+            if (!configMap.value(field).isEmpty()) {
+                lastConfig[field] = configMap.value(field);
+            }
+        }
+
+        bool hasCookieReplyPacketJunkSize = !configMap.value(config_key::cookieReplyPacketJunkSize).isEmpty();
+        bool hasTransportPacketJunkSize = !configMap.value(config_key::transportPacketJunkSize).isEmpty();
+        bool hasSpecialJunk = !configMap.value(config_key::specialJunk1).isEmpty() ||
+                              !configMap.value(config_key::specialJunk2).isEmpty() ||
+                              !configMap.value(config_key::specialJunk3).isEmpty() ||
+                              !configMap.value(config_key::specialJunk4).isEmpty() ||
+                              !configMap.value(config_key::specialJunk5).isEmpty();
+
+        if (hasCookieReplyPacketJunkSize && hasTransportPacketJunkSize) {
+            protocolVersion = "2";
+        } else if (hasSpecialJunk && !hasCookieReplyPacketJunkSize && !hasTransportPacketJunkSize) {
+            protocolVersion = "1.5";
+        }
+        protocolName = "awg";
+        m_configType = ConfigTypes::Awg;
+    }
+
+    if (!configMap.value("MTU").isEmpty()) {
+        lastConfig[config_key::mtu] = configMap.value("MTU");
+    } else {
+        lastConfig[config_key::mtu] =
+                (protocolName == "awg") ? protocols::awg::defaultMtu : protocols::wireguard::defaultMtu;
+    }
+
+    QJsonObject wireguardConfig;
+    wireguardConfig[config_key::last_config] = QString(QJsonDocument(lastConfig).toJson());
+    wireguardConfig[config_key::isThirdPartyConfig] = true;
+    wireguardConfig[config_key::port] = port;
+    wireguardConfig[config_key::transport_proto] = "udp";
+    if (protocolName == "awg" && !protocolVersion.isEmpty()) {
+        wireguardConfig[config_key::protocolVersion] = protocolVersion;
+    }
+
+    QJsonObject containers;
+    containers.insert(config_key::container, QJsonValue("amnezia-" + protocolName));
+    containers.insert(protocolName, QJsonValue(wireguardConfig));
+
+    QJsonArray arr;
+    arr.push_back(containers);
+
+    QJsonObject config;
+    config[config_key::containers] = arr;
+    config[config_key::defaultContainer] = "amnezia-" + protocolName;
+    // named "Server N", not after its address: addresses are not shown in the UI
+    config[config_key::description] = m_settings->nextAvailableServerName();
+
+    const QStringList dnsList = configMap.value(QStringLiteral("DNS")).split(',');
+    if (!dnsList.isEmpty() && !dnsList.at(0).trimmed().isEmpty()) {
+        config[config_key::dns1] = dnsList.at(0).trimmed();
+    }
+    if (dnsList.size() > 1 && !dnsList.at(1).trimmed().isEmpty()) {
+        config[config_key::dns2] = dnsList.at(1).trimmed();
+    }
+
+    config[config_key::hostName] = hostName;
+
+    return config;
+}
+
+QJsonObject ImportController::extractXrayConfig(const QString &data, const QString &description)
+{
+    QJsonParseError parserErr;
+    QJsonDocument jsonConf = QJsonDocument::fromJson(data.toLocal8Bit(), &parserErr);
+
+    QJsonObject xrayVpnConfig;
+    xrayVpnConfig[config_key::config] = jsonConf.toJson().constData();
+    QJsonObject lastConfig;
+    lastConfig[config_key::last_config] = jsonConf.toJson().constData();
+    lastConfig[config_key::isThirdPartyConfig] = true;
+
+    QJsonObject containers;
+    if (m_configType == ConfigTypes::ShadowSocks) {
+        containers.insert(config_key::ssxray, QJsonValue(lastConfig));
+        containers.insert(config_key::container, QJsonValue("amnezia-ssxray"));
+    } else {
+        containers.insert(config_key::container, QJsonValue("amnezia-xray"));
+        containers.insert(config_key::xray, QJsonValue(lastConfig));
+    }
+
+    QJsonArray arr;
+    arr.push_back(containers);
+
+    QString hostName;
+
+    const static QRegularExpression hostNameRegExp("\"address\":\\s*\"([^\"]+)");
+    QRegularExpressionMatch hostNameMatch = hostNameRegExp.match(data);
+    if (hostNameMatch.hasMatch()) {
+        hostName = hostNameMatch.captured(1);
+    }
+
+    QJsonObject config;
+    config[config_key::containers] = arr;
+
+    if (m_configType == ConfigTypes::ShadowSocks) {
+        config[config_key::defaultContainer] = "amnezia-ssxray";
+    } else {
+        config[config_key::defaultContainer] = "amnezia-xray";
+    }
+    if (description.isEmpty()) {
+        config[config_key::description] = m_settings->nextAvailableServerName();
+    } else {
+        config[config_key::description] = description;
+    }
+    config[config_key::hostName] = hostName;
+
+    return config;
+}
+
+#ifdef Q_OS_ANDROID
+static QMutex qrDecodeMutex;
+
+// static
+bool ImportController::decodeQrCode(const QString &code)
+{
+    QMutexLocker lock(&qrDecodeMutex);
+
+    if (!mInstance->m_isQrCodeProcessed) {
+        mInstance->m_qrCodeChunks.clear();
+        mInstance->m_isQrCodeProcessed = true;
+        mInstance->m_totalQrCodeChunksCount = 0;
+        mInstance->m_receivedQrCodeChunksCount = 0;
+    }
+    return mInstance->parseQrCodeChunk(code);
+}
+#endif
+
+#if defined Q_OS_ANDROID || defined Q_OS_IOS
+void ImportController::startDecodingQr()
+{
+    m_qrCodeChunks.clear();
+    m_totalQrCodeChunksCount = 0;
+    m_receivedQrCodeChunksCount = 0;
+
+    #if defined(Q_OS_IOS) || defined(MACOS_NE)
+    m_isQrCodeProcessed = true;
+    #endif
+    #if defined Q_OS_ANDROID
+    AndroidController::instance()->startQrReaderActivity();
+    #endif
+}
+
+void ImportController::stopDecodingQr()
+{
+    emit qrDecodingFinished();
+}
+
+bool ImportController::parseQrCodeChunk(const QString &code)
+{
+    // qDebug() << code;
+    if (!m_isQrCodeProcessed)
+        return false;
+
+    // check if chunk received
+    QByteArray ba = QByteArray::fromBase64(code.toUtf8(), QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+    QDataStream s(&ba, QIODevice::ReadOnly);
+    qint16 magic;
+    s >> magic;
+
+    if (magic == qrCodeUtils::qrMagicCode) {
+        quint8 chunksCount;
+        s >> chunksCount;
+        if (m_totalQrCodeChunksCount != chunksCount) {
+            m_qrCodeChunks.clear();
+        }
+
+        m_totalQrCodeChunksCount = chunksCount;
+
+        quint8 chunkId;
+        s >> chunkId;
+        s >> m_qrCodeChunks[chunkId];
+        m_receivedQrCodeChunksCount = m_qrCodeChunks.size();
+
+        if (m_qrCodeChunks.size() == m_totalQrCodeChunksCount) {
+            QByteArray data;
+
+            for (int i = 0; i < m_totalQrCodeChunksCount; ++i) {
+                data.append(m_qrCodeChunks.value(i));
+            }
+
+            bool ok = extractConfigFromQr(data);
+            if (ok) {
+                m_isQrCodeProcessed = false;
+                qDebug() << "stopDecodingQr";
+                stopDecodingQr();
+                return true;
+            } else {
+                qDebug() << "error while extracting data from qr";
+                m_qrCodeChunks.clear();
+                m_totalQrCodeChunksCount = 0;
+                m_receivedQrCodeChunksCount = 0;
+            }
+        }
+    } else {
+        // Try interpreting the QR code as text first (URL, protocol URI, UUID, etc.)
+        // This must happen BEFORE extractConfigFromQr(ba), because ba is the base64-decoded
+        // garbage of the original text, and extractConfigFromQr would feed that garbage
+        // to extractConfigFromData, potentially starting a spurious async fetch.
+        QString rawText = code.trimmed();
+        if (!rawText.isEmpty()) {
+            bool ok = extractConfigFromData(rawText);
+            if (ok) {
+                m_isQrCodeProcessed = false;
+                qDebug() << "stopDecodingQr (raw text)";
+                stopDecodingQr();
+                return true;
+            }
+            // Check if an async fetch was started (URL or subscriber ID)
+            if (rawText.startsWith("lodestar://") || rawText.startsWith("http://") || rawText.startsWith("https://")
+                || (!rawText.contains("://") && !rawText.contains(' '))) {
+                m_isQrCodeProcessed = false;
+                return true;
+            }
+        }
+
+        // Text interpretation failed - try as binary QR data
+        bool ok = extractConfigFromQr(ba);
+        if (ok) {
+            m_isQrCodeProcessed = false;
+            qDebug() << "stopDecodingQr";
+            stopDecodingQr();
+            return true;
+        }
+    }
+    return false;
+}
+
+double ImportController::getQrCodeScanProgressBarValue()
+{
+    return (1.0 / m_totalQrCodeChunksCount) * m_receivedQrCodeChunksCount;
+}
+
+QString ImportController::getQrCodeScanProgressString()
+{
+    return tr("Scanned %1 of %2.").arg(m_receivedQrCodeChunksCount).arg(m_totalQrCodeChunksCount);
+}
+#endif
+
+void ImportController::processAmneziaConfig(QJsonObject &config)
+{
+    auto containers = config.value(config_key::containers).toArray();
+    for (auto i = 0; i < containers.size(); i++) {
+        auto container = containers.at(i).toObject();
+        auto dockerContainer = ContainerProps::containerFromString(container.value(config_key::container).toString());
+        if (ContainerProps::isAwgContainer(dockerContainer) || dockerContainer == DockerContainer::WireGuard) {
+            auto containerConfig = container.value(ContainerProps::containerTypeToProtocolString(dockerContainer)).toObject();
+            auto protocolConfig = containerConfig.value(config_key::last_config).toString();
+            if (protocolConfig.isEmpty()) {
+                return;
+            }
+
+            QJsonObject jsonConfig = QJsonDocument::fromJson(protocolConfig.toUtf8()).object();
+            jsonConfig[config_key::mtu] =
+                    ContainerProps::isAwgContainer(dockerContainer) ? protocols::awg::defaultMtu : protocols::wireguard::defaultMtu;
+
+            containerConfig[config_key::last_config] = QString(QJsonDocument(jsonConfig).toJson());
+
+            container[ContainerProps::containerTypeToProtocolString(dockerContainer)] = containerConfig;
+            containers.replace(i, container);
+            config.insert(config_key::containers, containers);
+        }
+    }
+}
+
+bool ImportController::parseConfigLine(const QString &line, QJsonObject &outConfig)
+{
+    QString trimmed = line.trimmed();
+    if (trimmed.isEmpty())
+        return false;
+
+    QString prefix;
+    QString errormsg;
+    QJsonObject json;
+
+    if (trimmed.startsWith("vless://")) {
+        json = serialization::vless::Deserialize(trimmed, &prefix, &errormsg);
+    } else if (trimmed.startsWith("vmess://") && trimmed.contains("@")) {
+        json = serialization::vmess_new::Deserialize(trimmed, &prefix, &errormsg);
+    } else if (trimmed.startsWith("vmess://")) {
+        json = serialization::vmess::Deserialize(trimmed, &prefix, &errormsg);
+    } else if (trimmed.startsWith("trojan://")) {
+        json = serialization::trojan::Deserialize(trimmed, &prefix, &errormsg);
+    } else if (trimmed.startsWith("ss://") && !trimmed.contains("plugin=")) {
+        m_configType = ConfigTypes::ShadowSocks;
+        json = serialization::ss::Deserialize(trimmed, &prefix, &errormsg);
+        m_configType = ConfigTypes::Xray;
+        return !outConfig.isEmpty();
+    }
+
+    outConfig = extractXrayConfig(Utils::JsonToString(json, QJsonDocument::JsonFormat::Compact), prefix);
+    return !outConfig.isEmpty();
+}
+
+void ImportController::handleSubscriptionResponse(const QByteArray &responseData)
+{
+    QString configText = decodeIfBase64(responseData);
+    QStringList lines = configText.split('\n', Qt::SkipEmptyParts);
+
+    m_subscriptionConfigs = QJsonArray();
+
+    // Build set of existing last_config strings for dedup
+    QSet<QString> existingConfigs;
+    const QJsonArray currentServers = m_settings->serversArray();
+    for (const auto &s : currentServers) {
+        const auto containers = s.toObject().value(config_key::containers).toArray();
+        for (const auto &c : containers) {
+            QJsonObject co = c.toObject();
+            QString lc = co.value(config_key::xray).toObject().value(config_key::last_config).toString();
+            if (lc.isEmpty())
+                lc = co.value(config_key::ssxray).toObject().value(config_key::last_config).toString();
+            if (!lc.isEmpty())
+                existingConfigs.insert(lc);
+        }
+    }
+
+    int parsed = 0;
+    int totalParsed = 0;
+    for (const QString &line : lines) {
+        QJsonObject config;
+        if (parseConfigLine(line, config)) {
+            totalParsed++;
+            // Check for duplicate via last_config
+            const auto containers = config.value(config_key::containers).toArray();
+            QString lc;
+            for (const auto &c : containers) {
+                QJsonObject co = c.toObject();
+                lc = co.value(config_key::xray).toObject().value(config_key::last_config).toString();
+                if (lc.isEmpty())
+                    lc = co.value(config_key::ssxray).toObject().value(config_key::last_config).toString();
+                if (!lc.isEmpty())
+                    break;
+            }
+            if (!lc.isEmpty() && existingConfigs.contains(lc)) {
+                continue;
+            }
+            if (!lc.isEmpty())
+                existingConfigs.insert(lc);
+            m_subscriptionConfigs.append(config);
+            parsed++;
+        } else {
+        }
+    }
+
+    if (totalParsed == 0) {
+        emit subscriptionErrorOccurred(tr("No valid configurations found at the provided URL"));
+        return;
+    }
+
+    if (parsed == 0) {
+        // All configs are duplicates - not an error
+        emit subscriptionAllDuplicates();
+        return;
+    }
+
+    emit subscriptionConfigsReady(parsed);
+}
+
+void ImportController::fetchAndImportFromUrl(const QString &url)
+{
+    // Ensure we run on the Qt main thread (QNetworkAccessManager requires it)
+    if (QThread::currentThread() != this->thread()) {
+        QMetaObject::invokeMethod(this, [this, url]() { fetchAndImportFromUrl(url); }, Qt::QueuedConnection);
+        return;
+    }
+
+    QNetworkRequest request;
+    request.setUrl(QUrl(url));
+    request.setTransferTimeout(15000);
+
+    QNetworkReply *reply = amnApp->networkManager()->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "[FRKN] Subscription fetch failed:" << reply->errorString() << "url:" << reply->url();
+            emit subscriptionErrorOccurred(tr("Failed to fetch configurations: %1").arg(reply->errorString()));
+            return;
+        }
+
+        QByteArray responseData = reply->readAll();
+        if (responseData.isEmpty()) {
+            emit subscriptionErrorOccurred(tr("Empty response from server"));
+            return;
+        }
+
+        handleSubscriptionResponse(responseData);
+    });
+}
+
+void ImportController::queueConfigForConfirmation()
+{
+    if (m_config.isEmpty())
+        return;
+
+    m_subscriptionConfigs = QJsonArray();
+    m_subscriptionConfigs.append(m_config);
+    m_config = QJsonObject();
+    emit subscriptionConfigsReady(m_subscriptionConfigs.size());
+}
+
+void ImportController::importSubscriptionConfigs(bool replaceExisting)
+{
+    if (m_subscriptionConfigs.isEmpty())
+        return;
+
+    if (replaceExisting) {
+        m_serversModel->removeAllServers();
+    }
+    m_serversModel->addServers(m_subscriptionConfigs);
+    m_subscriptionConfigs = QJsonArray();
+    emit importFinished();
+}
+
+int ImportController::subscriptionConfigsCount() const
+{
+    return m_subscriptionConfigs.size();
+}
+
+bool ImportController::hasPendingSubscription() const
+{
+    return !m_subscriptionConfigs.isEmpty();
+}

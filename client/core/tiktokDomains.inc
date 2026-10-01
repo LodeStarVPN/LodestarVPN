@@ -1,0 +1,5 @@
+"tiktok.com",
+    "tiktokv.com",
+    "sf16.tiktokcdn.com",
+    "p16.tiktokcdn.com",
+    "musical.ly",

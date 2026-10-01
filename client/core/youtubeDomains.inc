@@ -1,0 +1,7 @@
+"youtube.com",
+    "googlevideo.com",
+    "i.ytimg.com",
+    "img.youtube.com",
+    "youtube-nocookie.com",
+    "youtubei.googleapis.com",
+    "youtube.googleapis.com",

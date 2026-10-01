@@ -1,0 +1,5 @@
+"netflix.com",
+    "nflxvideo.net",
+    "dnm.nflximg.net",
+    "art-s.nflximg.net",
+    "nflxext.com",

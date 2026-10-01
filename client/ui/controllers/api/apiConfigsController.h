@@ -1,0 +1,222 @@
+#ifndef APICONFIGSCONTROLLER_H
+#define APICONFIGSCONTROLLER_H
+
+#include <QObject>
+#include <QJsonArray>
+#include <QHash>
+
+#include <functional>
+
+#include "ui/models/api/apiServicesModel.h"
+#include "ui/models/servers_model.h"
+
+struct ProtocolData
+{
+    QString wireGuardClientPrivKey;
+    QString wireGuardClientPubKey;
+
+    QString xrayUuid;
+};
+
+class ApiConfigsController : public QObject
+{
+    Q_OBJECT
+public:
+    ApiConfigsController(const QSharedPointer<ServersModel> &serversModel, const QSharedPointer<ApiServicesModel> &apiServicesModel,
+                         const std::shared_ptr<Settings> &settings, QObject *parent = nullptr);
+
+    Q_PROPERTY(QList<QString> qrCodes READ getQrCodes NOTIFY vpnKeyExportReady)
+    Q_PROPERTY(int qrCodesCount READ getQrCodesCount NOTIFY vpnKeyExportReady)
+    Q_PROPERTY(QString vpnKey READ getVpnKey NOTIFY vpnKeyExportReady)
+    Q_PROPERTY(QString subscriptionId READ getSubscriptionId WRITE setSubscriptionId NOTIFY subscriptionIdChanged)
+    Q_PROPERTY(QString selectedServerCountryCode READ getSelectedServerCountryCode WRITE setSelectedServerCountryCode NOTIFY selectedServerCountryCodeChanged)
+    Q_PROPERTY(bool importAllCountries READ getImportAllCountries WRITE setImportAllCountries NOTIFY importAllCountriesChanged)
+    Q_PROPERTY(QVariantList subscriptionConfigs READ getSubscriptionConfigs NOTIFY subscriptionConfigsChanged)
+    Q_PROPERTY(QVariantList subscriptionPlans READ subscriptionPlans NOTIFY subscriptionPlansChanged)
+    Q_PROPERTY(int selectedPlanIndex READ selectedPlanIndex WRITE setSelectedPlanIndex NOTIFY selectedPlanIndexChanged)
+    Q_PROPERTY(QString shortCode READ getShortCode NOTIFY shortCodeChanged)
+
+public slots:
+    bool exportNativeConfig(const QString &serverCountryCode, const QString &fileName);
+    bool revokeNativeConfig(const QString &serverCountryCode);
+    bool exportVpnKey(const QString &fileName);
+    void prepareVpnKeyExport();
+    void copyVpnKeyToClipboard();
+
+    // FRKN short code (k7f2-9mxq-4t) for the processed server's subscription —
+    // fetched from the backend on demand, empty until loaded/unsupported
+    Q_INVOKABLE void fetchShortCode();
+    Q_INVOKABLE void copyShortCodeToClipboard();
+    QString getShortCode() const { return m_shortCode; }
+
+    bool fillAvailableServices();
+    bool importService();
+    bool importSerivceFromAppStore();
+    bool restoreSerivceFromAppStore();
+    bool importServiceFromGateway();
+
+    QString getSubscriptionId() const;
+    void setSubscriptionId(const QString &subscriptionId);
+    Q_INVOKABLE void copySubscriptionIdToClipboard();
+
+    QString getSelectedServerCountryCode() const;
+    void setSelectedServerCountryCode(const QString &countryCode);
+
+    bool getImportAllCountries() const;
+    void setImportAllCountries(bool importAll);
+
+    // Server loads from the gateway (v1/load), to spread connects over the
+    // servers of a country and auto selection over nearby countries. The
+    // request goes out at most every few minutes; values are -1 when unknown
+    // or too old.
+    Q_INVOKABLE void refreshLoadIfStale();
+    double countryLoad(const QString &countryCode, const QString &protocol) const;
+    double nodeWeight(const QString &address, const QString &protocol) const;
+
+    bool updateServiceFromGateway(const int serverIndex, const QString &newCountryCode, const QString &newCountryName,
+                                  bool reloadServiceConfig = false, bool silent = false);
+    // Silently refreshes gateway-issued server configs (throttled, called on app start)
+    // so backend-side changes like a node IP update reach the client.
+    void refreshSubscriptionConfigs();
+    // async /v1/config refresh of one server; shares all payload/response logic
+    // with the synchronous updateServiceFromGateway via the struct below
+    void updateServiceFromGatewayAsync(const int serverIndex, const QString &newCountryCode, const QString &newCountryName,
+                                       bool reloadServiceConfig, bool silent, const std::function<void(bool)> &callback);
+    bool updateServiceFromTelegram(const int serverIndex);
+    bool deactivateDevice(const bool isRemoveEvent);
+    bool deactivateExternalDevice(const QString &uuid, const QString &serverCountryCode);
+
+    bool isConfigValid();
+
+    void setCurrentProtocol(const QString &protocolName);
+    bool isVlessProtocol();
+    Q_INVOKABLE bool isAwgProtocol();
+
+    Q_INVOKABLE QString getCurrentServerConfigJson();
+    Q_INVOKABLE QString getCurrentServerConfigIni();
+    Q_INVOKABLE QString getCurrentServerTunnelParams();
+    Q_INVOKABLE QString getCurrentServerMtu();
+    Q_INVOKABLE QString getCurrentServerDns();
+    Q_INVOKABLE QString getCurrentServerClientIp();
+
+    Q_INVOKABLE void fetchSubscriptionConfigs(const QString &subscriptionId);
+    Q_INVOKABLE bool installSubscriptionConfig(int index);
+    // installs every fetched subscription config at once (we no longer show the
+    // protocol selection screen - users were confused by it); returns the count
+    int installAllSubscriptionConfigs();
+    Q_INVOKABLE void reloadSubscriptionConfigs();
+
+    // FRKN connection sharing (frkn://conn/<share_token>): the recipient imports a single
+    // shared connection via importSharedConnection; the owner creates/lists/revokes share
+    // tokens with shareConnection/listShares/revokeShare. All of them are synchronous
+    // (executeRequest spins its own event loop) and report via signals, like
+    // updateServiceFromGateway.
+    Q_INVOKABLE bool importSharedConnection(const QString &shareToken);
+    Q_INVOKABLE void shareConnection(int serverIndex, const QString &label);
+    Q_INVOKABLE void listShares();
+    Q_INVOKABLE void revokeShare(const QString &shareToken);
+
+    QVariantList getSubscriptionConfigs() const;
+
+    QVariantList subscriptionPlans() const;
+    int selectedPlanIndex() const;
+    void setSelectedPlanIndex(int index);
+
+signals:
+    void errorOccurred(ErrorCode errorCode);
+    void subscriptionIdChanged();
+    void selectedServerCountryCodeChanged();
+    void importAllCountriesChanged();
+    void subscriptionConfigsChanged();
+    void subscriptionPlansChanged();
+    void selectedPlanIndexChanged();
+
+    // completion of the async fetch/reload flows above
+    void fetchSubscriptionConfigsFinished(bool success);
+    void reloadSubscriptionConfigsFinished(bool success);
+
+    void installServerFromApiFinished(const QString &message);
+    void changeApiCountryFinished(const QString &message);
+    void reloadServerFromApiFinished(const QString &message);
+    void updateServerFromApiFinished();
+
+    void sharedConnectionImported(const QString &message, int serverIndex);
+    void connectionShareCreated(const QString &shareUrl, const QString &shareToken);
+    void sharesListed(const QJsonArray &shares);
+    void shareRevoked(const QString &shareToken);
+
+    void vpnKeyExportReady();
+    void shortCodeChanged();
+
+private:
+    QList<QString> getQrCodes();
+    int getQrCodesCount();
+    QString getVpnKey();
+
+    ErrorCode executeRequest(const QString &endpoint, const QJsonObject &apiPayload, QByteArray &responseBody, bool isTestPurchase = false);
+    // async counterpart of executeRequest (postAsync + QSharedPointer controller,
+    // same pattern as SplitPresetsModel::fetchPresets); the callback runs on this thread
+    void executeRequestAsync(const QString &endpoint, const QJsonObject &apiPayload, bool isTestPurchase,
+                             const std::function<void(ErrorCode, const QByteArray &)> &callback);
+    ErrorCode importServiceFromBilling(const QByteArray &responseBody, const bool isTestPurchase);
+
+    bool importServiceForCountry(const QString &serverCountryCode, const ProtocolData &protocolData);
+
+    // m_subscriptionId, or recovered from an already imported gateway server
+    QString resolveSubscriptionId() const;
+
+    void processNextSubscriptionRefresh();
+
+    struct GatewayConfigUpdate
+    {
+        int serverIndex = -1;
+        QString newCountryName;
+        bool reloadServiceConfig = false;
+        bool silent = false;
+        bool isTestPurchase = false;
+        bool isConnectEvent = false;
+        QString serviceProtocol;
+        ProtocolData protocolData;
+        QJsonObject serverConfig; // as of request time
+        QJsonObject apiConfig;
+        QJsonObject authData;
+        QJsonObject apiPayload;
+    };
+
+    void prepareGatewayConfigUpdate(const int serverIndex, const QString &newCountryCode, const QString &newCountryName,
+                                    bool reloadServiceConfig, bool silent, GatewayConfigUpdate &update);
+    bool finishGatewayConfigUpdate(const GatewayConfigUpdate &update, ErrorCode errorCode, const QByteArray &responseBody);
+
+    void fetchSubscriptionConfigsAsync(const QString &subscriptionId, const std::function<void(bool)> &callback);
+    // duplicate-label numbering + protocol sort of m_subscriptionConfigs, emits
+    // subscriptionConfigsChanged - the local tail of the async fetch chain
+    void finalizeSubscriptionConfigs();
+
+    QList<QString> m_qrCodes;
+    QString m_vpnKey;
+    QString m_shortCode;
+
+    QSharedPointer<ServersModel> m_serversModel;
+    QSharedPointer<ApiServicesModel> m_apiServicesModel;
+    std::shared_ptr<Settings> m_settings;
+
+    QString m_subscriptionId;
+    QString m_selectedServerCountryCode;
+
+    QHash<QString, double> m_countryLoads; // "DE|awg" -> 0..1
+    QHash<QString, double> m_nodeWeights;  // "awg|1.2.3.4" -> spare capacity
+    qint64 m_loadFetchedAt = 0;
+    bool m_loadRequestInFlight = false;
+    static constexpr qint64 kLoadRefreshMs = 5 * 60 * 1000;
+    static constexpr qint64 kLoadMaxAgeMs = 15 * 60 * 1000;
+    bool m_importAllCountries = false;
+
+    QList<int> m_pendingSubscriptionRefresh;
+
+    QJsonArray m_subscriptionConfigs;
+
+    QVariantList m_subscriptionPlans;
+    int m_selectedPlanIndex = 2; // default: 6-month plan
+};
+
+#endif // APICONFIGSCONTROLLER_H

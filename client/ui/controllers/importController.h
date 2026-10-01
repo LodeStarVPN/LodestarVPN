@@ -1,0 +1,112 @@
+#ifndef IMPORTCONTROLLER_H
+#define IMPORTCONTROLLER_H
+
+#include <QObject>
+#include <QJsonArray>
+
+#include "ui/models/containers_model.h"
+#include "ui/models/servers_model.h"
+
+namespace
+{
+    enum class ConfigTypes {
+        Amnezia,
+        WireGuard,
+        Awg,
+        Xray,
+        ShadowSocks,
+        Backup,
+        Invalid
+    };
+}
+
+class ImportController : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool hasPendingSubscription READ hasPendingSubscription NOTIFY subscriptionConfigsReady)
+public:
+    explicit ImportController(const QSharedPointer<ServersModel> &serversModel,
+                              const QSharedPointer<ContainersModel> &containersModel,
+                              const std::shared_ptr<Settings> &settings, QObject *parent = nullptr);
+
+public slots:
+    void importConfig();
+    void clearConfigFileName();
+    bool extractConfigFromFile(const QString &fileName);
+    bool extractConfigFromData(QString data);
+    bool extractConfigFromQr(const QByteArray &data);
+    QString getConfig();
+    QString getConfigFileName();
+    QString getMaliciousWarningText();
+
+    void fetchAndImportFromUrl(const QString &url);
+    void importSubscriptionConfigs(bool replaceExisting = false);
+    void queueConfigForConfirmation();
+    int subscriptionConfigsCount() const;
+    bool hasPendingSubscription() const;
+
+#if defined Q_OS_ANDROID || defined Q_OS_IOS
+    void startDecodingQr();
+    bool parseQrCodeChunk(const QString &code);
+
+    double getQrCodeScanProgressBarValue();
+    QString getQrCodeScanProgressString();
+#endif
+
+#if defined Q_OS_ANDROID
+    static bool decodeQrCode(const QString &code);
+#endif
+
+    bool isNativeWireGuardConfig();
+    void processNativeWireGuardConfig();
+
+signals:
+    void importFinished();
+    void importErrorOccurred(ErrorCode errorCode, bool goToPageHome);
+    void frknSubscriptionLinkDetected(const QString &subscriptionId);
+    void frknShareLinkDetected(const QString &shareToken);
+    void frknActivationKeyDetected(const QString &code);
+    // nothing matched - input is text but not any of the supported formats
+    void unknownFormatDetected(const QString &rawInput);
+
+    void qrDecodingFinished();
+
+    void restoreAppConfig(const QByteArray &data);
+
+    void subscriptionConfigsReady(int count);
+    void subscriptionErrorOccurred(const QString &message);
+    void subscriptionAllDuplicates();
+
+private:
+    QJsonObject extractWireGuardConfig(const QString &data);
+    QJsonObject extractXrayConfig(const QString &data, const QString &description = "");
+
+    void processAmneziaConfig(QJsonObject &config);
+
+    bool parseConfigLine(const QString &line, QJsonObject &outConfig);
+    void handleSubscriptionResponse(const QByteArray &responseData);
+
+
+#if defined Q_OS_ANDROID || defined Q_OS_IOS
+    void stopDecodingQr();
+#endif
+
+    QSharedPointer<ServersModel> m_serversModel;
+    QSharedPointer<ContainersModel> m_containersModel;
+    std::shared_ptr<Settings> m_settings;
+
+    QJsonObject m_config;
+    QString m_configFileName;
+    ConfigTypes m_configType;
+    QString m_maliciousWarningText;
+    QJsonArray m_subscriptionConfigs;
+
+#if defined Q_OS_ANDROID || defined Q_OS_IOS
+    QMap<int, QByteArray> m_qrCodeChunks;
+    bool m_isQrCodeProcessed;
+    int m_totalQrCodeChunksCount;
+    int m_receivedQrCodeChunksCount;
+#endif
+};
+
+#endif // IMPORTCONTROLLER_H

@@ -1,0 +1,3 @@
+module Style
+
+singleton DopamineStyle 1.0 DopamineStyle.qml

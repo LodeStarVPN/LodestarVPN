@@ -1,0 +1,114 @@
+set(CLIENT_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/Modules;${CMAKE_MODULE_PATH}")
+
+add_subdirectory(${CLIENT_ROOT_DIR}/3rd/SortFilterProxyModel)
+set(LIBS ${LIBS} SortFilterProxyModel)
+include(${CLIENT_ROOT_DIR}/cmake/QSimpleCrypto.cmake)
+
+include(${CLIENT_ROOT_DIR}/3rd/qrcodegen/qrcodegen.cmake)
+
+# libz.a ships inside the libssh prebuilt dir (kept for zlib only - libssh itself is no longer used)
+set(ZLIB_PREBUILT_DIR "${CLIENT_ROOT_DIR}/3rd-prebuilt/3rd-prebuilt/libssh/")
+set(OPENSSL_ROOT_DIR "${CLIENT_ROOT_DIR}/3rd-prebuilt/3rd-prebuilt/openssl/")
+
+set(OPENSSL_LIBRARIES_DIR "${OPENSSL_ROOT_DIR}/lib")
+
+if(WIN32)
+    # Local test build: the 3rd-prebuilt submodule's Windows OpenSSL/zlib were
+    # unreachable (severe network throttling), so these come from a winget
+    # install (ShiningLight.OpenSSL.Dev) and a from-source zlib build instead.
+    # Real deploys should still use the upstream 3rd-prebuilt submodule.
+    set(LOCAL_OPENSSL_DIR "C:/Program Files/OpenSSL-Win64")
+    set(LOCAL_ZLIB_SRC_DIR "${CLIENT_ROOT_DIR}/../scratch-zlib")
+    set(OPENSSL_INCLUDE_DIR "${LOCAL_OPENSSL_DIR}/include")
+    set(ZLIB_INCLUDE_DIR "${LOCAL_ZLIB_SRC_DIR}")
+    if("${CMAKE_SIZEOF_VOID_P}" STREQUAL "8")
+        set(OPENSSL_LIB_SSL_PATH "${LOCAL_OPENSSL_DIR}/lib/VC/x64/MD/libssl.lib")
+        set(OPENSSL_LIB_CRYPTO_PATH "${LOCAL_OPENSSL_DIR}/lib/VC/x64/MD/libcrypto.lib")
+        set(ZLIB_LIB_PATH "${LOCAL_ZLIB_SRC_DIR}/build/libzs.lib")
+    else()
+        set(OPENSSL_LIB_SSL_PATH "${OPENSSL_ROOT_DIR}/windows/win32/libssl.lib")
+        set(OPENSSL_LIB_CRYPTO_PATH "${OPENSSL_ROOT_DIR}/windows/win32/libcrypto.lib")
+        set(ZLIB_LIB_PATH "${ZLIB_ROOT_DIR}/windows/win32/zlibstatic.lib")
+    endif()
+elseif(APPLE AND NOT IOS)
+    if(MACOS_NE OR NOT "${CMAKE_OSX_ARCHITECTURES}" STREQUAL "x86_64")
+        # universal2 covers arm64-only, x86_64-only and fat builds
+        set(ZLIB_LIB_PATH "${ZLIB_PREBUILT_DIR}/macos/universal2/libz.a")
+    else()
+        set(ZLIB_LIB_PATH "${ZLIB_PREBUILT_DIR}/macos/x86_64/libz.a")
+    endif()
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/macos/include")
+    set(OPENSSL_LIB_SSL_PATH "${OPENSSL_ROOT_DIR}/macos/lib/libssl.a")
+    set(OPENSSL_LIB_CRYPTO_PATH "${OPENSSL_ROOT_DIR}/macos/lib/libcrypto.a")    
+elseif(IOS)
+    set(ZLIB_LIB_PATH "${ZLIB_PREBUILT_DIR}/ios/arm64/libz.a")
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/ios/iphone/include")
+    set(OPENSSL_LIB_SSL_PATH "${OPENSSL_ROOT_DIR}/ios/iphone/lib/libssl.a")
+    set(OPENSSL_LIB_CRYPTO_PATH "${OPENSSL_ROOT_DIR}/ios/iphone/lib/libcrypto.a")
+elseif(ANDROID)
+    set(abi ${CMAKE_ANDROID_ARCH_ABI})
+    # zlib comes from the NDK sysroot (libz.so), no prebuilt needed
+    set(LIBS ${LIBS} z)
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/android/include")
+    set(OPENSSL_LIB_SSL_PATH "${OPENSSL_ROOT_DIR}/android/${abi}/libssl.a")
+    set(OPENSSL_LIB_CRYPTO_PATH "${OPENSSL_ROOT_DIR}/android/${abi}/libcrypto.a")
+    set(OPENSSL_LIBRARIES_DIR "${OPENSSL_ROOT_DIR}/android/${abi}")
+elseif(LINUX)
+    set(ZLIB_LIB_PATH "${ZLIB_PREBUILT_DIR}/linux/x86_64/libz.a")
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/linux/include")
+    set(OPENSSL_LIB_SSL_PATH "${OPENSSL_ROOT_DIR}/linux/x86_64/libssl.a")
+    set(OPENSSL_LIB_CRYPTO_PATH "${OPENSSL_ROOT_DIR}/linux/x86_64/libcrypto.a")
+endif()
+
+file(COPY ${OPENSSL_LIB_SSL_PATH} ${OPENSSL_LIB_CRYPTO_PATH}
+        DESTINATION ${OPENSSL_LIBRARIES_DIR})
+
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+
+if(ZLIB_LIB_PATH)
+    set(LIBS ${LIBS}
+        ${ZLIB_LIB_PATH}
+    )
+endif()
+  
+set(LIBS ${LIBS}
+    ${OPENSSL_LIB_SSL_PATH}
+    ${OPENSSL_LIB_CRYPTO_PATH}
+)
+
+add_compile_definitions(_WINSOCKAPI_)
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_WITH_QT6 ON)
+add_subdirectory(${CLIENT_ROOT_DIR}/3rd/qtkeychain)
+
+if(ANDROID)
+    # Use qtgamepad from amnezia-vpn/qtgamepad repository
+    # Only if Qt6CorePrivate is available (required by qtgamepad)
+    find_package(Qt6CorePrivate CONFIG QUIET)
+    if(Qt6CorePrivate_FOUND)
+        add_subdirectory(${CLIENT_ROOT_DIR}/3rd/qtgamepad)
+        # Link both the C++ module and QML plugin
+        if(TARGET GamepadLegacy)
+            target_link_libraries(${PROJECT} PRIVATE GamepadLegacy)
+        endif()
+        if(TARGET GamepadLegacyQuickPrivate)
+            target_link_libraries(${PROJECT} PRIVATE GamepadLegacyQuickPrivate)
+        endif()
+        message(STATUS "Gamepad support enabled for Android")
+    else()
+        message(STATUS "Qt6CorePrivate not found. Gamepad support disabled for Android.")
+    endif()
+endif()
+
+set(LIBS ${LIBS} qt6keychain)
+
+include_directories(
+    ${OPENSSL_INCLUDE_DIR}
+    ${ZLIB_INCLUDE_DIR}
+    ${CLIENT_ROOT_DIR}/3rd/QSimpleCrypto/src/include
+    ${CLIENT_ROOT_DIR}/3rd/qtkeychain/qtkeychain
+    ${CMAKE_CURRENT_BINARY_DIR}/3rd/qtkeychain
+)

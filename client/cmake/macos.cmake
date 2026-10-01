@@ -1,0 +1,68 @@
+message("MAC build")
+
+find_library(FW_SYSTEMCONFIG SystemConfiguration)
+find_library(FW_SERVICEMGMT ServiceManagement)
+find_library(FW_SECURITY Security)
+find_library(FW_COREWLAN CoreWLAN)
+find_library(FW_NETWORK Network)
+find_library(FW_USER_NOTIFICATIONS UserNotifications)
+find_library(FW_NETWORK_EXTENSION NetworkExtension)
+find_library(FW_LIBRESOLV libresolv.9.tbd)
+
+set(LIBS ${LIBS}
+    ${FW_SYSTEMCONFIG}
+    ${FW_SERVICEMGMT}
+    ${FW_SECURITY}
+    ${FW_COREWLAN}
+    ${FW_NETWORK}
+    ${FW_USER_NOTIFICATIONS}
+    ${FW_NETWORK_EXTENSION}
+    ${FW_LIBRESOLV}
+)
+
+set_target_properties(${PROJECT} PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/macos/app/Info.plist.in
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${BUILD_IOS_APP_IDENTIFIER}"
+    MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT}"
+    MACOSX_BUNDLE_EXECUTABLE_NAME "${PROJECT}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.${CMAKE_PROJECT_VERSION_PATCH}"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${DOPAMINE_BUILD_NUMBER}"
+)
+if(NOT CMAKE_OSX_ARCHITECTURES)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE INTERNAL "" FORCE)
+endif()
+set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
+
+
+set(HEADERS ${HEADERS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/macos_util.h
+)
+
+set(SOURCES ${SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/macos_util.mm
+)
+
+
+
+set(ICON_FILE ${CMAKE_CURRENT_SOURCE_DIR}/images/app.icns)
+set(MACOSX_BUNDLE_ICON_FILE app.icns)
+set_source_files_properties(${ICON_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+set(SOURCES ${SOURCES} ${ICON_FILE})
+
+target_compile_options(${PROJECT} PRIVATE
+    -DGROUP_ID=\"${BUILD_IOS_GROUP_IDENTIFIER}\"
+    -DVPN_NE_BUNDLEID=\"${BUILD_IOS_APP_IDENTIFIER}.network-extension\"
+)
+
+# Get SDK path
+execute_process(
+    COMMAND sh -c "xcrun --sdk macosx --show-sdk-path"
+    OUTPUT_VARIABLE OSX_SDK_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+message("OSX_SDK_PATH is: ${OSX_SDK_PATH}")
+
+# WG/AWG handshake probe (server health check) runs in the app process
+target_link_libraries(${PROJECT} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/wireguard/macos/universal2/libwg-go.a)
+

@@ -1,0 +1,234 @@
+import Foundation
+
+struct WGConfig: Decodable {
+  let initPacketMagicHeader, responsePacketMagicHeader: String?
+  let underloadPacketMagicHeader, transportPacketMagicHeader: String?
+  let junkPacketCount, junkPacketMinSize, junkPacketMaxSize: String?
+  let initPacketJunkSize, responsePacketJunkSize, cookieReplyPacketJunkSize, transportPacketJunkSize: String?
+  let specialJunk1, specialJunk2, specialJunk3, specialJunk4, specialJunk5: String?
+  let randomTrailers, disableCookies: String?
+  let headerProtectionKey: String?
+  let contentPaddingAddition, rekeyAfterTime, rekeyTimeout: String?
+  let rejectAfterTime, keepaliveTimeout, maxHandshakeAttempts: String?
+  let dns1: String
+  let dns2: String
+  let mtu: String
+  let hostName: String
+  let port: Int
+  let clientIP: String
+  let clientPrivateKey: String
+  let serverPublicKey: String
+  let presharedKey: String?
+  var allowedIPs: [String]
+  var persistentKeepAlive: String
+  let splitTunnelType: Int
+  let splitTunnelSites: [String]
+  let splitTunnelIncludeSites: [String]?
+  let splitTunnelExcludeSites: [String]?
+
+  enum CodingKeys: String, CodingKey {
+    case initPacketMagicHeader = "H1", responsePacketMagicHeader = "H2"
+    case underloadPacketMagicHeader = "H3", transportPacketMagicHeader = "H4"
+    case junkPacketCount = "Jc", junkPacketMinSize = "Jmin", junkPacketMaxSize = "Jmax"
+    case initPacketJunkSize = "S1", responsePacketJunkSize = "S2", cookieReplyPacketJunkSize = "S3", transportPacketJunkSize = "S4"
+    case specialJunk1 = "I1", specialJunk2 = "I2", specialJunk3 = "I3", specialJunk4 = "I4", specialJunk5 = "I5"
+    case randomTrailers = "RandomTrailers", disableCookies = "DisableCookies"
+    case headerProtectionKey = "HeaderProtectionKey"
+    case contentPaddingAddition = "ContentPaddingAddition", rekeyAfterTime = "RekeyAfterTime", rekeyTimeout = "RekeyTimeout"
+    case rejectAfterTime = "RejectAfterTime", keepaliveTimeout = "KeepaliveTimeout", maxHandshakeAttempts = "MaxHandshakeAttempts"
+    case dns1
+    case dns2
+    case mtu
+    case hostName
+    case port
+    case clientIP = "client_ip"
+    case clientPrivateKey = "client_priv_key"
+    case serverPublicKey = "server_pub_key"
+    case presharedKey = "psk_key"
+    case allowedIPs = "allowed_ips"
+    case persistentKeepAlive = "persistent_keep_alive"
+    case splitTunnelType
+    case splitTunnelSites
+    case splitTunnelIncludeSites
+    case splitTunnelExcludeSites
+  }
+
+  // The AWG backend sends port as a number, the plain-WG backend as a string —
+  // accept both.
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    initPacketMagicHeader = try c.decodeIfPresent(String.self, forKey: .initPacketMagicHeader)
+    responsePacketMagicHeader = try c.decodeIfPresent(String.self, forKey: .responsePacketMagicHeader)
+    underloadPacketMagicHeader = try c.decodeIfPresent(String.self, forKey: .underloadPacketMagicHeader)
+    transportPacketMagicHeader = try c.decodeIfPresent(String.self, forKey: .transportPacketMagicHeader)
+    junkPacketCount = try c.decodeIfPresent(String.self, forKey: .junkPacketCount)
+    junkPacketMinSize = try c.decodeIfPresent(String.self, forKey: .junkPacketMinSize)
+    junkPacketMaxSize = try c.decodeIfPresent(String.self, forKey: .junkPacketMaxSize)
+    initPacketJunkSize = try c.decodeIfPresent(String.self, forKey: .initPacketJunkSize)
+    responsePacketJunkSize = try c.decodeIfPresent(String.self, forKey: .responsePacketJunkSize)
+    cookieReplyPacketJunkSize = try c.decodeIfPresent(String.self, forKey: .cookieReplyPacketJunkSize)
+    transportPacketJunkSize = try c.decodeIfPresent(String.self, forKey: .transportPacketJunkSize)
+    specialJunk1 = try c.decodeIfPresent(String.self, forKey: .specialJunk1)
+    specialJunk2 = try c.decodeIfPresent(String.self, forKey: .specialJunk2)
+    specialJunk3 = try c.decodeIfPresent(String.self, forKey: .specialJunk3)
+    specialJunk4 = try c.decodeIfPresent(String.self, forKey: .specialJunk4)
+    specialJunk5 = try c.decodeIfPresent(String.self, forKey: .specialJunk5)
+    randomTrailers = try c.decodeIfPresent(String.self, forKey: .randomTrailers)
+    disableCookies = try c.decodeIfPresent(String.self, forKey: .disableCookies)
+    headerProtectionKey = try c.decodeIfPresent(String.self, forKey: .headerProtectionKey)
+    contentPaddingAddition = try c.decodeIfPresent(String.self, forKey: .contentPaddingAddition)
+    rekeyAfterTime = try c.decodeIfPresent(String.self, forKey: .rekeyAfterTime)
+    rekeyTimeout = try c.decodeIfPresent(String.self, forKey: .rekeyTimeout)
+    rejectAfterTime = try c.decodeIfPresent(String.self, forKey: .rejectAfterTime)
+    keepaliveTimeout = try c.decodeIfPresent(String.self, forKey: .keepaliveTimeout)
+    maxHandshakeAttempts = try c.decodeIfPresent(String.self, forKey: .maxHandshakeAttempts)
+    dns1 = try c.decode(String.self, forKey: .dns1)
+    dns2 = try c.decode(String.self, forKey: .dns2)
+    mtu = try c.decode(String.self, forKey: .mtu)
+    hostName = try c.decode(String.self, forKey: .hostName)
+    if let intPort = try? c.decode(Int.self, forKey: .port) {
+        port = intPort
+    } else if let strPort = try c.decodeIfPresent(String.self, forKey: .port), let intPort = Int(strPort) {
+        port = intPort
+    } else {
+        throw DecodingError.typeMismatch(Int.self, .init(codingPath: [CodingKeys.port], debugDescription: "Expected Int or numeric string for port"))
+    }
+    clientIP = try c.decode(String.self, forKey: .clientIP)
+    clientPrivateKey = try c.decode(String.self, forKey: .clientPrivateKey)
+    serverPublicKey = try c.decode(String.self, forKey: .serverPublicKey)
+    presharedKey = try c.decodeIfPresent(String.self, forKey: .presharedKey)
+    allowedIPs = try c.decode([String].self, forKey: .allowedIPs)
+    persistentKeepAlive = try c.decode(String.self, forKey: .persistentKeepAlive)
+    splitTunnelType = try c.decode(Int.self, forKey: .splitTunnelType)
+    splitTunnelSites = try c.decode([String].self, forKey: .splitTunnelSites)
+    splitTunnelIncludeSites = try c.decodeIfPresent([String].self, forKey: .splitTunnelIncludeSites)
+    splitTunnelExcludeSites = try c.decodeIfPresent([String].self, forKey: .splitTunnelExcludeSites)
+  }
+
+  var settings: String {
+    func trimmed(_ value: String?) -> String? {
+      guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !value.isEmpty else {
+        return nil
+      }
+      return value
+    }
+
+    guard
+      let junkPacketCount = trimmed(junkPacketCount),
+      let junkPacketMinSize = trimmed(junkPacketMinSize),
+      let junkPacketMaxSize = trimmed(junkPacketMaxSize),
+      let initPacketJunkSize = trimmed(initPacketJunkSize),
+      let responsePacketJunkSize = trimmed(responsePacketJunkSize),
+      let initPacketMagicHeader = trimmed(initPacketMagicHeader),
+      let responsePacketMagicHeader = trimmed(responsePacketMagicHeader),
+      let underloadPacketMagicHeader = trimmed(underloadPacketMagicHeader),
+      let transportPacketMagicHeader = trimmed(transportPacketMagicHeader)
+    else { return "" }
+
+    var settingsLines: [String] = []
+
+    // Required parameters when junkPacketCount is present
+    settingsLines.append("Jc = \(junkPacketCount)")
+    settingsLines.append("Jmin = \(junkPacketMinSize)")
+    settingsLines.append("Jmax = \(junkPacketMaxSize)")
+    settingsLines.append("S1 = \(initPacketJunkSize)")
+    settingsLines.append("S2 = \(responsePacketJunkSize)")
+
+    settingsLines.append("H1 = \(initPacketMagicHeader)")
+    settingsLines.append("H2 = \(responsePacketMagicHeader)")
+    settingsLines.append("H3 = \(underloadPacketMagicHeader)")
+    settingsLines.append("H4 = \(transportPacketMagicHeader)")
+
+    // Optional parameters - only add if not nil and not empty
+    if let s3 = trimmed(cookieReplyPacketJunkSize) {
+      settingsLines.append("S3 = \(s3)")
+    }
+    if let s4 = trimmed(transportPacketJunkSize) {
+      settingsLines.append("S4 = \(s4)")
+    }
+
+    if let i1 = trimmed(specialJunk1) {
+      settingsLines.append("I1 = \(i1)")
+    }
+    if let i2 = trimmed(specialJunk2) {
+      settingsLines.append("I2 = \(i2)")
+    }
+    if let i3 = trimmed(specialJunk3) {
+      settingsLines.append("I3 = \(i3)")
+    }
+    if let i4 = trimmed(specialJunk4) {
+      settingsLines.append("I4 = \(i4)")
+    }
+    if let i5 = trimmed(specialJunk5) {
+      settingsLines.append("I5 = \(i5)")
+    }
+
+    if let randomTrailers = trimmed(randomTrailers) {
+      settingsLines.append("RandomTrailers = \(randomTrailers)")
+    }
+    if let disableCookies = trimmed(disableCookies) {
+      settingsLines.append("DisableCookies = \(disableCookies)")
+    }
+    if let headerProtectionKey = trimmed(headerProtectionKey) {
+      settingsLines.append("HeaderProtectionKey = \(headerProtectionKey)")
+    }
+    if let contentPaddingAddition = trimmed(contentPaddingAddition) {
+      settingsLines.append("ContentPaddingAddition = \(contentPaddingAddition)")
+    }
+    if let rekeyAfterTime = trimmed(rekeyAfterTime) {
+      settingsLines.append("RekeyAfterTime = \(rekeyAfterTime)")
+    }
+    if let rekeyTimeout = trimmed(rekeyTimeout) {
+      settingsLines.append("RekeyTimeout = \(rekeyTimeout)")
+    }
+    if let rejectAfterTime = trimmed(rejectAfterTime) {
+      settingsLines.append("RejectAfterTime = \(rejectAfterTime)")
+    }
+    if let keepaliveTimeout = trimmed(keepaliveTimeout) {
+      settingsLines.append("KeepaliveTimeout = \(keepaliveTimeout)")
+    }
+    if let maxHandshakeAttempts = trimmed(maxHandshakeAttempts) {
+      settingsLines.append("MaxHandshakeAttempts = \(maxHandshakeAttempts)")
+    }
+
+    return settingsLines.joined(separator: "\n")
+  }
+
+  var str: String {
+    """
+    [Interface]
+    Address = \(clientIP)
+    DNS = \(dns1), \(dns2)
+    MTU = \(mtu)
+    PrivateKey = \(clientPrivateKey)
+    \(settings)
+    [Peer]
+    PublicKey = \(serverPublicKey)
+    \((presharedKey?.isEmpty ?? true) ? "" : "PresharedKey = \(presharedKey!)")
+    AllowedIPs = \(allowedIPs.joined(separator: ", "))
+    Endpoint = \(hostName):\(port)
+    PersistentKeepalive = \(persistentKeepAlive)
+    """
+  }
+
+  var redux: String {
+    """
+    [Interface]
+    Address = \(clientIP)
+    DNS = \(dns1), \(dns2)
+    MTU = \(mtu)
+    PrivateKey = ***
+    \(settings)
+    [Peer]
+    PublicKey = ***
+    PresharedKey = ***
+    AllowedIPs = \(allowedIPs.joined(separator: ", "))
+    Endpoint = \(hostName):\(port)
+    PersistentKeepalive = \(persistentKeepAlive)
+
+    SplitTunnelType = \(splitTunnelType)
+    SplitTunnelSites = \(splitTunnelSites.joined(separator: ", "))
+    """
+  }
+}

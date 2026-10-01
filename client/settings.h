@@ -1,0 +1,354 @@
+#ifndef SETTINGS_H
+#define SETTINGS_H
+
+#include <QObject>
+#include <QSettings>
+#include <QString>
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+
+#include "containers/containers_defs.h"
+#include "core/defs.h"
+#include "secure_qsettings.h"
+
+using namespace amnezia;
+
+class QSettings;
+
+class Settings : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit Settings(QObject *parent = nullptr);
+
+    ServerCredentials defaultServerCredentials() const;
+    ServerCredentials serverCredentials(int index) const;
+
+    QJsonArray serversArray() const
+    {
+        return QJsonDocument::fromJson(m_settings.value("Servers/serversList").toByteArray()).array();
+    }
+    void setServersArray(const QJsonArray &servers)
+    {
+        m_settings.setValue("Servers/serversList", QJsonDocument(servers).toJson());
+    }
+
+    // Servers section
+    int serversCount() const;
+    QJsonObject server(int index) const;
+    void addServer(const QJsonObject &server);
+    void addServers(const QJsonArray &newServers);
+    void removeServer(int index);
+    bool editServer(int index, const QJsonObject &server);
+
+    int defaultServerIndex() const
+    {
+        return m_settings.value("Servers/defaultServerIndex", 0).toInt();
+    }
+    void setDefaultServer(int index)
+    {
+        m_settings.setValue("Servers/defaultServerIndex", index);
+    }
+    QJsonObject defaultServer() const
+    {
+        return server(defaultServerIndex());
+    }
+
+    void setDefaultContainer(int serverIndex, DockerContainer container);
+    DockerContainer defaultContainer(int serverIndex) const;
+    QString defaultContainerName(int serverIndex) const;
+
+    QMap<DockerContainer, QJsonObject> containers(int serverIndex) const;
+    void setContainers(int serverIndex, const QMap<DockerContainer, QJsonObject> &containers);
+
+    QJsonObject containerConfig(int serverIndex, DockerContainer container);
+    void setContainerConfig(int serverIndex, DockerContainer container, const QJsonObject &config);
+    void removeContainerConfig(int serverIndex, DockerContainer container);
+
+    QJsonObject protocolConfig(int serverIndex, DockerContainer container, Proto proto);
+    void setProtocolConfig(int serverIndex, DockerContainer container, Proto proto, const QJsonObject &config);
+
+    void clearLastConnectionConfig(int serverIndex, DockerContainer container, Proto proto = Proto::Any);
+
+    bool haveAuthData(int serverIndex) const;
+    QString nextAvailableServerName() const;
+
+    // App settings section
+    bool isAutoConnect() const
+    {
+        return m_settings.value("Conf/autoConnect", false).toBool();
+    }
+    void setAutoConnect(bool enabled)
+    {
+        m_settings.setValue("Conf/autoConnect", enabled);
+    }
+
+    bool isStartMinimized() const
+    {
+        return m_settings.value("Conf/startMinimized", false).toBool();
+    }
+    void setStartMinimized(bool enabled)
+    {
+        m_settings.setValue("Conf/startMinimized", enabled);
+    }
+
+    bool isSaveLogs() const
+    {
+        return m_settings.value("Conf/saveLogs", false).toBool();
+    }
+    void setSaveLogs(bool enabled);
+
+    QDateTime getLogEnableDate();
+    void setLogEnableDate(QDateTime date);
+
+    enum RouteMode {
+        VpnAllSites,
+        VpnOnlyForwardSites,
+        VpnAllExceptSites
+    };
+    Q_ENUM(RouteMode)
+
+    QString routeModeString(RouteMode mode) const;
+
+    RouteMode routeMode() const;
+    void setRouteMode(RouteMode mode) { m_settings.setValue("Conf/routeMode", mode); }
+
+    bool isSitesSplitTunnelingEnabled() const;
+    void setSitesSplitTunnelingEnabled(bool enabled);
+
+    QVariantMap vpnSites(RouteMode mode) const
+    {
+        return m_settings.value("Conf/" + routeModeString(mode)).toMap();
+    }
+    void setVpnSites(RouteMode mode, const QVariantMap &sites)
+    {
+        m_settings.setValue("Conf/" + routeModeString(mode), sites);
+    }
+    bool addVpnSite(RouteMode mode, const QString &site, const QString &ip = "");
+    void addVpnSites(RouteMode mode, const QMap<QString, QString> &sites); // map <site, ip>
+    QStringList getVpnIps(RouteMode mode) const;
+    void removeVpnSite(RouteMode mode, const QString &site);
+
+    void addVpnIps(RouteMode mode, const QStringList &ip);
+    void removeVpnSites(RouteMode mode, const QStringList &sites);
+    void removeAllVpnSites(RouteMode mode);
+
+    bool useAmneziaDns() const
+    {
+        return m_settings.value("Conf/useAmneziaDns", true).toBool();
+    }
+    void setUseAmneziaDns(bool enabled)
+    {
+        m_settings.setValue("Conf/useAmneziaDns", enabled);
+    }
+
+    QString primaryDns() const;
+    QString secondaryDns() const;
+
+    // QString primaryDns() const { return m_primaryDns; }
+    void setPrimaryDns(const QString &primaryDns)
+    {
+        m_settings.setValue("Conf/primaryDns", primaryDns);
+    }
+
+    // QString secondaryDns() const { return m_secondaryDns; }
+    void setSecondaryDns(const QString &secondaryDns)
+    {
+        m_settings.setValue("Conf/secondaryDns", secondaryDns);
+    }
+
+    QString serversProtocolFilter() const
+    {
+        return m_settings.value("Conf/serversProtocolFilter", QString()).toString();
+    }
+    void setServersProtocolFilter(const QString &filter)
+    {
+        m_settings.setValue("Conf/serversProtocolFilter", filter);
+    }
+
+    QString serversEnvFilter() const
+    {
+        return m_settings.value("Conf/serversEnvFilter", QString()).toString();
+    }
+    void setServersEnvFilter(const QString &filter)
+    {
+        m_settings.setValue("Conf/serversEnvFilter", filter);
+    }
+
+    qint64 lastSubscriptionRefresh() const
+    {
+        return m_settings.value("Conf/lastSubscriptionRefresh", 0).toLongLong();
+    }
+    void setLastSubscriptionRefresh(qint64 timestamp)
+    {
+        m_settings.setValue("Conf/lastSubscriptionRefresh", timestamp);
+    }
+
+    // entry address -> msecs since epoch when it last carried no traffic for
+    // this user (see ConnectionController, multi-IP failover)
+    QVariantMap failedEndpoints() const
+    {
+        return m_settings.value("Conf/failedEndpoints").toMap();
+    }
+    void setFailedEndpoints(const QVariantMap &endpoints)
+    {
+        m_settings.setValue("Conf/failedEndpoints", endpoints);
+    }
+
+    // "Auto-select" entry in the server list: on connect the best server is
+    // picked by protocol priority + health probe latency (see ConnectionController)
+    bool isAutoServerSelection() const
+    {
+        return m_settings.value("Conf/autoServerSelection", false).toBool();
+    }
+    void setAutoServerSelection(bool enabled)
+    {
+        m_settings.setValue("Conf/autoServerSelection", enabled);
+    }
+
+    // the server list shows the ping next to the colored dot; can be turned off
+    bool isServerPingTextVisible() const
+    {
+        return m_settings.value("Conf/showServerPingText", true).toBool();
+    }
+    void setServerPingTextVisible(bool visible)
+    {
+        m_settings.setValue("Conf/showServerPingText", visible);
+    }
+
+    QString splitPresetsVersion() const
+    {
+        return m_settings.value("Conf/splitPresetsVersion", QString()).toString();
+    }
+    void setSplitPresetsVersion(const QString &version)
+    {
+        m_settings.setValue("Conf/splitPresetsVersion", version);
+    }
+    QString splitPresetsCache() const
+    {
+        return m_settings.value("Conf/splitPresetsCache", QString()).toString();
+    }
+    void setSplitPresetsCache(const QString &cache)
+    {
+        m_settings.setValue("Conf/splitPresetsCache", cache);
+    }
+    QStringList splitPresetsEnabled() const
+    {
+        return m_settings.value("Conf/splitPresetsEnabled", QStringList()).toStringList();
+    }
+    void setSplitPresetsEnabled(const QStringList &enabled)
+    {
+        m_settings.setValue("Conf/splitPresetsEnabled", enabled);
+    }
+    // direction of the whole presets section: 1 = via VPN, 2 = bypass VPN (mirrors RouteMode)
+    int splitPresetsRouteMode() const
+    {
+        return m_settings.value("Conf/splitPresetsRouteMode", 1).toInt();
+    }
+    void setSplitPresetsRouteMode(int mode)
+    {
+        m_settings.setValue("Conf/splitPresetsRouteMode", mode);
+    }
+
+    //    static constexpr char openNicNs5[] = "94.103.153.176";
+    //    static constexpr char openNicNs13[] = "144.76.103.143";
+
+    QByteArray backupAppConfig() const
+    {
+        return m_settings.backupAppConfig();
+    }
+    bool restoreAppConfig(const QByteArray &cfg)
+    {
+        return m_settings.restoreAppConfig(cfg);
+    }
+
+    QLocale getAppLanguage()
+    {
+        QString localeStr = m_settings.value("Conf/appLanguage", QLocale::system().name()).toString();
+        return QLocale(localeStr);
+    };
+    void setAppLanguage(QLocale locale)
+    {
+        m_settings.setValue("Conf/appLanguage", locale.name());
+    };
+
+    bool isScreenshotsEnabled() const
+    {
+        return m_settings.value("Conf/screenshotsEnabled", true).toBool();
+    }
+    void setScreenshotsEnabled(bool enabled)
+    {
+        m_settings.setValue("Conf/screenshotsEnabled", enabled);
+        emit screenshotsEnabledChanged(enabled);
+    }
+
+    void clearSettings();
+
+    enum AppsRouteMode {
+        VpnAllApps,
+        VpnOnlyForwardApps,
+        VpnAllExceptApps
+    };
+    Q_ENUM(AppsRouteMode)
+
+    QString appsRouteModeString(AppsRouteMode mode) const;
+
+    AppsRouteMode getAppsRouteMode() const;
+    void setAppsRouteMode(AppsRouteMode mode);
+
+    QVector<InstalledAppInfo> getVpnApps(AppsRouteMode mode) const;
+    void setVpnApps(AppsRouteMode mode, const QVector<InstalledAppInfo> &apps);
+
+    bool isAppsSplitTunnelingEnabled() const;
+    void setAppsSplitTunnelingEnabled(bool enabled);
+
+    bool isKillSwitchEnabled() const;
+    void setKillSwitchEnabled(bool enabled);
+
+    // false (default): LAN is routed around the tunnel; true: LAN goes through the VPN
+    bool isRouteLanThroughVpn() const;
+    void setRouteLanThroughVpn(bool enabled);
+
+    bool isStrictKillSwitchEnabled() const;
+    void setStrictKillSwitchEnabled(bool enabled);
+
+    QString getInstallationUuid(const bool needCreate);
+
+    void resetGatewayEndpoint();
+    void setGatewayEndpoint(const QString &endpoint);
+    void setDevGatewayEndpoint();
+    QString getGatewayEndpoint(bool isTestPurchase = false);
+    QString getGatewayEndpointFallback(bool isTestPurchase = false);
+    bool isDevGatewayEnv(bool isTestPurchase = false);
+    void toggleDevGatewayEnv(bool enabled);
+
+    bool isHomeAdLabelVisible();
+    void disableHomeAdLabel();
+
+    bool isPremV1MigrationReminderActive();
+    void disablePremV1MigrationReminder();
+    
+    QStringList allowedDnsServers() const;
+    void setAllowedDnsServers(const QStringList &servers);
+
+    bool frknDarkMode() const { return m_settings.value("FRKN/darkMode", true).toBool(); }
+    void setFrknDarkMode(bool enabled) { m_settings.setValue("FRKN/darkMode", enabled); }
+
+signals:
+    void saveLogsChanged(bool enabled);
+    void screenshotsEnabledChanged(bool enabled);
+    void serverRemoved(int serverIndex);
+    void settingsCleared();
+
+private:
+    void setInstallationUuid(const QString &uuid);
+
+    mutable SecureQSettings m_settings;
+
+    QString m_gatewayEndpoint;
+};
+
+#endif // SETTINGS_H

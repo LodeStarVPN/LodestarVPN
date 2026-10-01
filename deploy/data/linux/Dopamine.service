@@ -1,0 +1,14 @@
+[Unit]
+Description=Dopamine Service
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+ExecStart=/opt/Dopamine/service/dopamine-service.sh
+Environment=LD_LIBRARY_PATH=/opt/Dopamine/client/lib
+
+[Install]
+WantedBy=multi-user.target

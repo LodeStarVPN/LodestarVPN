@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>DopamineNetworkExtension</string>
+
+	<key>CFBundleIdentifier</key>
+	<string>org.frkn.dopamine.network-extension</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>DopamineNetworkExtension</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${APPLE_PROJECT_VERSION}</string>
+	<key>CFBundleVersion</key>
+	<string>${DOPAMINE_BUILD_NUMBER}</string>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<key>LSMinimumSystemVersion</key>
+	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+
+	<key>CFBundleDisplayName</key>
+	<string>DopamineNetworkExtension</string>
+
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.networkextension.packet-tunnel</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
+	</dict>
+
+	<key>com.wireguard.ios.app_group_id</key>
+	<string>group.org.frkn.dopamine</string>
+
+	<key>com.wireguard.macos.app_group_id</key>
+	<string>${BUILD_VPN_DEVELOPMENT_TEAM}.group.org.frkn.dopamine</string>
+</dict>
+</plist>

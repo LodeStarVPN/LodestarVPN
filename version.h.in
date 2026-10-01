@@ -1,0 +1,18 @@
+#ifndef VERSION_H
+#define VERSION_H
+
+#ifndef APP_VERSION
+#define APP_VERSION "@CMAKE_PROJECT_VERSION@"
+#endif
+
+#ifndef APP_MAJOR_VERSION
+#define APP_MAJOR_VERSION "@APP_MAJOR_VERSION@"
+#endif
+
+// internal name: settings, registry and log paths; people see the display name
+#define APPLICATION_NAME "Lodestar"
+#define APPLICATION_DISPLAY_NAME "LodestarVPN"
+#define SERVICE_NAME "lodestar-service"
+#define ORGANIZATION_NAME "Lodestar"
+
+#endif // VERSION_H

@@ -1,0 +1,1419 @@
+#include "connectionController.h"
+
+#include <QDateTime>
+#include <QHostAddress>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRandomGenerator>
+#include <QRegularExpression>
+#include <QTcpSocket>
+
+#include <algorithm>
+#include <cmath>
+
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS) || defined(MACOS_NE)
+    #include <QGuiApplication>
+#else
+    #include <QApplication>
+#endif
+
+#ifdef Q_OS_WIN
+    #include "platforms/windows/windowsutils.h"
+#endif
+
+#include "utilities.h"
+#include "core/controllers/vpnConfigurationController.h"
+#include "ui/controllers/api/apiConfigsController.h"
+#include "healthCheckController.h"
+#include "version.h"
+
+namespace {
+
+// multi-IP failover: rewrite the entry address everywhere it is embedded in a
+// server/container config - top-level hostName, INI "Endpoint =", xray outbounds,
+// hysteria-style "server" - keeping every other setting untouched
+
+void patchAddressInJsonObject(QJsonObject &obj, const QString &ip);
+
+QString patchAddressInConfigString(const QString &configStr, const QString &ip)
+{
+    const QString trimmed = configStr.trimmed();
+    if (trimmed.startsWith(QLatin1Char('{'))) {
+        QJsonObject obj = QJsonDocument::fromJson(configStr.toUtf8()).object();
+        if (obj.isEmpty()) {
+            return configStr;
+        }
+        patchAddressInJsonObject(obj, ip);
+        return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    }
+    if (trimmed.contains(QStringLiteral("[Interface]"), Qt::CaseInsensitive)) {
+        static const QRegularExpression endpointRe(QStringLiteral("(?m)^(\\s*Endpoint\\s*=\\s*)[^:\\s]+(:\\d+\\s*)$"));
+        return QString(configStr).replace(endpointRe, QStringLiteral("\\1") + ip + QStringLiteral("\\2"));
+    }
+    return configStr;
+}
+
+void patchAddressInJsonObject(QJsonObject &obj, const QString &ip)
+{
+    if (obj.contains(QStringLiteral("hostName"))) {
+        obj[QStringLiteral("hostName")] = ip;
+    }
+    if (obj.contains(QStringLiteral("server"))) {
+        // hysteria-style "host:port"
+        const QString server = obj.value(QStringLiteral("server")).toString();
+        const int colon = server.lastIndexOf(QLatin1Char(':'));
+        obj[QStringLiteral("server")] = colon > 0 ? ip + server.mid(colon) : ip;
+    }
+    QJsonArray outbounds = obj.value(QStringLiteral("outbounds")).toArray();
+    for (int i = 0; i < outbounds.size(); ++i) {
+        QJsonObject outbound = outbounds.at(i).toObject();
+        QJsonObject settingsObj = outbound.value(QStringLiteral("settings")).toObject();
+        bool touched = false;
+        QJsonArray vnext = settingsObj.value(QStringLiteral("vnext")).toArray();
+        for (int j = 0; j < vnext.size(); ++j) {
+            QJsonObject v = vnext.at(j).toObject();
+            if (v.contains(QStringLiteral("address"))) {
+                v[QStringLiteral("address")] = ip;
+                touched = true;
+            }
+            vnext.replace(j, v);
+        }
+        if (!vnext.isEmpty()) {
+            settingsObj[QStringLiteral("vnext")] = vnext;
+        }
+        // hysteria2, legacy schema (what the backend stores): dial address lives in
+        // settings.servers[].address. serverName/SNI must stay the original domain —
+        // TLS verifies against it, not the dial address, so any node IP works
+        QJsonArray servers = settingsObj.value(QStringLiteral("servers")).toArray();
+        for (int j = 0; j < servers.size(); ++j) {
+            QJsonObject s = servers.at(j).toObject();
+            if (s.contains(QStringLiteral("address"))) {
+                s[QStringLiteral("address")] = ip;
+                touched = true;
+            }
+            servers.replace(j, s);
+        }
+        if (!servers.isEmpty()) {
+            settingsObj[QStringLiteral("servers")] = servers;
+        }
+        // hysteria2, translated schema (protocol "hysteria"): host only, port stays
+        if (settingsObj.contains(QStringLiteral("address"))) {
+            settingsObj[QStringLiteral("address")] = ip;
+            touched = true;
+        }
+        if (touched) {
+            outbound[QStringLiteral("settings")] = settingsObj;
+            outbounds.replace(i, outbound);
+        }
+    }
+    if (!outbounds.isEmpty()) {
+        obj[QStringLiteral("outbounds")] = outbounds;
+    }
+    // nested config string (e.g. the INI persisted inside last_config)
+    const QString nestedConfig = obj.value(QStringLiteral("config")).toString();
+    if (!nestedConfig.isEmpty()) {
+        obj[QStringLiteral("config")] = patchAddressInConfigString(nestedConfig, ip);
+    }
+}
+
+void patchProtocolObject(QJsonObject &protocolObject, const QString &ip)
+{
+    if (protocolObject.contains(QStringLiteral("hostName"))) {
+        protocolObject[QStringLiteral("hostName")] = ip;
+    }
+    const QString lastConfig = protocolObject.value(QStringLiteral("last_config")).toString();
+    if (!lastConfig.isEmpty()) {
+        protocolObject[QStringLiteral("last_config")] = patchAddressInConfigString(lastConfig, ip);
+    }
+    const QString configStr = protocolObject.value(QStringLiteral("config")).toString();
+    if (!configStr.isEmpty()) {
+        protocolObject[QStringLiteral("config")] = patchAddressInConfigString(configStr, ip);
+    }
+}
+
+void patchContainerObject(QJsonObject &containerObject, const QString &ip)
+{
+    // flat (CDN) form: the container object itself may hold last_config/config
+    patchProtocolObject(containerObject, ip);
+    // nested protocol objects ("amnezia-awg", "awg", "xray", ...)
+    for (auto it = containerObject.begin(); it != containerObject.end(); ++it) {
+        if (it.value().isObject()) {
+            QJsonObject protocolObject = it.value().toObject();
+            patchProtocolObject(protocolObject, ip);
+            containerObject[it.key()] = protocolObject;
+        }
+    }
+}
+
+void patchServerConfigAddress(QJsonObject &serverConfig, const QString &ip)
+{
+    serverConfig[QStringLiteral("hostName")] = ip;
+    QJsonArray containers = serverConfig.value(QStringLiteral("containers")).toArray();
+    for (int i = 0; i < containers.size(); ++i) {
+        QJsonObject containerObject = containers.at(i).toObject();
+        patchContainerObject(containerObject, ip);
+        containers.replace(i, containerObject);
+    }
+    if (!containers.isEmpty()) {
+        serverConfig[QStringLiteral("containers")] = containers;
+    }
+}
+
+} // namespace
+
+ConnectionController::~ConnectionController() = default;
+
+ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &serversModel,
+                                           const QSharedPointer<ContainersModel> &containersModel,
+                                           const QSharedPointer<VpnConnection> &vpnConnection, const std::shared_ptr<Settings> &settings,
+                                           QObject *parent)
+    : QObject(parent),
+      m_serversModel(serversModel),
+      m_containersModel(containersModel),
+      m_vpnConnection(vpnConnection),
+      m_settings(settings)
+{
+    connect(m_vpnConnection.get(), &VpnConnection::connectionStateChanged, this, &ConnectionController::onConnectionStateChanged);
+    connect(this, &ConnectionController::connectToVpn, m_vpnConnection.get(), &VpnConnection::connectToVpn, Qt::QueuedConnection);
+    connect(this, &ConnectionController::disconnectFromVpn, m_vpnConnection.get(), &VpnConnection::disconnectFromVpn, Qt::QueuedConnection);
+
+    connect(this, &ConnectionController::connectButtonClicked, this, &ConnectionController::toggleConnection, Qt::QueuedConnection);
+
+    m_autoProbeTimer = new QTimer(this);
+    m_autoProbeTimer->setSingleShot(true);
+    connect(m_autoProbeTimer, &QTimer::timeout, this, &ConnectionController::onAutoProbeSettled);
+
+    m_autoAttemptTimer = new QTimer(this);
+    m_autoAttemptTimer->setSingleShot(true);
+    connect(m_autoAttemptTimer, &QTimer::timeout, this, [this]() {
+        if (m_autoPhase != AutoPhase::Connecting) {
+            return;
+        }
+        if (m_autoAwaitingTraffic) {
+            markEndpointFailed(m_currentEndpoint);
+        }
+        // same candidate, untried addresses left - retry the next one first
+        if (retryWithNextIp()) {
+            m_autoAwaitingTraffic = false;
+            return;
+        }
+        qDebug() << "[AUTO] attempt timed out" << (m_autoAwaitingTraffic ? "(no traffic)" : "") << ", trying next candidate";
+        m_autoCandidatePos++;
+        connectCurrentAutoCandidate();
+    });
+
+    m_ipTrafficTimer = new QTimer(this);
+    m_ipTrafficTimer->setSingleShot(true);
+    connect(m_ipTrafficTimer, &QTimer::timeout, this, [this]() {
+        if (!m_ipAwaitingTraffic) {
+            return;
+        }
+        m_ipAwaitingTraffic = false;
+        qDebug() << "[IPPOOL] connected but no traffic on row" << m_ipPoolRow << ", trying next address";
+        markEndpointFailed(m_currentEndpoint);
+        if (!retryWithNextIp()) {
+            const int row = m_ipPoolRow;
+            resetIpPool();
+            emit disconnectFromVpn();
+            if (!m_poolRefreshAttempted && m_apiConfigsController) {
+                beginPoolRefresh(row); // continues once the tunnel is down
+            } else {
+                emit connectionErrorOccurred(m_vpnConnection->lastError());
+            }
+        }
+    });
+
+    m_manualConnectTimer = new QTimer(this);
+    m_manualConnectTimer->setSingleShot(true);
+    connect(m_manualConnectTimer, &QTimer::timeout, this, [this]() {
+        qDebug() << "[CONNECT] manual attempt timed out, row" << m_ipPoolRow;
+        if (m_ipPoolRow >= 0) {
+            // a pooled address that never came up (for WG/AWG this is how a
+            // dead one shows: no handshake, no Connected) - try it last next time
+            markEndpointFailed(m_currentEndpoint);
+        }
+        if (retryWithNextIp()) {
+            return; // connectToServerIndexWithIp restarts the watchdog
+        }
+        resetIpPool();
+        m_manualConnectTimer->stop();
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        emit disconnectFromVpn();
+        emit connectionErrorOccurred(ErrorCode::ServerConnectionTimeoutError);
+        emit connectionStateChanged();
+    });
+
+#if defined(Q_OS_IOS) || defined(MACOS_NE) || defined(Q_OS_ANDROID)
+    connect(qApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+        if (state != Qt::ApplicationActive || !m_isConnected) {
+            return;
+        }
+        m_speedTimer.invalidate();
+        if (m_pingSocket) {
+            QTcpSocket *socket = m_pingSocket;
+            m_pingSocket = nullptr;
+            socket->disconnect(this);
+            socket->abort();
+            socket->deleteLater();
+        }
+        if (m_pingTimer) {
+            if (!m_pingTimer->isActive()) {
+                m_pingTimer->start();
+            }
+            probeLivePing();
+        }
+    });
+#endif
+
+    // traffic proof: bytes must move. Used by auto selection for probe-unconfirmed
+    // candidates and by the address pool for every pooled connect (multi-IP, and
+    // single-address xray on desktop, whose bytes come from XrayProtocol's probe)
+    connect(m_vpnConnection.get(), &VpnConnection::bytesChanged, this, [this](quint64 receivedBytes, quint64 sentBytes) {
+        // live speed meter for the server card: bytesChanged carries per-interval
+        // deltas on all platforms, so speed = delta / elapsed
+        if (m_isConnected) {
+            const qint64 elapsedMs = m_speedTimer.isValid() ? m_speedTimer.restart() : 0;
+            if (!m_speedTimer.isValid()) {
+                m_speedTimer.start();
+            }
+            if (elapsedMs > 0 && elapsedMs <= 5000) {
+                const quint64 downBps = receivedBytes * 1000 / static_cast<quint64>(elapsedMs);
+                const quint64 upBps = sentBytes * 1000 / static_cast<quint64>(elapsedMs);
+                constexpr quint64 kMaxBps = 10ull * 1024 * 1024 * 1024;
+                if (downBps <= kMaxBps && upBps <= kMaxBps) {
+                    const QString down = formatSpeed(static_cast<qint64>(downBps));
+                    const QString up = formatSpeed(static_cast<qint64>(upBps));
+                    if (down != m_downloadSpeed || up != m_uploadSpeed) {
+                        m_downloadSpeed = down;
+                        m_uploadSpeed = up;
+                        emit speedChanged();
+                    }
+                }
+            }
+        }
+
+        if (m_autoPhase == AutoPhase::Connecting && m_autoAwaitingTraffic) {
+            // bytesChanged carries per-interval deltas on all platforms - any
+            // non-zero receive is proof the tunnel moves traffic
+            if (receivedBytes > 0) {
+                qDebug() << "[AUTO] traffic confirmed on row" << m_autoCandidates.at(m_autoCandidatePos).row;
+                markEndpointWorking(m_currentEndpoint);
+                finalizeAutoSuccess();
+            }
+            return;
+        }
+        if (m_autoPhase == AutoPhase::None && m_ipAwaitingTraffic) {
+            if (receivedBytes > 0) {
+                qDebug() << "[IPPOOL] traffic confirmed on row" << m_ipPoolRow;
+                markEndpointWorking(m_currentEndpoint);
+                resetIpPool(); // success - the next connect starts from a fresh random pool
+            }
+        }
+    });
+
+    connect(m_vpnConnection.get(), &VpnConnection::latencyChanged, this, [this](int ms) {
+        if (!m_isConnected) {
+            return;
+        }
+        const QString text = ms < 0 ? QString() : QString::number(qMax(ms, 1));
+        if (text != m_ping) {
+            m_ping = text;
+            emit pingChanged();
+        }
+    });
+
+    m_state = Vpn::ConnectionState::Disconnected;
+}
+
+QString ConnectionController::formatSpeed(qint64 bytesPerSec)
+{
+    if (bytesPerSec < 1024) {
+        return QStringLiteral("%1 B/s").arg(bytesPerSec);
+    }
+    if (bytesPerSec < 1024 * 1024) {
+        return QStringLiteral("%1 KB/s").arg(bytesPerSec / 1024.0, 0, 'f', 1);
+    }
+    return QStringLiteral("%1 MB/s").arg(bytesPerSec / 1024.0 / 1024.0, 0, 'f', 1);
+}
+
+void ConnectionController::startLivePing()
+{
+    if (!m_pingTimer) {
+        m_pingTimer = new QTimer(this);
+        m_pingTimer->setInterval(kLivePingIntervalMs);
+        connect(m_pingTimer, &QTimer::timeout, this, &ConnectionController::probeLivePing);
+    }
+    if (m_pingTimer->isActive()) {
+        return;
+    }
+    m_pingTimer->start();
+    probeLivePing();
+}
+
+void ConnectionController::stopLivePing()
+{
+    if (m_pingTimer) {
+        m_pingTimer->stop();
+    }
+    if (m_pingSocket) {
+        QTcpSocket *socket = m_pingSocket;
+        m_pingSocket = nullptr;
+        socket->disconnect(this);
+        socket->abort();
+        socket->deleteLater();
+    }
+    if (!m_ping.isEmpty()) {
+        m_ping.clear();
+        emit pingChanged();
+    }
+}
+
+void ConnectionController::probeLivePing()
+{
+    if (!m_isConnected || m_pingSocket || m_pingFromProtocol) {
+        return;
+    }
+
+    // Pre-connect health probes are stopped once the tunnel is up (their packets
+    // would be captured by it). This measures the latency the session actually
+    // has: a TCP handshake through the tunnel to a public anycast.
+    static const QHostAddress hosts[] = {
+        QHostAddress(QStringLiteral("1.1.1.1")),
+        QHostAddress(QStringLiteral("8.8.8.8")),
+        QHostAddress(QStringLiteral("1.0.0.1")),
+        QHostAddress(QStringLiteral("9.9.9.9")),
+    };
+    static constexpr int hostCount = int(sizeof(hosts) / sizeof(hosts[0]));
+
+    auto *socket = new QTcpSocket(this);
+    m_pingSocket = socket;
+    m_pingElapsed.start();
+
+    connect(socket, &QTcpSocket::connected, this, [this, socket]() { finishLivePing(socket, true); });
+    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QTcpSocket::SocketError) {
+        finishLivePing(socket, false);
+    });
+    QTimer::singleShot(kLivePingTimeoutMs, socket, [this, socket]() {
+        if (m_pingSocket == socket && socket->state() != QAbstractSocket::ConnectedState) {
+            finishLivePing(socket, false);
+        }
+    });
+
+    socket->connectToHost(hosts[m_pingHostIndex % hostCount], 443);
+}
+
+void ConnectionController::finishLivePing(QTcpSocket *socket, bool ok)
+{
+    if (m_pingSocket != socket) {
+        return;
+    }
+
+    const int ms = static_cast<int>(m_pingElapsed.elapsed());
+    m_pingSocket = nullptr;
+    socket->disconnect(this);
+    socket->abort();
+    socket->deleteLater();
+
+    if (!ok || !m_isConnected) {
+        if (m_isConnected) {
+            m_pingHostIndex = (m_pingHostIndex + 1) % 4;
+        }
+        return;
+    }
+
+    const QString text = QString::number(qMax(ms, 1));
+    if (text != m_ping) {
+        m_ping = text;
+        emit pingChanged();
+    }
+}
+
+void ConnectionController::setHealthCheckController(HealthCheckController *healthCheckController)
+{
+    m_healthCheckController = healthCheckController;
+}
+
+void ConnectionController::setApiConfigsController(ApiConfigsController *apiConfigsController)
+{
+    m_apiConfigsController = apiConfigsController;
+}
+
+void ConnectionController::openConnection()
+{
+    ++m_connectAttempt;
+    m_poolRefreshAttempted = false;
+    m_poolRefreshInFlight = false;
+    m_poolRefreshRow = -1;
+
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS) && !defined(MACOS_NE)
+    if (!Utils::processIsRunning(Utils::executable(SERVICE_NAME, false), true))
+    {
+#ifdef Q_OS_WIN
+        // the service may be stopped (crash, upgrade) or missing entirely
+        // (silent MSI failure without admin rights) - try to revive it with
+        // elevation before erroring out
+        if (WindowsUtils::ensureDopamineServiceRunning()) {
+            qDebug() << "ConnectionController: service recovered, proceeding with connect";
+        } else
+#endif
+        {
+            emit connectionErrorOccurred(ErrorCode::DopamineServiceNotRunning);
+            return;
+        }
+    }
+#endif
+
+    if (m_apiConfigsController) {
+        m_apiConfigsController->refreshLoadIfStale();
+    }
+
+    if (m_settings->isAutoServerSelection() && m_healthCheckController) {
+        startAutoSelection();
+        return;
+    }
+
+    connectToServerIndex(m_serversModel->getDefaultServerIndex());
+}
+
+void ConnectionController::connectToServerIndex(int serverIndex)
+{
+    // multi-IP nodes: a fresh address order per connect, random but weighted
+    // by each server's spare capacity, so busy servers get fewer new clients
+    // and no server gets them all; retries walk the rest
+    const QJsonObject serverConfig = m_serversModel->getServerConfig(serverIndex);
+    const QJsonArray nodeIps = serverConfig.value(QStringLiteral("node_ips")).toArray();
+    QStringList ips;
+    for (const QJsonValue &v : nodeIps) {
+        const QString ip = v.toString();
+        if (!ip.isEmpty()) {
+            ips.append(ip);
+        }
+    }
+    ips.removeDuplicates();
+
+    // CDN-fronted VLESS (xhttp over plain TLS): the dial address is the CDN front,
+    // not the node - swapping in node IPs would break the connect, so no pool
+    if (ips.size() > 1 && !isVlessCdnRow(serverIndex)) {
+        const QString protocol = serverConfig.value(QStringLiteral("api_config")).toObject().value(QStringLiteral("service_protocol")).toString();
+        m_ipPool = weightedOrder(ips, protocol, serverConfig.value(QStringLiteral("node_weights")).toObject());
+        const QVariantMap failed = m_settings->failedEndpoints();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        std::stable_partition(m_ipPool.begin(), m_ipPool.end(), [&](const QString &ip) {
+            const QVariant failedAt = failed.value(ip);
+            return !failedAt.isValid() || now - failedAt.toLongLong() > kFailedEndpointTtlMs;
+        });
+        m_ipPoolPos = 0;
+        m_ipPoolRow = serverIndex;
+        qDebug() << "[IPPOOL] row" << serverIndex << "address pool:" << m_ipPool;
+        connectToServerIndexWithIp(serverIndex, m_ipPool.first());
+        return;
+    }
+
+#if defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)
+    // single-address xray: XrayProtocol proves real traffic on desktop (see
+    // startTrafficProbe), so run the same check as for a pool of one - a dead
+    // server (blocked, stale config) then goes through the gateway refresh and
+    // ends in an error instead of sitting in "Connected" with nothing loading
+    const DockerContainer container = qvariant_cast<DockerContainer>(
+            m_serversModel->data(serverIndex, ServersModel::Roles::DefaultContainerRole));
+    if (container == DockerContainer::Xray || container == DockerContainer::SSXray) {
+        m_ipPool = { QString() }; // empty = dial the config's own address
+        m_ipPoolPos = 0;
+        m_ipPoolRow = serverIndex;
+        connectToServerIndexWithIp(serverIndex, QString());
+        return;
+    }
+#endif
+
+    resetIpPool();
+    connectToServerIndexWithIp(serverIndex, QString());
+}
+
+void ConnectionController::connectToServerIndexWithIp(int serverIndex, const QString &ip)
+{
+    QJsonObject serverConfig = m_serversModel->getServerConfig(serverIndex);
+
+    DockerContainer container = qvariant_cast<DockerContainer>(m_serversModel->data(serverIndex, ServersModel::Roles::DefaultContainerRole));
+
+    if (!m_containersModel->isSupportedByCurrentPlatform(container)) {
+        emit connectionErrorOccurred(ErrorCode::NotSupportedOnThisPlatform);
+        return;
+    }
+
+    // teardown states of a previous tunnel are neither a failure nor a user cancel
+    m_connectionSwitching = true;
+
+#if defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)
+    m_pingFromProtocol = container == DockerContainer::Xray || container == DockerContainer::SSXray;
+#endif
+
+    if (!ip.isEmpty()) {
+        patchServerConfigAddress(serverConfig, ip);
+    }
+
+    VpnConfigurationsController vpnConfigurationController(m_settings);
+
+    QJsonObject containerConfig;
+    {
+        // Always prefer the container entry from the target server's own config —
+        // m_containersModel may still hold the PREVIOUS server's container when
+        // switching servers (produced "France" name with the old server's config
+        // body: connected to France in the UI, traffic exits the old server).
+        // NB: the "container" field holds the container name ("amnezia-awg"),
+        // not the protocol alias ("awg") returned by containerTypeToString
+        const QString containerName = ContainerProps::containerToString(container);
+        const QJsonArray containers = serverConfig.value(QStringLiteral("containers")).toArray();
+        for (const QJsonValue &v : containers) {
+            const QJsonObject entry = v.toObject();
+            if (entry.value(QStringLiteral("container")).toString() == containerName) {
+                containerConfig = entry;
+                break;
+            }
+        }
+    }
+    if (containerConfig.isEmpty()) {
+        containerConfig = m_containersModel->getContainerConfig(container);
+    }
+
+    ServerCredentials credentials = m_serversModel->getServerCredentials(serverIndex);
+    if (!ip.isEmpty()) {
+        credentials.hostName = ip;
+    }
+    if (m_currentEndpoint != credentials.hostName) {
+        m_currentEndpoint = credentials.hostName;
+        emit connectionStateChanged();
+    }
+
+    auto dns = m_serversModel->getDnsPair(serverIndex);
+
+    auto vpnConfiguration = vpnConfigurationController.createVpnConfiguration(dns, serverConfig, containerConfig, container);
+    if (m_autoPhase == AutoPhase::None) {
+        // manual connect: fail loudly instead of spinning forever on a dead
+        // server - and move on sooner while the pool has addresses left
+        const bool moreAddresses = m_ipPoolRow == serverIndex && m_ipPoolPos + 1 < m_ipPool.size();
+        m_manualConnectTimer->start(moreAddresses ? kPoolAttemptTimeoutMs : kManualConnectTimeoutMs);
+    }
+    emit connectToVpn(serverIndex, credentials, container, vpnConfiguration);
+}
+
+void ConnectionController::resetIpPool()
+{
+    m_ipPool.clear();
+    m_ipPoolPos = 0;
+    m_ipPoolRow = -1;
+    m_ipAwaitingTraffic = false;
+    if (m_ipTrafficTimer) {
+        m_ipTrafficTimer->stop();
+    }
+}
+
+void ConnectionController::markEndpointFailed(const QString &endpoint)
+{
+    if (endpoint.isEmpty()) {
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QVariantMap failed = m_settings->failedEndpoints();
+    for (auto it = failed.begin(); it != failed.end();) {
+        if (now - it.value().toLongLong() > kFailedEndpointTtlMs) {
+            it = failed.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    failed.insert(endpoint, now);
+    m_settings->setFailedEndpoints(failed);
+    qDebug() << "[IPPOOL] no traffic via" << endpoint << "- will try it last on the next connects";
+}
+
+void ConnectionController::markEndpointWorking(const QString &endpoint)
+{
+    QVariantMap failed = m_settings->failedEndpoints();
+    if (failed.remove(endpoint) > 0) {
+        m_settings->setFailedEndpoints(failed);
+    }
+}
+
+// only what decides where and how we connect; bookkeeping fields the refresh
+// also rewrites (expiry stamps etc.) would make every refresh look "changed"
+QByteArray ConnectionController::connectionFingerprint(const QJsonObject &serverConfig)
+{
+    QJsonObject relevant;
+    for (const QString &key : { QStringLiteral("hostName"), QStringLiteral("node_ips"), QStringLiteral("containers") }) {
+        relevant.insert(key, serverConfig.value(key));
+    }
+    return QJsonDocument(relevant).toJson(QJsonDocument::Compact);
+}
+
+void ConnectionController::beginPoolRefresh(int row)
+{
+    qDebug() << "[IPPOOL] every address of row" << row << "failed, asking the gateway for a fresh config";
+    m_poolRefreshAttempted = true;
+    m_poolRefreshInFlight = true;
+    m_poolRefreshRow = row;
+    m_poolRefreshConnectionBefore = connectionFingerprint(m_serversModel->getServerConfig(row));
+    m_isConnectionInProgress = true;
+    m_connectionStateText = tr("Connecting...");
+    emit connectionStateChanged();
+}
+
+void ConnectionController::onPoolRefreshed(int row, const QByteArray &connectionBefore, bool ok)
+{
+    m_poolRefreshInFlight = false;
+
+    // new/replaced servers, or changed parameters (SNI, keys, port) of the
+    // same ones - either way the retry isn't a repeat of what just failed
+    if (!ok || connectionFingerprint(m_serversModel->getServerConfig(row)) == connectionBefore) {
+        qDebug() << "[IPPOOL] gateway config for row" << row << "unchanged - giving up";
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        emit connectionErrorOccurred(m_vpnConnection->lastError());
+        emit connectionStateChanged();
+        return;
+    }
+    // the addresses that just failed are remembered, so new ones go first
+    qDebug() << "[IPPOOL] gateway returned a changed config for row" << row << "- retrying";
+    connectToServerIndex(row);
+}
+
+bool ConnectionController::retryWithNextIp()
+{
+    if (m_ipPoolRow < 0 || m_ipPoolPos + 1 >= m_ipPool.size()) {
+        return false;
+    }
+    m_ipPoolPos++;
+    qDebug() << "[IPPOOL] row" << m_ipPoolRow << "failed, trying next address" << m_ipPool.at(m_ipPoolPos);
+    m_ipAwaitingTraffic = false;
+    m_ipTrafficTimer->stop();
+    connectToServerIndexWithIp(m_ipPoolRow, m_ipPool.at(m_ipPoolPos));
+    if (m_autoPhase == AutoPhase::Connecting) {
+        // Connected cleared m_autoAdvancing - re-arm it, otherwise the old
+        // tunnel's teardown Disconnected is misread as this attempt failing
+        // and the candidate gets skipped mid-retry
+        m_autoAdvancing = true;
+        m_autoAttemptTimer->start(kAutoAttemptTimeoutMs);
+    }
+    m_connectionStateText = tr("Connecting...");
+    emit connectionStateChanged();
+    return true;
+}
+
+// --- auto server selection ---
+
+int ConnectionController::tierForRow(int row) const
+{
+    const QString filterProtocol = m_serversModel->data(row, ServersModel::Roles::ServiceProtocolFilterRole).toString().toLower();
+    if (filterProtocol == QStringLiteral("awg-mobile") || filterProtocol == QStringLiteral("amneziawgmobile")) {
+        return 0; // AmneziaWgMobile first
+    }
+    const QString protocol = m_serversModel->data(row, ServersModel::Roles::ServiceProtocolRole).toString();
+    if (protocol == QStringLiteral("awg")) {
+        return 1;
+    }
+    if (protocol == QStringLiteral("hysteria2")) {
+        return 2;
+    }
+    if (protocol == QStringLiteral("wireguard")) {
+        return 3;
+    }
+    if (protocol == QStringLiteral("vless")) {
+        // VLESS goes (almost) last: a CDN/REALITY TCP probe answers fast even on
+        // a node that proxies nothing, which used to outrank healthy AWG rows
+        return isVlessCdnRow(row) ? 4 : 5;
+    }
+    return 6;
+}
+
+bool ConnectionController::isVlessCdnRow(int row) const
+{
+    // xhttp over plain TLS = CDN-fronted server (same shape as in HealthCheckController)
+    const QJsonObject serverConfig = m_serversModel->getServerConfig(row);
+    const QJsonArray containers = serverConfig.value(QStringLiteral("containers")).toArray();
+    if (containers.isEmpty()) {
+        return false;
+    }
+    const QJsonObject containerObject = containers.at(0).toObject();
+    QJsonObject configRoot = QJsonDocument::fromJson(
+            containerObject.value(QStringLiteral("xray")).toObject().value(QStringLiteral("config")).toString().toUtf8())
+                                     .object();
+    if (configRoot.isEmpty()) {
+        configRoot = QJsonDocument::fromJson(containerObject.value(QStringLiteral("config")).toString().toUtf8()).object();
+    }
+    const QJsonArray outbounds = configRoot.value(QStringLiteral("outbounds")).toArray();
+    const QJsonObject outbound = outbounds.isEmpty() ? configRoot : outbounds.at(0).toObject();
+    const QJsonObject streamSettings = outbound.value(QStringLiteral("streamSettings")).toObject();
+    return streamSettings.value(QStringLiteral("security")).toString() == QStringLiteral("tls")
+            && streamSettings.value(QStringLiteral("network")).toString() == QStringLiteral("xhttp");
+}
+
+QList<ConnectionController::AutoCandidate> ConnectionController::buildAutoCandidates() const
+{
+    QList<AutoCandidate> candidates;
+    const QString envFilter = m_settings->serversEnvFilter();
+    const int count = m_serversModel->getServersCount();
+    for (int i = 0; i < count; ++i) {
+        if (!envFilter.isEmpty() && envFilter != QStringLiteral("all")
+            && m_serversModel->data(i, ServersModel::Roles::ConnectionEnvRole).toString() != envFilter) {
+            continue;
+        }
+        DockerContainer container = qvariant_cast<DockerContainer>(m_serversModel->data(i, ServersModel::Roles::DefaultContainerRole));
+        if (!m_containersModel->isSupportedByCurrentPlatform(container)) {
+            continue;
+        }
+        AutoCandidate candidate;
+        candidate.row = i;
+        candidate.tier = tierForRow(i);
+        candidate.latency = m_serversModel->data(i, ServersModel::Roles::HealthLatencyRole).toInt();
+        candidates.append(candidate);
+    }
+
+    // tier asc; inside a tier: probe-confirmed by rtt asc, then unprobed, then offline
+    const auto latencyRank = [](int latency) { return latency >= 0 ? 0 : (latency == -2 ? 1 : 2); };
+    std::sort(candidates.begin(), candidates.end(), [&](const AutoCandidate &a, const AutoCandidate &b) {
+        if (a.tier != b.tier) {
+            return a.tier < b.tier;
+        }
+        if (latencyRank(a.latency) != latencyRank(b.latency)) {
+            return latencyRank(a.latency) < latencyRank(b.latency);
+        }
+        if (a.latency >= 0 && b.latency >= 0 && a.latency != b.latency) {
+            return a.latency < b.latency;
+        }
+        return a.row < b.row;
+    });
+    return candidates;
+}
+
+QStringList ConnectionController::weightedOrder(const QStringList &ips, const QString &protocol, const QJsonObject &storedWeights) const
+{
+    // weight: the gateway's latest answer, else what came with the config;
+    // an unknown one counts as the average of the known
+    QList<double> weights;
+    double known = 0;
+    int knownCount = 0;
+    for (const QString &ip : ips) {
+        double w = m_apiConfigsController ? m_apiConfigsController->nodeWeight(ip, protocol) : -1;
+        if (w < 0) {
+            w = storedWeights.value(ip).toDouble(-1);
+        }
+        if (w > 0) {
+            known += w;
+            ++knownCount;
+        }
+        weights.append(w);
+    }
+    const double fallback = knownCount ? known / knownCount : 1.0;
+
+    // weighted random order (Efraimidis-Spirakis): key u^(1/w), largest first
+    QList<QPair<double, QString>> keyed;
+    for (int i = 0; i < ips.size(); ++i) {
+        const double w = weights.at(i) > 0 ? weights.at(i) : fallback;
+        const double u = (std::max)(QRandomGenerator::global()->generateDouble(), 1e-12);
+        keyed.append({ std::pow(u, 1.0 / w), ips.at(i) });
+    }
+    std::sort(keyed.begin(), keyed.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+
+    QStringList ordered;
+    for (const auto &k : keyed) {
+        ordered.append(k.second);
+    }
+    return ordered;
+}
+
+double ConnectionController::rowLoad(int row) const
+{
+    if (!m_apiConfigsController) {
+        return -1;
+    }
+    const QJsonObject apiConfig = m_serversModel->getServerConfig(row).value(QStringLiteral("api_config")).toObject();
+    QString country = apiConfig.value(QStringLiteral("server_country_code")).toString();
+    if (country.isEmpty()) {
+        country = apiConfig.value(QStringLiteral("user_country_code")).toString();
+    }
+    const QString protocol = apiConfig.value(QStringLiteral("service_protocol")).toString();
+    if (country.isEmpty() || protocol.isEmpty()) {
+        return -1;
+    }
+    return m_apiConfigsController->countryLoad(country, protocol);
+}
+
+int ConnectionController::pickAutoCandidate(const QList<AutoCandidate> &candidates) const
+{
+    if (candidates.isEmpty()) {
+        return -1;
+    }
+
+    // strict tier order (list is already sorted): a probe-confirmed candidate
+    // may win only within the BEST tier present - a fast VLESS TCP probe must
+    // not outrank unprobed (still probing) AWG rows; protocol preference beats
+    // probe speed
+    const int bestTier = candidates.first().tier;
+    QList<int> confirmed; // probe-confirmed rows of the best tier, fastest first
+    for (int i = 0; i < candidates.size() && candidates.at(i).tier == bestTier; ++i) {
+        if (candidates.at(i).latency >= 0) {
+            confirmed.append(i);
+        }
+    }
+    if (!confirmed.isEmpty() && candidates.at(confirmed.first()).latency <= kAutoAcceptLatencyMs) {
+        // among the servers nearly as fast as the best one, prefer the less
+        // busy: a random pick weighted by spare capacity and speed. Without
+        // load data this is simply the fastest.
+        const int best = (std::max)(candidates.at(confirmed.first()).latency, 1);
+        const int limit = best + (std::max)(kAutoNearbyMs, best * 3 / 10);
+        QList<int> nearby;
+        QList<double> weights;
+        bool anyLoad = false;
+        for (int i : confirmed) {
+            const int latency = (std::max)(candidates.at(i).latency, 1);
+            if (latency > limit) {
+                break; // sorted by latency
+            }
+            const double load = rowLoad(candidates.at(i).row);
+            anyLoad = anyLoad || load >= 0;
+            const double spare = load >= 0 ? (std::max)(0.05, 1.0 - load) : 0.5;
+            nearby.append(i);
+            weights.append(spare * best / latency);
+        }
+        if (!anyLoad || nearby.size() == 1) {
+            return confirmed.first();
+        }
+        double total = 0;
+        for (double w : weights) {
+            total += w;
+        }
+        double r = QRandomGenerator::global()->generateDouble() * total;
+        for (int k = 0; k < nearby.size(); ++k) {
+            r -= weights.at(k);
+            if (r <= 0) {
+                return nearby.at(k);
+            }
+        }
+        return nearby.last();
+    }
+
+    // nothing fast anywhere: first usable (alive-but-slow or unprobed) in tier order
+    for (int i = 0; i < candidates.size(); ++i) {
+        if (candidates.at(i).latency != -1) {
+            return i;
+        }
+    }
+
+    // everything probed offline - badges lie sometimes, try in priority order
+    return 0;
+}
+
+void ConnectionController::installMissingConfigs()
+{
+    if (!m_apiConfigsController) {
+        return;
+    }
+    // gateway-issued rows get their container config only on the first manual
+    // connect (ApiConfigsController::isConfigValid) - until then there is nothing
+    // to probe (no WG keys) and nothing to connect with. Install them up front.
+    const QString envFilter = m_settings->serversEnvFilter();
+    const int count = m_serversModel->getServersCount();
+    for (int i = 0; i < count; ++i) {
+        if (!envFilter.isEmpty() && envFilter != QStringLiteral("all")
+            && m_serversModel->data(i, ServersModel::Roles::ConnectionEnvRole).toString() != envFilter) {
+            continue;
+        }
+        if (!m_serversModel->data(i, ServersModel::Roles::IsServerFromGatewayApiRole).toBool()) {
+            continue;
+        }
+        DockerContainer container = qvariant_cast<DockerContainer>(m_serversModel->data(i, ServersModel::Roles::DefaultContainerRole));
+        if (!m_containersModel->isSupportedByCurrentPlatform(container)) {
+            continue;
+        }
+        if (m_serversModel->serverHasUsableConfig(i)) {
+            continue;
+        }
+        qDebug() << "[AUTO] installing config for row" << i;
+        m_apiConfigsController->updateServiceFromGateway(i, "", "", false, true);
+    }
+}
+
+void ConnectionController::startAutoSelection()
+{
+    cancelAutoSelection();
+    m_autoPhase = AutoPhase::Probing;
+    m_connectionStateText = tr("Searching\nfor the best server...");
+    emit connectionStateChanged();
+
+    installMissingConfigs();
+
+    // fresh probe results are already there (the server list was open recently) —
+    // decide without another probe round
+    const qint64 lastProbe = m_healthCheckController->lastProbeMsecs();
+    const bool fresh = lastProbe != 0 && QDateTime::currentMSecsSinceEpoch() - lastProbe < kAutoFreshProbeMs
+            && !m_healthCheckController->isProbing();
+    if (fresh && tryEarlyAutoDecision()) {
+        return;
+    }
+
+    m_healthCheckController->startProbe(true);
+
+    // connect AFTER startProbe: its internal stopProbe() may synchronously emit
+    // probingFinished for a previous run - that one is not ours to settle on
+    connect(m_healthCheckController, &HealthCheckController::probingFinished, this,
+            &ConnectionController::onAutoProbeSettled, Qt::UniqueConnection);
+    connect(m_serversModel.get(), &ServersModel::dataChanged, this, [this](const QModelIndex &, const QModelIndex &,
+                                                                           const QVector<int> &roles) {
+        if (roles.isEmpty() || roles.contains(ServersModel::Roles::HealthLatencyRole)) {
+            onAutoHealthUpdated();
+        }
+    });
+
+    if (!m_healthCheckController->isProbing()) {
+        // no targets at all - the run finished synchronously inside startProbe
+        onAutoProbeSettled();
+        return;
+    }
+    m_autoProbeTimer->start(kAutoProbeTimeoutMs);
+}
+
+bool ConnectionController::tryEarlyAutoDecision()
+{
+    const QList<AutoCandidate> candidates = buildAutoCandidates();
+    if (candidates.isEmpty()) {
+        return false;
+    }
+    // the pick weighs the nearby servers against each other: wait until every
+    // row of the best tier has its probe result
+    for (const AutoCandidate &candidate : candidates) {
+        if (candidate.tier == candidates.first().tier && candidate.latency == -2) {
+            return false;
+        }
+    }
+    const int pick = pickAutoCandidate(candidates);
+    if (pick < 0) {
+        return false;
+    }
+    // early exit only for a probe-confirmed fast server in the BEST tier present —
+    // otherwise keep waiting: a higher-priority protocol may still get its result
+    if (candidates.at(pick).latency < 0 || candidates.at(pick).tier != candidates.first().tier) {
+        return false;
+    }
+    qDebug() << "[AUTO] early pick: row" << candidates.at(pick).row << "rtt" << candidates.at(pick).latency;
+    m_autoCandidates = candidates;
+    m_autoCandidates.move(pick, 0);
+    beginAutoConnect();
+    return true;
+}
+
+void ConnectionController::onAutoHealthUpdated()
+{
+    if (m_autoPhase != AutoPhase::Probing) {
+        return;
+    }
+    tryEarlyAutoDecision();
+}
+
+void ConnectionController::onAutoProbeSettled()
+{
+    if (m_autoPhase != AutoPhase::Probing) {
+        return;
+    }
+    m_autoProbeTimer->stop();
+    m_autoCandidates = buildAutoCandidates();
+    const int pick = pickAutoCandidate(m_autoCandidates);
+    if (pick > 0) {
+        m_autoCandidates.move(pick, 0);
+    }
+    beginAutoConnect();
+}
+
+void ConnectionController::beginAutoConnect()
+{
+    disconnect(m_healthCheckController, &HealthCheckController::probingFinished, this,
+               &ConnectionController::onAutoProbeSettled);
+    disconnect(m_serversModel.get(), &ServersModel::dataChanged, this, nullptr);
+    m_autoProbeTimer->stop();
+    m_healthCheckController->stopProbe();
+
+    if (m_autoCandidates.isEmpty()) {
+        qWarning() << "[AUTO] no candidates, falling back to the selected server";
+        m_autoPhase = AutoPhase::None;
+        connectToServerIndex(m_serversModel->getDefaultServerIndex());
+        return;
+    }
+
+    m_autoPhase = AutoPhase::Connecting;
+    m_autoCandidatePos = 0;
+    connectCurrentAutoCandidate();
+}
+
+void ConnectionController::finalizeAutoSuccess()
+{
+    // the winning candidate becomes the selected server
+    m_autoAttemptTimer->stop();
+    m_autoAwaitingTraffic = false;
+    if (m_autoCandidatePos < m_autoCandidates.size()) {
+        m_serversModel->setDefaultServerIndex(m_autoCandidates.at(m_autoCandidatePos).row);
+    }
+    m_autoPhase = AutoPhase::None;
+    m_autoAdvancing = false;
+    m_autoCandidates.clear();
+    resetIpPool();
+    // isConnectionInProgress just flipped to false - QML must know, otherwise
+    // the connect-button spinner keeps spinning forever under the "Connected" text
+    emit connectionStateChanged();
+}
+
+void ConnectionController::connectCurrentAutoCandidate()
+{
+    if (m_autoCandidatePos >= m_autoCandidates.size()) {
+        qWarning() << "[AUTO] all candidates failed";
+        m_autoPhase = AutoPhase::None;
+        m_autoAdvancing = false;
+        m_autoAwaitingTraffic = false;
+        emit disconnectFromVpn();
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        emit connectionErrorOccurred(m_vpnConnection->lastError());
+        emit connectionStateChanged();
+        return;
+    }
+
+    const AutoCandidate candidate = m_autoCandidates.at(m_autoCandidatePos);
+    qDebug() << "[AUTO] trying row" << candidate.row << "tier" << candidate.tier << "rtt" << candidate.latency;
+    m_autoAdvancing = true;
+    m_autoAwaitingTraffic = false;
+    connectToServerIndex(candidate.row);
+    m_autoAttemptTimer->start(kAutoAttemptTimeoutMs);
+}
+
+void ConnectionController::cancelAutoSelection()
+{
+    m_autoPhase = AutoPhase::None;
+    m_autoAdvancing = false;
+    m_autoAwaitingTraffic = false;
+    m_autoCandidates.clear();
+    m_autoCandidatePos = 0;
+    if (m_healthCheckController) {
+        disconnect(m_healthCheckController, &HealthCheckController::probingFinished, this,
+                   &ConnectionController::onAutoProbeSettled);
+    }
+    disconnect(m_serversModel.get(), &ServersModel::dataChanged, this, nullptr);
+    if (m_autoProbeTimer) {
+        m_autoProbeTimer->stop();
+    }
+    if (m_autoAttemptTimer) {
+        m_autoAttemptTimer->stop();
+    }
+}
+
+// ---
+
+void ConnectionController::closeConnection()
+{
+    m_manualConnectTimer->stop();
+    if (m_autoPhase != AutoPhase::None) {
+        // cancelled while searching / trying candidates
+        cancelAutoSelection();
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        emit connectionStateChanged();
+    }
+    resetIpPool(); // user cancel kills any pending multi-IP retry as well
+    ++m_connectAttempt; // ...and a pool refresh still waiting for the gateway
+    m_poolRefreshInFlight = false;
+    m_poolRefreshRow = -1;
+    emit disconnectFromVpn();
+}
+
+ErrorCode ConnectionController::getLastConnectionError()
+{
+    return m_vpnConnection->lastError();
+}
+
+void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
+{
+    if (state == Vpn::ConnectionState::Connected) {
+        // attempt resolved - a teardown after this point is a real failure
+        m_autoAdvancing = false;
+        m_connectionSwitching = false;
+    }
+    // Connecting/Preparing clear neither flag: VpnConnection reports Connecting
+    // BEFORE it stops the previous tunnel, so that tunnel's teardown
+    // Disconnected is still to come and must not be read as "this attempt
+    // failed". For auto selection that race skipped every candidate; for the
+    // address pool it ended the pool on the last address, so that address got
+    // no traffic check and a dead tunnel stayed "Connected". A new attempt that
+    // fails silently is still caught by the manual-connect watchdog.
+
+    if (m_autoPhase == AutoPhase::Connecting) {
+        if (state == Vpn::ConnectionState::Connected) {
+            m_autoAttemptTimer->stop();
+            // "Connected" alone proves nothing for xray/hysteria: a broken entry
+            // can still bring a tunnel up, so require real bytes before declaring
+            // success. WG/AWG on Apple NE skip this - their Connected is already
+            // handshake-gated (see the Connected case below).
+            if (m_autoCandidatePos < m_autoCandidates.size()) {
+                m_autoAwaitingTraffic = true;
+                m_autoAttemptTimer->start(kAutoTrafficTimeoutMs);
+            } else {
+                finalizeAutoSuccess();
+            }
+        } else if (state == Vpn::ConnectionState::Error || state == Vpn::ConnectionState::Unknown) {
+            m_autoAttemptTimer->stop();
+            if (retryWithNextIp()) {
+                // same candidate, next entry address
+                m_state = state;
+                return;
+            }
+            m_autoCandidatePos++;
+            if (m_autoCandidatePos < m_autoCandidates.size()) {
+                // candidate failed quietly - try the next one, no error UI yet
+                m_state = state;
+                connectCurrentAutoCandidate();
+                return;
+            }
+            m_autoPhase = AutoPhase::None; // out of candidates: report the error below
+        } else if (state == Vpn::ConnectionState::Reconnecting) {
+            // The Android service recycles the tunnel by itself on network events
+            // (NetworkState callback -> "Reconnect VPN"), and the WG status job
+            // waits for a handshake with no timeout - when the network blocks it,
+            // the tunnel wedges in RECONNECTING forever and no more events come.
+            // Treat it as a failed attempt instead of spinning the UI forever.
+            qDebug() << "[AUTO] candidate wedged in reconnecting, moving on";
+            m_autoAttemptTimer->stop();
+            m_autoAwaitingTraffic = false;
+            if (retryWithNextIp()) {
+                m_state = state;
+                return;
+            }
+            m_autoCandidatePos++;
+            if (m_autoCandidatePos < m_autoCandidates.size()) {
+                m_state = state;
+                connectCurrentAutoCandidate();
+                return;
+            }
+            // the wedged tunnel is still up - tear it down on the way out
+            m_autoPhase = AutoPhase::None;
+            m_autoAdvancing = false;
+            m_autoCandidates.clear();
+            m_isConnectionInProgress = false;
+            m_connectionStateText = tr("Connect");
+            m_currentEndpoint.clear();
+            emit disconnectFromVpn();
+            emit connectionErrorOccurred(m_vpnConnection->lastError());
+            emit connectionStateChanged();
+            return;
+        } else if (state == Vpn::ConnectionState::Disconnected && !m_autoAdvancing) {
+            // iOS tears a broken tunnel down as Connecting -> Disconnecting -> Disconnected
+            // (PacketTunnelProviderError) without ever reporting Vpn::Error - treat it as a
+            // failed attempt and advance to the next candidate. A real user cancel goes
+            // through closeConnection(), which resets the phase before Disconnected arrives.
+            m_autoAttemptTimer->stop();
+            if (retryWithNextIp()) {
+                m_state = state;
+                return;
+            }
+            m_autoCandidatePos++;
+            if (m_autoCandidatePos < m_autoCandidates.size()) {
+                m_state = state;
+                connectCurrentAutoCandidate();
+                return;
+            }
+            m_autoPhase = AutoPhase::None;
+            m_autoAdvancing = false;
+            m_autoCandidates.clear();
+            m_isConnectionInProgress = false;
+            m_connectionStateText = tr("Connect");
+            m_currentEndpoint.clear();
+            emit connectionErrorOccurred(m_vpnConnection->lastError());
+            emit connectionStateChanged();
+            return;
+        }
+    } else if (m_ipPoolRow >= 0) {
+        // manual connect to a multi-IP server
+        if (state == Vpn::ConnectionState::Connected) {
+            // WG/AWG "Connected" is handshake-gated on every platform (see the
+            // Connected case below; the desktop daemon emits it from
+            // Daemon::checkHandshake) - the entry address already proved
+            // itself, so waiting for idle-tunnel bytes on top would false-negative
+            const DockerContainer container = qvariant_cast<DockerContainer>(
+                    m_serversModel->data(m_ipPoolRow, ServersModel::Roles::DefaultContainerRole));
+            if (container == DockerContainer::Awg || container == DockerContainer::Awg2
+                || container == DockerContainer::WireGuard) {
+                qDebug() << "[IPPOOL] handshake-confirmed connect on row" << m_ipPoolRow;
+                markEndpointWorking(m_currentEndpoint);
+                resetIpPool(); // success - the next connect starts from a fresh random pool
+                // fall through to the common Connected handling in the switch below
+            } else {
+                // a blocked entry address can still bring the tunnel up - require real bytes
+                m_ipAwaitingTraffic = true;
+                m_ipTrafficTimer->start(kIpTrafficTimeoutMs);
+            }
+        } else if (state == Vpn::ConnectionState::Reconnecting) {
+            // same wedge as in auto selection: the Android service's self-reconnect
+            // can park in RECONNECTING forever - cycle the entry address or fail loudly
+            m_ipAwaitingTraffic = false;
+            m_ipTrafficTimer->stop();
+            if (retryWithNextIp()) {
+                m_state = state;
+                return;
+            }
+            resetIpPool();
+            m_manualConnectTimer->stop();
+            m_isConnectionInProgress = false;
+            m_connectionStateText = tr("Connect");
+            emit disconnectFromVpn();
+            emit connectionErrorOccurred(ErrorCode::ServerConnectionTimeoutError);
+            emit connectionStateChanged();
+            return;
+        } else if (state == Vpn::ConnectionState::Error || state == Vpn::ConnectionState::Unknown
+                   || (state == Vpn::ConnectionState::Disconnected && !m_connectionSwitching)) {
+            if (retryWithNextIp()) {
+                m_state = state;
+                return;
+            }
+            resetIpPool(); // pool exhausted - fall through to the normal error/UI path
+        }
+    }
+
+    m_state = state;
+
+    m_isConnected = false;
+    m_connectionStateText = tr("Connecting...");
+    switch (state) {
+    case Vpn::ConnectionState::Connected: {
+        m_isConnectionInProgress = false;
+        m_isConnected = true;
+        m_connectionStateText = tr("Connected");
+        m_manualConnectTimer->stop(); // the traffic watchdogs take it from here
+        if (m_autoPhase == AutoPhase::Connecting && m_autoAwaitingTraffic
+            && m_autoCandidatePos < m_autoCandidates.size()) {
+            // A WG/AWG "Connected" is emitted only AFTER a verified handshake
+            // everywhere (IosController gates it on Apple NE; on Android
+            // Wireguard.kt's status job flips to CONNECTED only when
+            // lastHandshake > 0; the desktop daemon in Daemon::checkHandshake)
+            // - that alone proves the path is bidirectional.
+            // Waiting for user bytes on top false-negatives an idle-but-healthy
+            // tunnel (keepalive is 25s, the traffic window is 8s) and burned the
+            // whole window per candidate.
+            const int row = m_autoCandidates.at(m_autoCandidatePos).row;
+            const DockerContainer container = qvariant_cast<DockerContainer>(
+                    m_serversModel->data(row, ServersModel::Roles::DefaultContainerRole));
+            if (container == DockerContainer::Awg || container == DockerContainer::Awg2
+                || container == DockerContainer::WireGuard) {
+                qDebug() << "[AUTO] handshake-confirmed connect on row" << row << "- accepting without waiting for traffic";
+                markEndpointWorking(m_currentEndpoint);
+                finalizeAutoSuccess();
+            }
+        }
+        break;
+    }
+    case Vpn::ConnectionState::Connecting: {
+        m_isConnectionInProgress = true;
+        break;
+    }
+    case Vpn::ConnectionState::Reconnecting: {
+        m_isConnectionInProgress = true;
+        m_connectionStateText = tr("Reconnecting...");
+        // a wedged self-reconnect emits no further events - keep a watchdog
+        // running so a manual connect fails loudly instead of spinning forever
+        // (auto selection handles Reconnecting in the auto branch above)
+        if (m_autoPhase == AutoPhase::None && m_ipPoolRow < 0 && !m_manualConnectTimer->isActive()) {
+            m_manualConnectTimer->start(kManualConnectTimeoutMs);
+        }
+        break;
+    }
+    case Vpn::ConnectionState::Disconnected: {
+        m_isConnectionInProgress = m_poolRefreshInFlight;
+        m_connectionStateText = m_poolRefreshInFlight ? tr("Connecting...") : tr("Connect");
+        m_currentEndpoint.clear();
+        if (!m_connectionSwitching) {
+            m_manualConnectTimer->stop();
+        }
+        if (m_poolRefreshRow >= 0 && m_apiConfigsController) {
+            // the dead tunnel is down, so the request now reaches the gateway
+            const int row = m_poolRefreshRow;
+            const QByteArray before = m_poolRefreshConnectionBefore;
+            const quint64 attempt = m_connectAttempt;
+            m_poolRefreshRow = -1;
+            m_apiConfigsController->updateServiceFromGatewayAsync(row, QString(), QString(), false, true,
+                                                                  [this, row, before, attempt](bool ok) {
+                if (attempt == m_connectAttempt) {
+                    onPoolRefreshed(row, before, ok);
+                }
+            });
+        }
+        break;
+    }
+    case Vpn::ConnectionState::Disconnecting: {
+        m_isConnectionInProgress = true;
+        m_connectionStateText = tr("Disconnecting...");
+        break;
+    }
+    case Vpn::ConnectionState::Preparing: {
+        m_isConnectionInProgress = true;
+        m_connectionStateText = tr("Preparing...");
+        break;
+    }
+    case Vpn::ConnectionState::Error: {
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        m_manualConnectTimer->stop();
+        emit connectionErrorOccurred(getLastConnectionError());
+        break;
+    }
+    case Vpn::ConnectionState::Unknown: {
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        m_manualConnectTimer->stop();
+        emit connectionErrorOccurred(getLastConnectionError());
+        break;
+    }
+    }
+    if (m_isConnected) {
+        startLivePing();
+    } else {
+        stopLivePing();
+    }
+    emit connectionStateChanged();
+}
+
+void ConnectionController::onTranslationsUpdated()
+{
+    // get translated text of current state
+    onConnectionStateChanged(getCurrentConnectionState());
+}
+
+Vpn::ConnectionState ConnectionController::getCurrentConnectionState()
+{
+    return m_state;
+}
+
+QString ConnectionController::connectionStateText() const
+{
+    return m_connectionStateText;
+}
+
+void ConnectionController::toggleConnection()
+{
+    if (m_state == Vpn::ConnectionState::Preparing) {
+        emit preparingConfig();
+        return;
+    }
+
+    if (isConnectionInProgress()) {
+        closeConnection();
+    } else if (isConnected()) {
+        closeConnection();
+    } else {
+        emit prepareConfig();
+    }
+}
+
+bool ConnectionController::isConnectionInProgress() const
+{
+    return m_isConnectionInProgress || m_autoPhase != AutoPhase::None;
+}
+
+bool ConnectionController::isConnected() const
+{
+    return m_isConnected;
+}

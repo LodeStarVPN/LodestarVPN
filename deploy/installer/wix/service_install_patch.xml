@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CPackWiXPatch>
+    <CPackWiXFragment Id="CM_CP_lodestar_service.exe">
+        <ServiceInstall
+                Id="LodestarServiceInstall"
+                Name="lodestar-service"
+                DisplayName="LodestarVPN Service"
+                Description="Service for LodestarVPN"
+                Start="auto"
+                Type="ownProcess"
+                ErrorControl="normal"
+                Vital="yes">
+            <ServiceDependency Id="BFE" />
+            <ServiceDependency Id="nsi" />
+        </ServiceInstall>
+        <!-- auto-restart on crash: without this a single service crash left the
+             client permanently dead ("Background service is not running") until
+             a manual reboot/reinstall -->
+        <util:ServiceConfig
+                ServiceName="lodestar-service"
+                FirstFailureActionType="restart"
+                SecondFailureActionType="restart"
+                ThirdFailureActionType="restart"
+                RestartServiceDelayInSeconds="5"
+                ResetPeriodInDays="1" />
+        <ServiceControl
+                Id="LodestarServiceControl"
+                Name="lodestar-service"
+                Start="install"
+                Stop="both"
+                Remove="uninstall"
+                Wait="yes" />
+        <!-- No cleanup of other clients' services here: Dopamine by FRKN and
+             AmneziaVPN may be installed side by side and must keep working. -->
+    </CPackWiXFragment>
+</CPackWiXPatch>

@@ -1,0 +1,6 @@
+"x.com",
+    "twitter.com",
+    "pbs.twimg.com",
+    "abs.twimg.com",
+    "video.twimg.com",
+    "t.co",

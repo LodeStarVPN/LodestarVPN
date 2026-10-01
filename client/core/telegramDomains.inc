@@ -1,0 +1,5 @@
+"telegram.org",
+    "t.me",
+    "telegra.ph",
+    "telesco.pe",
+    "cdn4.telegram.org",
