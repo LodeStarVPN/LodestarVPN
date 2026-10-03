@@ -1444,6 +1444,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Close application</source>
         <translation>Закрити застосунок</translation>
     </message>
+    <message>
+        <source>Subscription</source>
+        <translation>Підписка</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsAbout</name>
@@ -1585,8 +1589,8 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="85"/>
-        <source>This will unlink the device from your subscription. You can reconnect it anytime by pressing&#xa0;&quot;Reload API config&quot; in subscription settings on device.</source>
-        <translation>Це відв&apos;яже пристрій від вашої підписки. Ви можете підключити його знову будь-коли, натиснувши «Оновити налаштування підписки» в налаштуваннях підписки на пристрої.</translation>
+        <source>The device will be unlinked from your subscription. To use the subscription on it again, enter the subscription key there.</source>
+        <translation>Пристрій буде відв’язано від підписки. Щоб знову користуватися на ньому підпискою, введіть там ключ підписки.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="86"/>
@@ -1946,8 +1950,8 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiServerInfo.qml" line="353"/>
-        <source>This will unlink the device from your subscription. You can reconnect it anytime by pressing&#xa0;&quot;Reload API config&quot; in subscription settings on device.</source>
-        <translation>Це відв&apos;яже пристрій від вашої підписки. Ви можете підключити його знову будь-коли, натиснувши «Оновити налаштування підписки» в налаштуваннях підписки на пристрої.</translation>
+        <source>The device will be unlinked from your subscription. To use the subscription on it again, enter the subscription key there.</source>
+        <translation>Пристрій буде відв’язано від підписки. Щоб знову користуватися на ньому підпискою, введіть там ключ підписки.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiServerInfo.qml" line="359"/>
@@ -4429,8 +4433,8 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../core/errorstrings.cpp" line="83"/>
-        <source>The server did not respond in time. Try another server, or open the server card and tap Reload API config.</source>
-        <translation>Сервер не відповів вчасно. Спробуйте інший сервер або відкрийте картку сервера й натисніть «Оновити налаштування підписки».</translation>
+        <source>The server did not respond in time. Try another server or connect again a little later.</source>
+        <translation>Сервер не відповів вчасно. Виберіть інший сервер або підключіться трохи пізніше.</translation>
     </message>
     <message>
         <location filename="../core/errorstrings.cpp" line="11"/>
@@ -4714,8 +4718,8 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../core/errorstrings.cpp" line="77"/>
-        <source>No VPN configuration on this server. Open the server card and tap Reload API config.</source>
-        <translation>На цьому сервері немає VPN-конфігурації. Відкрийте картку сервера й натисніть «Оновити налаштування підписки».</translation>
+        <source>The server&apos;s settings have not been downloaded yet. Check the internet connection and connect again.</source>
+        <translation>Налаштування сервера ще не завантажено. Перевірте підключення до інтернету й підключіться знову.</translation>
     </message>
     <message>
         <location filename="../core/errorstrings.cpp" line="89"/>

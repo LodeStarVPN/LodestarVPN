@@ -75,7 +75,9 @@ signals:
 private:
     Vpn::ConnectionState getCurrentConnectionState();
 
+    // asks the gateway first (see checkDevice), then dialServerIndex
     void connectToServerIndex(int serverIndex);
+    void dialServerIndex(int serverIndex);
     void connectToServerIndexWithIp(int serverIndex, const QString &ip);
 
     // --- multi-IP failover (node_ips) ---
@@ -114,9 +116,16 @@ private:
     // disconnects); a failed request changes nothing, so
     // an unreachable gateway never takes the VPN away. This is what keeps an
     // unlinked device off VLESS, whose servers cannot tell devices apart.
+    // Before every connect the check also tells the gateway the country and
+    // protocol: only the device's AWG peer of that country stays on the
+    // servers, so a config of another country handed to someone else stops
+    // working. The connect waits for the answer at most kPreCheckTimeoutMs.
     void checkDevice();
+    void refuseDevice(int row, ErrorCode errorCode);
     QTimer *m_deviceCheckTimer = nullptr;
     static constexpr int kDeviceCheckIntervalMs = 15 * 60 * 1000;
+    static constexpr int kPreCheckTimeoutMs = 4000;
+    bool m_preCheckPending = false;
     int m_tunnelRow = -1; // the entry the current tunnel was started for
     static QByteArray connectionFingerprint(const QJsonObject &serverConfig);
     quint64 m_connectAttempt = 0;

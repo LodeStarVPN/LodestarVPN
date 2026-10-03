@@ -76,14 +76,12 @@ QString errorString(ErrorCode code) {
     case (ErrorCode::ApiPurchaseError): errorMessage = QObject::tr("Unable to process purchase"); break;
     case (ErrorCode::ApiLocalConfigMissingError):
         errorMessage = QObject::tr(
-                "No VPN configuration on this server. Open the server card and tap Reload API config.");
+                "The server's settings have not been downloaded yet. Check the internet connection and connect again.");
         break;
 
     // connection errors
     case (ErrorCode::ServerConnectionTimeoutError):
-        errorMessage = QObject::tr(
-                "The server did not respond in time. Try another server, or open the server card and tap Reload API "
-                "config.");
+        errorMessage = QObject::tr("The server did not respond in time. Try another server or connect again a little later.");
         break;
 
     // QFile errors

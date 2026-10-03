@@ -88,7 +88,7 @@ PageType {
                     }
 
                     var headerText = qsTr("Are you sure you want to unlink this device?")
-                    var descriptionText = qsTr("This will unlink the device from your subscription. You can reconnect it anytime by pressing \"Reload API config\" in subscription settings on device.")
+                    var descriptionText = qsTr("The device will be unlinked from your subscription. To use the subscription on it again, enter the subscription key there.")
                     var yesButtonText = qsTr("Continue")
                     var noButtonText = qsTr("Cancel")
 

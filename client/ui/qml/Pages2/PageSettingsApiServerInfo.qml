@@ -297,113 +297,12 @@ PageType {
                 visible: footer.isVisibleForAmneziaFree
             }
 
-            BasicButtonType {
-                id: resetButton
-                Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 24
-                Layout.bottomMargin: 16
-                implicitHeight: 32
-
-                defaultColor: "transparent"
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                // not destructive: neutral, unlike unlink / remove below
-                textColor: DopamineStyle.color.paleGray
-
-                text: qsTr("Reload API config")
-
-                clickedFunc: function() {
-                    var headerText = qsTr("Reload API config?")
-                    var yesButtonText = qsTr("Continue")
-                    var noButtonText = qsTr("Cancel")
-
-                    var yesButtonFunction = function() {
-                        if (ServersModel.isDefaultServerCurrentlyProcessed() && ConnectionController.isConnected) {
-                            PageController.showNotificationMessage(qsTr("Cannot reload API config during active connection"))
-                        } else {
-                            PageController.showBusyIndicator(true)
-                            ApiConfigsController.updateServiceFromGateway(ServersModel.processedIndex, "", "", true)
-                            PageController.showBusyIndicator(false)
-                        }
-                    }
-                    var noButtonFunction = function() {
-                    }
-
-                    showQuestionDrawer(headerText, "", yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
-                }
-            }
-
-            BasicButtonType {
-                id: revokeButton
-                Layout.alignment: Qt.AlignHCenter
-                Layout.bottomMargin: 16
-                implicitHeight: 32
-
-                visible: footer.isVisibleForAmneziaFree
-
-                defaultColor: "transparent"
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                textColor: DopamineStyle.color.vibrantRed
-
-                text: qsTr("Unlink this device")
-
-                clickedFunc: function() {
-                    var headerText = qsTr("Are you sure you want to unlink this device?")
-                    var descriptionText = qsTr("This will unlink the device from your subscription. You can reconnect it anytime by pressing \"Reload API config\" in subscription settings on device.")
-                    var yesButtonText = qsTr("Continue")
-                    var noButtonText = qsTr("Cancel")
-
-                    var yesButtonFunction = function() {
-                        if (ServersModel.isDefaultServerCurrentlyProcessed() && ConnectionController.isConnected) {
-                            PageController.showNotificationMessage(qsTr("Cannot unlink device during active connection"))
-                        } else {
-                            PageController.showBusyIndicator(true)
-                            if (ApiConfigsController.deactivateDevice(false)) {
-                                ApiSettingsController.getAccountInfo(true, true)
-                            }
-                            PageController.showBusyIndicator(false)
-                        }
-                    }
-                    var noButtonFunction = function() {
-                    }
-
-                    showQuestionDrawer(headerText, descriptionText, yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
-                }
-            }
-
-            BasicButtonType {
-                id: removeButton
-                Layout.alignment: Qt.AlignHCenter
-                Layout.bottomMargin: 16
-                implicitHeight: 32
-
-                defaultColor: "transparent"
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                textColor: DopamineStyle.color.vibrantRed
-
-                text: qsTr("Remove from application")
-
-                clickedFunc: function() {
-                    var headerText = qsTr("Remove from application?")
-                    var yesButtonText = qsTr("Continue")
-                    var noButtonText = qsTr("Cancel")
-
-                    var yesButtonFunction = function() {
-                        if (ServersModel.isDefaultServerCurrentlyProcessed() && ConnectionController.isConnected) {
-                            PageController.showNotificationMessage(qsTr("Cannot remove server during active connection"))
-                        } else {
-                            PageController.showBusyIndicator(true)
-                            InstallController.removeProcessedServer()
-                            PageController.showBusyIndicator(false)
-                        }
-                    }
-                    var noButtonFunction = function() {
-                    }
-
-                    showQuestionDrawer(headerText, "", yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
-                }
+            // no buttons here: configs refresh by themselves (app start, every
+            // few hours, after a failed connect) and devices are unlinked in
+            // Active Devices (a computer handed on: uninstall the app, unlink
+            // it there from another device; the app then drops the subscription)
+            Item {
+                Layout.preferredHeight: 24
             }
         }
     }

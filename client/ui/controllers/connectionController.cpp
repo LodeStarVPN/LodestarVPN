@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS) || defined(MACOS_NE)
     #include <QGuiApplication>
@@ -483,6 +484,44 @@ void ConnectionController::openConnection()
 
 void ConnectionController::connectToServerIndex(int serverIndex)
 {
+    if (!m_apiConfigsController) {
+        dialServerIndex(serverIndex);
+        return;
+    }
+    // the gateway learns what this device connects to and may refuse it; an
+    // unreachable or slow gateway holds the connect up for kPreCheckTimeoutMs
+    // at most (a later refusal comes with the checks while connected)
+    const quint64 attempt = m_connectAttempt;
+    m_preCheckPending = true;
+    m_isConnectionInProgress = true;
+    m_connectionStateText = tr("Connecting...");
+    emit connectionStateChanged();
+    auto answered = std::make_shared<bool>(false);
+    auto proceed = [this, attempt, serverIndex, answered](ErrorCode errorCode) {
+        if (*answered || attempt != m_connectAttempt) {
+            return;
+        }
+        *answered = true;
+        m_preCheckPending = false;
+        if (ApiConfigsController::isDeviceRefusal(errorCode)) {
+            qWarning() << "[DEVICE] the subscription refuses this device:" << errorCode;
+            if (m_autoPhase != AutoPhase::None) {
+                cancelAutoSelection();
+            }
+            m_isConnectionInProgress = false;
+            m_connectionStateText = tr("Connect");
+            emit connectionStateChanged();
+            refuseDevice(serverIndex, errorCode);
+            return;
+        }
+        dialServerIndex(serverIndex);
+    };
+    QTimer::singleShot(kPreCheckTimeoutMs, this, [proceed]() { proceed(ErrorCode::NoError); });
+    m_apiConfigsController->checkDeviceAsync(serverIndex, proceed);
+}
+
+void ConnectionController::dialServerIndex(int serverIndex)
+{
     // multi-IP nodes: a fresh address order per connect, random but weighted
     // by each server's spare capacity, so busy servers get fewer new clients
     // and no server gets them all; retries walk the rest
@@ -700,11 +739,16 @@ void ConnectionController::checkDevice()
         }
         qWarning() << "[DEVICE] the subscription refuses this device:" << errorCode << "- disconnecting";
         closeConnection();
-        if (errorCode != ErrorCode::ApiSubscriptionExpiredError) {
-            m_apiConfigsController->removeSubscriptionServers(row, errorCode);
-        }
-        emit connectionErrorOccurred(errorCode);
+        refuseDevice(row, errorCode);
     });
+}
+
+void ConnectionController::refuseDevice(int row, ErrorCode errorCode)
+{
+    if (errorCode != ErrorCode::ApiSubscriptionExpiredError) {
+        m_apiConfigsController->removeSubscriptionServers(row, errorCode);
+    }
+    emit connectionErrorOccurred(errorCode);
 }
 
 bool ConnectionController::retryWithNextIp()
@@ -1147,9 +1191,15 @@ void ConnectionController::closeConnection()
         emit connectionStateChanged();
     }
     resetIpPool(); // user cancel kills any pending multi-IP retry as well
-    ++m_connectAttempt; // ...and a pool refresh still waiting for the gateway
+    ++m_connectAttempt; // ...and a pool refresh or a check still waiting for the gateway
     m_poolRefreshInFlight = false;
     m_poolRefreshRow = -1;
+    if (m_preCheckPending) {
+        m_preCheckPending = false;
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        emit connectionStateChanged();
+    }
     emit disconnectFromVpn();
 }
 

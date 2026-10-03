@@ -4,7 +4,7 @@ set(PROJECT Dopamine)
 # LodestarVPN's own version (the 4.8.x line was upstream Dopamine's): one
 # number everywhere - app, exe resources, MSI. Bump it for every build that
 # goes to people, or the MSI cannot upgrade an installed one.
-set(DOPAMINE_VERSION 1.0.9)
+set(DOPAMINE_VERSION 1.0.10)
 
 project(${PROJECT} VERSION ${DOPAMINE_VERSION}
         DESCRIPTION "LodestarVPN"

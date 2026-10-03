@@ -110,12 +110,45 @@ PageType {
     }
 
     property list<QtObject> settingsEntries: [
+        subscription,
         servers,
         connection,
         application,
         about,
         devConsole
     ]
+
+    QtObject {
+        id: subscription
+
+        // our subscription: its status and end date, devices, support - the
+        // page the info button of the home screen's card opens too
+        property string title: qsTr("Subscription")
+        readonly property string leftImagePath: "qrc:/images/controls/tag.svg"
+        property bool isVisible: ServersModel.hasServersFromGatewayApi
+        readonly property var clickedHandler: function() {
+            // the selected server if it is the subscription's, else its first one
+            var rows = [ServersModel.defaultIndex]
+            for (var i = 0; i < ServersModel.getServersCount(); ++i) {
+                rows.push(i)
+            }
+            for (var j = 0; j < rows.length; ++j) {
+                if (rows[j] < 0) {
+                    continue
+                }
+                ServersModel.processedIndex = rows[j]
+                if (ServersModel.getProcessedServerData("isServerFromGatewayApi")) {
+                    PageController.showBusyIndicator(true)
+                    var result = ApiSettingsController.getAccountInfo(false)
+                    PageController.showBusyIndicator(false)
+                    if (result) {
+                        PageController.goToPage(PageEnum.PageSettingsApiServerInfo)
+                    }
+                    return
+                }
+            }
+        }
+    }
 
     QtObject {
         id: servers

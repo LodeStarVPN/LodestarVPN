@@ -1425,8 +1425,9 @@ void ApiConfigsController::prepareGatewayConfigUpdate(const int serverIndex, con
     if (isConnectEvent) {
         apiPayload.insert(configKey::isConnectEvent, true);
     }
-    // "Reload API config" pressed by the user adds the subscription again;
-    // background refreshes don't bring back an unlinked device
+    // an explicit, non-silent reload adds the subscription again (the app has
+    // no such button now: an unlinked device enters the key); background
+    // refreshes don't bring back an unlinked device
     if (reloadServiceConfig && !silent) {
         apiPayload.insert(QStringLiteral("explicit_add"), true);
     }
@@ -2053,14 +2054,16 @@ void ApiConfigsController::checkDeviceAsync(const int serverIndex, const std::fu
         authData[apiDefs::key::apiKey] = authData.value(apiDefs::key::id);
     }
 
+    // what the device connects to: the gateway keeps only its AWG peer of
+    // this country on the servers (a VLESS connection parks them all)
     GatewayRequestData gatewayRequestData { QSysInfo::productType(),
                                             QString(APP_VERSION),
                                             m_settings->getAppLanguage().name().split("_").first(),
                                             m_settings->getInstallationUuid(true),
                                             apiConfig.value(configKey::userCountryCode).toString(),
-                                            QString(),
+                                            apiConfig.value(configKey::serverCountryCode).toString(),
                                             apiConfig.value(configKey::serviceType).toString(),
-                                            QString(),
+                                            apiConfig.value(configKey::serviceProtocol).toString(),
                                             authData };
     const bool isTestPurchase = apiConfig.value(apiDefs::key::isTestPurchase).toBool(false);
     executeRequestAsync(QString("%1v1/device_check"), gatewayRequestData.toJsonObject(), isTestPurchase,
