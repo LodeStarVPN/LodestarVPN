@@ -139,10 +139,13 @@ void DopamineApplication::init()
             }
         }
     } else {
-        // Handle URL passed as positional argument (e.g. lodestar://... from OS)
+        // Handle URL passed as positional argument (lodestar://... from the OS).
+        // Any web page can open such a link, so only our own kinds are taken:
+        // a subscription or a shared connection, resolved by our gateway - never
+        // a config or a web address to import a server from
         const QStringList posArgs = m_parser.positionalArguments();
         for (const QString &arg : posArgs) {
-            if (arg.startsWith("lodestar://") || arg.startsWith("https://") || arg.startsWith("http://")) {
+            if (arg.startsWith("lodestar://sub/") || arg.startsWith("lodestar://conn/")) {
                 if (m_coreController) {
                     m_coreController->importConfigFromData(arg);
                 }
@@ -285,6 +288,10 @@ void DopamineApplication::startLocalServer() {
             QByteArray data = clientConnection->readAll();
             clientConnection->deleteLater();
             QString importData = QString::fromUtf8(data).trimmed();
+            // what a second launch forwards: our own links only (see main.cpp)
+            if (!importData.startsWith("lodestar://sub/") && !importData.startsWith("lodestar://conn/")) {
+                importData.clear();
+            }
             if (!importData.isEmpty() && m_coreController) {
                 emit m_coreController->pageController()->raiseMainWindow();
                 m_coreController->importConfigFromData(importData);

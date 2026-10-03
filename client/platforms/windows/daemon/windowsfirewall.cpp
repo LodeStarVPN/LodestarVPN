@@ -291,6 +291,19 @@ bool WindowsFirewall::enablePeerTraffic(const InterfaceConfig& config) {
                       "Block Internet", config.m_serverPublicKey)) {
     return false;
   }
+  // A tunnel that carries IPv4 only (our AmneziaWG configs: the servers have
+  // no IPv6) would leave IPv6 to go around it, with the device's own address,
+  // wherever the network has IPv6: block it while connected, so apps fall
+  // back to IPv4 at once, which the tunnel carries
+  bool tunnelCarriesIpv6 = false;
+  for (const IPAddress& range : config.m_allowedIPAddressRanges) {
+    tunnelCarriesIpv6 |= range.type() == QAbstractSocket::IPv6Protocol;
+  }
+  if (!tunnelCarriesIpv6 &&
+      !blockTrafficTo(IPAddress("::/0"), LOW_WEIGHT, "Block IPv6 outside the tunnel",
+                      config.m_serverPublicKey)) {
+    return false;
+  }
   if (!config.m_primaryDnsServer.isEmpty()) {
     if (!allowTrafficTo(QHostAddress(config.m_primaryDnsServer), 53, HIGH_WEIGHT,
                         "Allow DNS-Server", config.m_serverPublicKey)) {

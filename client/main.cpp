@@ -53,11 +53,12 @@ int main(int argc, char *argv[])
     OsSignalHandler::setup();
 
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS) && !defined(MACOS_NE)
-    // Check for URL or import data in arguments (e.g. lodestar://... passed by OS)
+    // Check for a link in the arguments (lodestar://... passed by the OS): only
+    // a subscription or a shared connection, as any web page can open one
     QString dataToForward;
     for (int i = 1; i < argc; ++i) {
         QString arg = QString::fromUtf8(argv[i]);
-        if (arg.startsWith("lodestar://") || arg.startsWith("https://") || arg.startsWith("http://")) {
+        if (arg.startsWith("lodestar://sub/") || arg.startsWith("lodestar://conn/")) {
             dataToForward = arg;
             break;
         }
