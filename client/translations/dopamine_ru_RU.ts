@@ -5499,6 +5499,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <source>One device a day can be unlinked from a subscription. Try again later.</source>
         <translation>От подписки можно отвязывать одно устройство в сутки. Попробуйте позже.</translation>
     </message>
+    <message>
+        <source>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</source>
+        <translation>VPN не смог настроить сеть на этом компьютере. Подключитесь ещё раз; если не поможет, перезагрузите компьютер и напишите в поддержку, указав код ошибки.</translation>
+    </message>
 </context>
 <context>
     <name>RenameServerDrawer</name>

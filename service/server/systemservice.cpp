@@ -1,6 +1,8 @@
 #include "version.h"
 #include "localserver.h"
+#include "router.h"
 #include "systemservice.h"
+#include "xray.h"
 
 
 #ifdef Q_OS_WIN
@@ -45,5 +47,11 @@ void SystemService::start()
 
 void SystemService::stop()
 {
+    // stopped under a VLESS session (an upgrade, say): the app never gets to
+    // tear it down, and IPv6 would stay blocked until a reboot
+    if (Xray::getInstance().isRunning()) {
+        Router::StartRoutingIpv6();
+        Xray::getInstance().stopXray();
+    }
     delete m_localServer;
 }

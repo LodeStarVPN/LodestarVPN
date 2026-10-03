@@ -4,10 +4,36 @@
 #include <tlhelp32.h>
 #include <tchar.h>
 
+#include <QHostAddress>
 #include <QProcess>
 #include <QtConcurrent>
 
 #include <core/networkUtilities.h>
+
+namespace {
+// whether `subnet` ("2000::/4") is routed to interface `ifIndex` right now
+bool hasIpv6Route(NET_IFINDEX ifIndex, const QString &subnet)
+{
+    const QPair<QHostAddress, int> prefix = QHostAddress::parseSubnet(subnet);
+    if (prefix.first.protocol() != QAbstractSocket::IPv6Protocol) {
+        return false;
+    }
+    const Q_IPV6ADDR want = prefix.first.toIPv6Address();
+
+    PMIB_IPFORWARD_TABLE2 table = nullptr;
+    if (GetIpForwardTable2(AF_INET6, &table) != NO_ERROR) {
+        return false;
+    }
+    bool found = false;
+    for (ULONG i = 0; i < table->NumEntries && !found; ++i) {
+        const MIB_IPFORWARD_ROW2 &row = table->Table[i];
+        found = row.InterfaceIndex == ifIndex && row.DestinationPrefix.PrefixLength == prefix.second
+                && memcmp(row.DestinationPrefix.Prefix.Ipv6.sin6_addr.u.Byte, want.c, sizeof(want.c)) == 0;
+    }
+    FreeMibTable(table);
+    return found;
+}
+}
 
 LONG (NTAPI * NtSuspendProcess)(HANDLE ProcessHandle) = NULL;
 LONG (NTAPI * NtResumeProcess)(HANDLE ProcessHandle)  = NULL;
@@ -278,14 +304,9 @@ int RouterWin::routeDeleteList(const QString &gw, const QStringList &ips)
 
 bool RouterWin::flushDns()
 {
-    QProcess p;
-    p.setProcessChannelMode(QProcess::MergedChannels);
-    QString command = QString("ipconfig /flushdns");
-
-    p.start(command);
-    p.waitForFinished();
-    return true;
-    //qDebug().noquote() << "OUTPUT ipconfig /flushdns: " + p.readAll();
+    // program and arguments apart: Qt 6 takes a single string for the program
+    // name, so "ipconfig /flushdns" never ran
+    return QProcess::execute("ipconfig", { "/flushdns" }) == 0;
 }
 
 void RouterWin::resetIpStack()
@@ -366,8 +387,12 @@ bool RouterWin::createTun(const QString &dev, const QString &subnet)
     row.DadState = IpDadStatePreferred;
 
     res = CreateUnicastIpAddressEntry(&row);
-    if (res != NO_ERROR && res != ERROR_OBJECT_ALREADY_EXISTS) {
-        qDebug() << "Failed to create IP address:" << res;
+    if (res == ERROR_OBJECT_ALREADY_EXISTS) {
+        // already on the adapter: no change is coming to wait for
+        return true;
+    }
+    if (res != NO_ERROR) {
+        qCritical() << "Failed to create IP address:" << res;
         return false;
     }
 
@@ -532,39 +557,55 @@ QNetworkInterface RouterWin::findLoopbackIface()
     return {};
 }
 
+// IPv6 outside the tunnel goes nowhere: its global and unique-local ranges are
+// routed to the loopback while the Xray tunnel is up. A route may already be
+// there - left by a session that never cleaned up (the service stopped while
+// connected, e.g. by an upgrade) or by another client of the AmneziaVPN family
+// - and netsh then fails on it, so what counts is that each route is in place.
 bool RouterWin::StopRoutingIpv6()
 {
     qDebug() << "RouterWin::StopRoutingIpv6";
 
-    if (auto loopback = findLoopbackIface(); loopback.isValid()) {
-        QFuture<bool> res = QtConcurrent::mappedReduced(kIpv6Subnets, [loopback](const QString &subnet) -> bool {
-            int res = QProcess::execute("netsh", { "interface", "ipv6", "add", "route", subnet, QString("interface=%1").arg(loopback.index()), "metric=0", "store=active" });
-            return res == 0;
-        },
-        [](bool &result, bool success) {
-            result = result && success;
-        }, true);
-
-        res.waitForFinished();
-        return res.result();
+    const QNetworkInterface loopback = findLoopbackIface();
+    if (!loopback.isValid()) {
+        qCritical() << "RouterWin::StopRoutingIpv6: no loopback interface";
+        return false;
     }
+    QFuture<int> adds = QtConcurrent::mapped(kIpv6Subnets, [loopback](const QString &subnet) {
+        return QProcess::execute("netsh", { "interface", "ipv6", "add", "route", subnet, QString("interface=%1").arg(loopback.index()), "metric=0", "store=active" });
+    });
+    adds.waitForFinished();
 
-    return false;
+    bool ok = true;
+    for (const QString &subnet : kIpv6Subnets) {
+        if (!hasIpv6Route(loopback.index(), subnet)) {
+            qCritical() << "RouterWin::StopRoutingIpv6: no route for" << subnet;
+            ok = false;
+        }
+    }
+    return ok;
 }
 
+// Waited for: a reconnect right after must not find the routes still there.
 bool RouterWin::StartRoutingIpv6()
 {
     qDebug() << "RouterWin::StartRoutingIpv6";
 
-    if (auto loopback = findLoopbackIface(); loopback.isValid()) {
-        QFuture<bool> res = QtConcurrent::mappedReduced(kIpv6Subnets, [loopback](const QString &subnet) -> bool {
-            int res = QProcess::execute("netsh", { "interface", "ipv6", "delete", "route", subnet, QString("interface=%1").arg(loopback.index()) });
-            return res == 0;
-        },
-        [](bool &result, bool success) {
-            result = result && success;
-        }, true);
+    const QNetworkInterface loopback = findLoopbackIface();
+    if (!loopback.isValid()) {
+        return false;
     }
+    QFuture<int> deletes = QtConcurrent::mapped(kIpv6Subnets, [loopback](const QString &subnet) {
+        return QProcess::execute("netsh", { "interface", "ipv6", "delete", "route", subnet, QString("interface=%1").arg(loopback.index()) });
+    });
+    deletes.waitForFinished();
 
-    return false;
+    bool ok = true;
+    for (const QString &subnet : kIpv6Subnets) {
+        if (hasIpv6Route(loopback.index(), subnet)) {
+            qWarning() << "RouterWin::StartRoutingIpv6: route for" << subnet << "still there";
+            ok = false;
+        }
+    }
+    return ok;
 }

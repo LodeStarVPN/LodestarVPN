@@ -79,6 +79,15 @@ QString errorString(ErrorCode code) {
                 "The server's settings have not been downloaded yet. Check the internet connection and connect again.");
         break;
 
+    case (ErrorCode::TunAddressError):
+    case (ErrorCode::TunDnsError):
+    case (ErrorCode::KillSwitchError):
+    case (ErrorCode::TunRoutesError):
+    case (ErrorCode::Ipv6BlockError):
+    case (ErrorCode::PeerTrafficError):
+        errorMessage = QObject::tr("The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.");
+        break;
+
     // connection errors
     case (ErrorCode::ServerConnectionTimeoutError):
         errorMessage = QObject::tr("The server did not respond in time. Try another server or connect again a little later.");

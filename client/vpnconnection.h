@@ -9,6 +9,8 @@
 #include <QRemoteObjectNode>
 #include <QTimer>
 
+#include <atomic>
+
 #include "protocols/vpnprotocol.h"
 #include "core/defs.h"
 #include "settings.h"
@@ -86,6 +88,12 @@ private:
 #endif
 
    Vpn::ConnectionState m_connectionState;
+
+   // the last attempt's error, kept past the teardown: the controller asks
+   // for it from its own thread, often after m_vpnProtocol is already gone
+   // (no traffic, every address failed)
+   std::atomic<int> m_lastError { 0 };
+   void rememberError(ErrorCode error);
 
    void createProtocolConnections();
 

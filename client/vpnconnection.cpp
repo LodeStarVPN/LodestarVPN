@@ -460,11 +460,16 @@ ErrorCode VpnConnection::lastError() const
     return ErrorCode::AndroidError;
 #endif
 
-    if (m_vpnProtocol.isNull()) {
-        return ErrorCode::InternalError;
-    }
+    const auto error = static_cast<ErrorCode>(m_lastError.load());
+    // nothing went wrong on the way, the server just never carried traffic
+    return error != ErrorCode::NoError ? error : ErrorCode::ServerConnectionTimeoutError;
+}
 
-    return m_vpnProtocol.data()->lastError();
+void VpnConnection::rememberError(ErrorCode error)
+{
+    if (error != ErrorCode::NoError) {
+        m_lastError = static_cast<int>(error);
+    }
 }
 
 void VpnConnection::connectToVpn(int serverIndex, const ServerCredentials &credentials, DockerContainer container,
@@ -476,6 +481,7 @@ void VpnConnection::connectToVpn(int serverIndex, const ServerCredentials &crede
              << m_settings->routeMode();
 
     m_remoteAddress = NetworkUtilities::getIPAddress(credentials.hostName);
+    m_lastError = static_cast<int>(ErrorCode::NoError);
     setConnectionState(Vpn::ConnectionState::Connecting);
 
     m_vpnConfiguration = vpnConfiguration;
@@ -498,6 +504,7 @@ void VpnConnection::connectToVpn(int serverIndex, const ServerCredentials &crede
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS) && !defined(MACOS_NE)
     m_vpnProtocol.reset(VpnProtocol::factory(container, m_vpnConfiguration));
     if (!m_vpnProtocol) {
+        rememberError(ErrorCode::InternalError);
         setConnectionState(Vpn::ConnectionState::Error);
         return;
     }
@@ -519,6 +526,7 @@ void VpnConnection::connectToVpn(int serverIndex, const ServerCredentials &crede
     createProtocolConnections();
 
     if (ErrorCode err = m_vpnProtocol->start(); err != ErrorCode::NoError) {
+        rememberError(err);
         setConnectionState(Vpn::ConnectionState::Error);
         emit vpnProtocolError(err);
     }
@@ -900,6 +908,7 @@ void VpnConnection::reconnectToVpn() {
 
     m_vpnProtocol->stop();
     if (ErrorCode err = m_vpnProtocol->start(); err != ErrorCode::NoError) {
+        rememberError(err);
         setConnectionState(Vpn::ConnectionState::Error);
         emit vpnProtocolError(err);
     }
@@ -933,6 +942,7 @@ void VpnConnection::disconnectFromVpn()
 #endif
 
     m_vpnProtocol->stop();
+    rememberError(m_vpnProtocol->lastError());
 
 #if !defined(Q_OS_ANDROID) && !defined(AMNEZIA_DESKTOP)
     m_vpnProtocol->deleteLater();
@@ -942,6 +952,9 @@ void VpnConnection::disconnectFromVpn()
 }
 
 void VpnConnection::setConnectionState(Vpn::ConnectionState state) {
+    if (state == Vpn::ConnectionState::Error && m_vpnProtocol) {
+        rememberError(m_vpnProtocol->lastError());
+    }
     onConnectionStateChanged(state);
 
     if (state == Vpn::Disconnected && m_connectionState == Vpn::Reconnecting)

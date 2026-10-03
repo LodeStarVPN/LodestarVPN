@@ -180,7 +180,8 @@ namespace amnezia
 
             constexpr char defaultPort[] = "443";
             constexpr char defaultLocalProxyPort[] = "10808";
-            constexpr char defaultLocalAddr[] = "10.33.0.2";
+            // AmneziaVPN/Dopamine use 10.33.0.2 for their Xray tunnel
+            constexpr char defaultLocalAddr[] = "10.39.0.2";
         }
 
         namespace wireguard

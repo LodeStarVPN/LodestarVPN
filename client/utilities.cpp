@@ -1,6 +1,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -8,6 +9,8 @@
 #include <QUrl>
 #include <QJsonDocument>
 #include <QJsonObject>
+
+#include <iterator>
 
 #include "utilities.h"
 
@@ -226,11 +229,29 @@ bool Utils::killProcessByName(const QString &name)
 
     bool success = false;
 
+    // a full path names our own copy only: other apps ship tools of the same
+    // file name (AmneziaVPN and Dopamine their own tun2socks.exe) and keep them
+    const bool byPath = name.contains('/') || name.contains('\\');
+    const QString fileName = byPath ? QFileInfo(name).fileName() : name;
+    const QString fullPath = QDir::toNativeSeparators(QFileInfo(name).absoluteFilePath());
+    const auto isOurs = [&](DWORD pid) {
+        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (!h) {
+            return false;
+        }
+        wchar_t path[MAX_PATH * 2];
+        DWORD size = static_cast<DWORD>(std::size(path));
+        const bool same = QueryFullProcessImageNameW(h, 0, path, &size)
+                && QString::fromWCharArray(path, size).compare(fullPath, Qt::CaseInsensitive) == 0;
+        CloseHandle(h);
+        return same;
+    };
+
     if (Process32FirstW(hSnapshot, &pe32)) {
         do {
             QString exeFile = QString::fromWCharArray(pe32.szExeFile);
 
-            if (exeFile.compare(name, Qt::CaseInsensitive) == 0) {
+            if (exeFile.compare(fileName, Qt::CaseInsensitive) == 0 && (!byPath || isOurs(pe32.th32ProcessID))) {
                 HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
                 if (hProcess != NULL) {
                     if (TerminateProcess(hProcess, 0)) {

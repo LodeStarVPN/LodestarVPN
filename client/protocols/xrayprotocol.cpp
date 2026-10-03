@@ -29,6 +29,10 @@
 
 #ifdef Q_OS_MACOS
 static const QString tunName = "utun22";
+#elif defined(Q_OS_WIN)
+// not "tun2": AmneziaVPN and Dopamine name theirs so (and use 10.33.0.2), and
+// one of them may be running next to us
+static const QString tunName = "LodestarTun";
 #else
 static const QString tunName = "tun2";
 #endif
@@ -276,6 +280,9 @@ ErrorCode XrayProtocol::startTun2Socks()
     // hold our own reference: a stop() running inside waitForSource()'s nested
     // loop detaches and releases m_tun2socksProcess while we still wait on it
     const auto tun2socksProcess = IpcClient::CreatePrivilegedProcess();
+    if (!tun2socksProcess) {
+        return ErrorCode::DopamineServiceConnectionFailed;
+    }
     m_tun2socksProcess = tun2socksProcess;
     const bool sourceReady = tun2socksProcess->waitForSource();
     if (!self || m_stopGeneration != generation) {
@@ -364,6 +371,22 @@ ErrorCode XrayProtocol::startTun2Socks()
         stop();
         if (self) {
             setLastError(ErrorCode::Tun2SockExecutableCrashed);
+        }
+    }, Qt::QueuedConnection);
+
+    // The service went away (stopped, crashed): tun2socks, xray, the routes and
+    // the kill switch went with it, and no "finished" ever comes - without this
+    // the app would go on showing Connected over an open connection.
+    connect(m_tun2socksProcess.data(), &QRemoteObjectReplica::stateChanged, this,
+            [this, process = m_tun2socksProcess.data()](QRemoteObjectReplica::State state, QRemoteObjectReplica::State) {
+        if (m_tun2socksProcess.data() != process || state != QRemoteObjectReplica::Suspect) {
+            return;
+        }
+        qCritical() << "Lost the service while connected";
+        const QPointer<XrayProtocol> self(this);
+        stop();
+        if (self) {
+            setLastError(ErrorCode::DopamineServiceNotRunning);
         }
     }, Qt::QueuedConnection);
 
@@ -511,7 +534,7 @@ ErrorCode XrayProtocol::setupRouting() {
         auto createTun = iface->createTun(tunName, amnezia::protocols::xray::defaultLocalAddr);
         if (!createTun.waitForFinished() || !createTun.returnValue()) {
             qCritical() << "Failed to assign IP address for TUN";
-            return ErrorCode::InternalError;
+            return ErrorCode::TunAddressError;
         }
         if (!stillRunning())
             return ErrorCode::NoError;
@@ -519,7 +542,7 @@ ErrorCode XrayProtocol::setupRouting() {
         auto updateResolvers = iface->updateResolvers(tunName, m_dnsServers);
         if (!updateResolvers.waitForFinished() || !updateResolvers.returnValue()) {
             qCritical() << "Failed to set DNS resolvers for TUN";
-            return ErrorCode::InternalError;
+            return ErrorCode::TunDnsError;
         }
         if (!stillRunning())
             return ErrorCode::NoError;
@@ -543,10 +566,10 @@ ErrorCode XrayProtocol::setupRouting() {
                 QJsonObject config = m_rawConfig;
                 config.insert("vpnServer", m_remoteAddress);
 
-                auto enableKillSwitch = IpcClient::Interface()->enableKillSwitch(config, vpnAdapterIndex);
+                auto enableKillSwitch = iface->enableKillSwitch(config, vpnAdapterIndex);
                 if (!enableKillSwitch.waitForFinished() || !enableKillSwitch.returnValue()) {
                     qCritical() << "Failed to enable killswitch";
-                    return ErrorCode::InternalError;
+                    return ErrorCode::KillSwitchError;
                 }
                 if (!stillRunning())
                     return ErrorCode::NoError;
@@ -560,7 +583,7 @@ ErrorCode XrayProtocol::setupRouting() {
             auto routeAddList =  iface->routeAddList(m_vpnGateway, subnets);
             if (!routeAddList.waitForFinished() || routeAddList.returnValue() != subnets.count()) {
                 qCritical() << "Failed to set routes for TUN";
-                return ErrorCode::InternalError;
+                return ErrorCode::TunRoutesError;
             }
             if (!stillRunning())
                 return ErrorCode::NoError;
@@ -569,7 +592,7 @@ ErrorCode XrayProtocol::setupRouting() {
         auto StopRoutingIpv6 = iface->StopRoutingIpv6();
         if (!StopRoutingIpv6.waitForFinished() || !StopRoutingIpv6.returnValue()) {
             qCritical() << "Failed to disable IPv6 routing";
-            return ErrorCode::InternalError;
+            return ErrorCode::Ipv6BlockError;
         }
         if (!stillRunning())
             return ErrorCode::NoError;
@@ -585,7 +608,7 @@ ErrorCode XrayProtocol::setupRouting() {
             auto enablePeerTraffic = iface->enablePeerTraffic(config);
             if (!enablePeerTraffic.waitForFinished() || !enablePeerTraffic.returnValue()) {
                 qCritical() << "Failed to enable peer traffic";
-                return ErrorCode::InternalError;
+                return ErrorCode::PeerTrafficError;
             }
         } else
             qWarning() << "Failed to get adapter indexes. Split-tunneling disabled";

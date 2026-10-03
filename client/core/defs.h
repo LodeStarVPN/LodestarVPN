@@ -83,6 +83,14 @@ namespace amnezia
 
         // VPN errors
         AddressPoolError = 703,
+        // the steps of setting up this computer's network for the Xray tunnel
+        // (one message for the user, the code tells support which step failed)
+        TunAddressError = 704,
+        TunDnsError = 705,
+        KillSwitchError = 706,
+        TunRoutesError = 707,
+        Ipv6BlockError = 708,
+        PeerTrafficError = 709,
 
         // 3rd party utils errors
         OpenSslFailed = 800,

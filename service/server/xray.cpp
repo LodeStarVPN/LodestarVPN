@@ -82,6 +82,12 @@ bool Xray::startXray(const QString &cfg)
 {
     qDebug() << "Xray::startXray()";
 
+    // still up from a session the client never stopped (it crashed or was
+    // killed): the new start would fail on it
+    if (m_running) {
+        stopXray();
+    }
+
     auto defaultIface = NetworkUtilities::getGatewayAndIface().second;
 #ifdef Q_OS_LINUX
     m_defaultIfaceName = defaultIface.name().toUtf8();
@@ -110,12 +116,14 @@ bool Xray::startXray(const QString &cfg)
         return false;
     }
 
+    m_running = true;
     return true;
 }
 
 bool Xray::stopXray()
 {
     qDebug() << "Xray::stopXray()";
+    m_running = false;
     if (auto err = amnezia_xray_stop(); err != nullptr) {
         qDebug() << "[xray] failed to stop: " << err;
         amnezia_xray_free(err);

@@ -14,6 +14,7 @@ public:
 
     bool startXray(const QString& cfg);
     bool stopXray();
+    bool isRunning() const { return m_running; }
 
 private:
     static void ctxSockCallback(uintptr_t fd, void* ctx) {
@@ -25,6 +26,8 @@ private:
 
     void sockCallback(uintptr_t fd);
     void logHandler(char* str);
+
+    bool m_running = false;
 
 #ifdef Q_OS_LINUX
     QByteArray m_defaultIfaceName;

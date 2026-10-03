@@ -5244,6 +5244,10 @@ For more detailed information, you can
         <source>One device a day can be unlinked from a subscription. Try again later.</source>
         <translation>One device a day can be unlinked from a subscription. Try again later.</translation>
     </message>
+    <message>
+        <source>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</source>
+        <translation>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</translation>
+    </message>
 </context>
 <context>
     <name>RenameServerDrawer</name>
