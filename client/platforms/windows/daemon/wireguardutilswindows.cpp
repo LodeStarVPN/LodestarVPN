@@ -11,6 +11,7 @@
 #include <ws2ipdef.h>
 
 #include <QFileInfo>
+#include <QRandomGenerator>
 
 #include "leakdetector.h"
 #include "logger.h"
@@ -110,8 +111,27 @@ bool WireguardUtilsWindows::addInterface(const InterfaceConfig& config) {
     configString.truncate(peerStart);
   }
 
+  // The config goes to the tunnel service on its command line, which every
+  // user of the computer can read (the service's registry entry): it carries
+  // a throwaway key, and the device's own key is set over the tunnel's
+  // management pipe (Administrators and SYSTEM only) right after the start.
+  const QString ownKeyLine = QStringLiteral("PrivateKey = ") + config.m_privateKey;
+  QByteArray throwaway(32, 0);
+  for (char& byte : throwaway) {
+    byte = static_cast<char>(QRandomGenerator::system()->generate() & 0xff);
+  }
+  configString.replace(ownKeyLine, QStringLiteral("PrivateKey = ") + QString::fromLatin1(throwaway.toBase64()));
+
   if (!m_tunnel.start(configString)) {
     logger.error() << "Failed to activate the tunnel service";
+    return false;
+  }
+
+  const QByteArray ownKey = QByteArray::fromBase64(config.m_privateKey.toLatin1());
+  const QString keyReply = m_tunnel.uapiCommand(QStringLiteral("set=1\nprivate_key=%1\n").arg(QString::fromLatin1(ownKey.toHex())));
+  if (!keyReply.contains(QStringLiteral("errno=0"))) {
+    logger.error() << "Failed to set the device key";
+    m_tunnel.stop();
     return false;
   }
 
