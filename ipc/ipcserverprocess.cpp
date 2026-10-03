@@ -31,6 +31,7 @@ void IpcServerProcess::start()
 {
     if (m_process->program().isEmpty()) {
         qDebug() << "IpcServerProcess failed to start, program is empty";
+        return;
     }
 
     Utils::killProcessByName(m_process->program());
@@ -65,9 +66,9 @@ void IpcServerProcess::setInputChannelMode(QProcess::InputChannelMode mode)
 
 void IpcServerProcess::setNativeArguments(const QString &arguments)
 {
-#ifdef Q_OS_WIN
-    m_process->setNativeArguments(arguments);
-#endif
+    // raw arguments would get past sanitizeArguments: not taken
+    Q_UNUSED(arguments)
+    qDebug() << "IpcServerProcess: native arguments refused";
 }
 
 void IpcServerProcess::setProcessChannelMode(QProcess::ProcessChannelMode mode)
@@ -84,7 +85,9 @@ void IpcServerProcess::setProgram(int programId)
 
 void IpcServerProcess::setWorkingDirectory(const QString &dir)
 {
-    m_process->setWorkingDirectory(dir);
+    // a caller's folder would let it plant files the program loads: not taken
+    Q_UNUSED(dir)
+    qDebug() << "IpcServerProcess: working directory refused";
 }
 
 QByteArray IpcServerProcess::readAll()

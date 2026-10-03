@@ -21,12 +21,15 @@ PageType {
 
     // "2 out of 5", re-read whenever the account info comes
     property string devicesInUse: ApiAccountInfoModel.data("connectedDevices")
+    // "" when a device may be unlinked now (one a day)
+    property string unlinkAt: ApiAccountInfoModel.data("unlinkAvailableAt")
 
     Connections {
         target: ApiAccountInfoModel
 
         function onModelReset() {
             root.devicesInUse = ApiAccountInfoModel.data("connectedDevices")
+            root.unlinkAt = ApiAccountInfoModel.data("unlinkAvailableAt")
         }
     }
 
@@ -56,7 +59,10 @@ PageType {
                 headerText: qsTr("Active Devices")
                 // one limit for the whole subscription, whatever the protocol
                 descriptionText: {
-                    var text = qsTr("Devices using your subscription. Unlink one you no longer use to free its place.")
+                    var text = qsTr("Devices using your subscription. Unlink one you no longer use to free its place. One device can be unlinked a day.")
+                    if (root.unlinkAt !== "") {
+                        text += "\n" + qsTr("The next one can be unlinked after %1.").arg(root.unlinkAt)
+                    }
                     return root.devicesInUse !== "" ? qsTr("In use: %1").arg(root.devicesInUse) + "\n" + text : text
                 }
             }

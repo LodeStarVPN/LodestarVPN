@@ -384,7 +384,8 @@ namespace
                                         .arg(clientProtocolConfig.value(config_key::persistent_keep_alive).toString("25"));
 
                     serverProtocolConfig[config_key::config] = lines.join("\n");
-                    qDebug().noquote() << "[API IMPORT] generated AWG INI config:\n" << serverProtocolConfig.value(config_key::config).toString();
+                    // the config holds the device's private key: not in the log
+                    qDebug() << "[API IMPORT] generated AWG INI config," << lines.size() << "lines";
                 }
 
                 // Persist the INI inside last_config as well. The VPN configuration builder on iOS
@@ -453,7 +454,12 @@ namespace
         serverConfig[config_key::defaultContainer] = defaultContainer;
 
         qDebug().noquote() << "[API CONFIG] defaultContainer:" << defaultContainer;
-        qDebug().noquote() << "[API CONFIG] containers:" << QJsonDocument(newServerConfig.value(config_key::containers).toArray()).toJson(QJsonDocument::Compact);
+        // the containers hold the keys: only which ones came
+        QStringList containerNames;
+        for (const QJsonValue &container : newServerConfig.value(config_key::containers).toArray()) {
+            containerNames << container.toObject().value(config_key::container).toString();
+        }
+        qDebug().noquote() << "[API CONFIG] containers:" << containerNames.join(", ");
 
         QVariantMap map = serverConfig.value(configKey::apiConfig).toObject().toVariantMap();
         map.insert(newServerConfig.value(configKey::apiConfig).toObject().toVariantMap());
@@ -807,7 +813,7 @@ bool ApiConfigsController::fillAvailableServices()
 
     QJsonObject data = QJsonDocument::fromJson(responseBody).object();
 
-    qDebug().noquote() << "[API SERVICES] response:" << QJsonDocument(data).toJson(QJsonDocument::Indented);
+    qDebug() << "[API SERVICES] response:" << data.value(configKey::services).toArray().size() << "service(s)";
 
 #if defined(Q_OS_IOS) || defined(MACOS_NE)
     QStringList productIds;
@@ -2410,7 +2416,7 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
         }
 
         QJsonObject servicesData = QJsonDocument::fromJson(servicesResponse).object();
-        qDebug().noquote() << "[SUBSCRIPTION] /v1/services response:" << QJsonDocument(servicesData).toJson(QJsonDocument::Compact);
+        qDebug() << "[SUBSCRIPTION] /v1/services response:" << servicesData.value(configKey::services).toArray().size() << "service(s)";
 
         QJsonArray services = servicesData.value(configKey::services).toArray();
         if (services.isEmpty()) {

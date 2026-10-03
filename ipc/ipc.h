@@ -2,6 +2,7 @@
 #define IPC_H
 
 #include <QObject>
+#include <QRegularExpression>
 #include <QString>
 
 #include "../client/utilities.h"
@@ -17,13 +18,12 @@ enum PermittedProcess {
     CertUtil
 };
 
+// Anyone on the computer can reach the service's socket, and what it starts
+// runs as SYSTEM: only what the app needs (tun2socks for VLESS), never a
+// general-purpose tool like certutil.
 inline QString permittedProcessPath(PermittedProcess pid)
 {
     switch (pid) {
-        case PermittedProcess::Wireguard:
-            return Utils::wireguardExecPath();
-        case PermittedProcess::CertUtil:
-            return Utils::certUtilPath();
         case PermittedProcess::Tun2Socks:
             return Utils::tun2socksPath();
         default:
@@ -56,11 +56,17 @@ inline QStringList sanitizeArguments(PermittedProcess proc, const QStringList &a
     switch (proc) {
     case Tun2Socks:
         namedArgs["-device"] = [](const QString& v) { return v.startsWith("tun://"); };
-        namedArgs["-proxy"] = [](const QString& v) { return v.startsWith("socks5://"); };
+        // the app's own Xray on this computer, never a proxy elsewhere: a
+        // SYSTEM tun2socks pointed at someone's server would carry the
+        // computer's traffic there
+        namedArgs["-proxy"] = [](const QString& v) {
+            static const QRegularExpression local(QStringLiteral("^socks5://127\\.0\\.0\\.1:\\d{1,5}$"));
+            return local.match(v).hasMatch();
+        };
         break;
     default:
-        //FIXME
-        return args;
+        // no other program is started (see permittedProcessPath)
+        return {};
     }
 
 

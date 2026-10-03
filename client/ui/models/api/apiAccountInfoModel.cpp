@@ -89,6 +89,14 @@ QVariant ApiAccountInfoModel::data(const QModelIndex &index, int role) const
         }
         return false;
     }
+    case UnlinkAvailableAtRole: {
+        const QDateTime at = m_accountInfoData.unlinkAvailableAt;
+        if (!at.isValid() || at <= QDateTime::currentDateTime()) {
+            return QString();
+        }
+        // "2 October, 15:40" in the app's language
+        return m_locale.toString(at, QStringLiteral("d MMMM, HH:mm"));
+    }
     case IsProtocolSelectionSupportedRole: {
         if (m_accountInfoData.supportedProtocols.size() > 1) {
             return true;
@@ -116,6 +124,14 @@ void ApiAccountInfoModel::updateModel(const QJsonObject &accountInfoObject, cons
     accountInfoData.configType = apiUtils::getConfigType(serverConfig);
 
     accountInfoData.subscriptionDescription = accountInfoObject.value(apiDefs::key::subscriptionDescription).toString();
+
+    const QString unlinkAt = accountInfoObject.value(QStringLiteral("unlink_available_at")).toString();
+    if (!unlinkAt.isEmpty()) {
+        accountInfoData.unlinkAvailableAt = QDateTime::fromString(unlinkAt, Qt::ISODateWithMs).toLocalTime();
+        if (!accountInfoData.unlinkAvailableAt.isValid()) {
+            accountInfoData.unlinkAvailableAt = QDateTime::fromString(unlinkAt, Qt::ISODate).toLocalTime();
+        }
+    }
 
     for (const auto &protocol : accountInfoObject.value(apiDefs::key::supportedProtocols).toArray()) {
         accountInfoData.supportedProtocols.push_back(protocol.toString());
@@ -186,6 +202,7 @@ QHash<int, QByteArray> ApiAccountInfoModel::roleNames() const
     roles[IsComponentVisibleRole] = "isComponentVisible";
     roles[HasExpiredWorkerRole] = "hasExpiredWorker";
     roles[IsProtocolSelectionSupportedRole] = "isProtocolSelectionSupported";
+    roles[UnlinkAvailableAtRole] = "unlinkAvailableAt";
 
     return roles;
 }

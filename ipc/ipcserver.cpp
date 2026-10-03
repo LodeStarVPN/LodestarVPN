@@ -14,6 +14,7 @@
 #include <QStringList>
 
 #include "logger.h"
+#include "peercheck.h"
 #include "router.h"
 #include "killswitch.h"
 #include "xray.h"
@@ -44,8 +45,14 @@ int IpcServer::createPrivilegedProcess()
     // Make sure any connections are handed to QtRO
     QObject::connect(pd.localServer.data(), &QLocalServer::newConnection, this, [pd]() {
         qDebug() << "IpcServer new connection";
+        QLocalSocket *socket = pd.localServer->nextPendingConnection();
+        if (!amnezia::isTrustedClient(socket)) {
+            socket->abort();
+            socket->deleteLater();
+            return;
+        }
         if (pd.serverNode) {
-            pd.serverNode->addHostSideConnection(pd.localServer->nextPendingConnection());
+            pd.serverNode->addHostSideConnection(socket);
             pd.serverNode->enableRemoting(pd.ipcProcess.data());
         }
     });

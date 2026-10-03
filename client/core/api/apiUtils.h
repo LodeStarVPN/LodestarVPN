@@ -18,9 +18,11 @@ namespace apiUtils
     apiDefs::ConfigType getConfigType(const QJsonObject &serverConfigObject);
     apiDefs::ConfigSource getConfigSource(const QJsonObject &serverConfigObject);
 
+    // isDecrypted: the body came encrypted with the request's own key, so it
+    // is the gateway's answer and not something injected on the way
     amnezia::ErrorCode checkNetworkReplyErrors(const QList<QSslError> &sslErrors, const QString &replyErrorString,
                                                const QNetworkReply::NetworkError &replyError, const int httpStatusCode,
-                                               const QByteArray &responseBody);
+                                               const QByteArray &responseBody, bool isDecrypted);
 
     QString getPremiumV1VpnKey(const QJsonObject &serverConfigObject);
     QString getPremiumV2VpnKey(const QJsonObject &serverConfigObject);

@@ -22,6 +22,7 @@
 
 #include "leakdetector.h"
 #include "logger.h"
+#include "peercheck.h"
 #include "daemon/daemonerrors.h"
 
 #include "protocols/protocols_defs.h"
@@ -100,11 +101,12 @@ void LocalSocketController::initializeInternal() {
   m_daemonState = eInitializing;
 
 #ifdef MZ_WINDOWS
-  QString path = "\\\\.\\pipe\\frkn";
+  // the service's daemon pipe (DaemonLocalServer::daemonPath)
+  QString path = "\\\\.\\pipe\\lodestar";
 #else
-  QString path = "/var/run/frkn/daemon.socket";
+  QString path = "/var/run/lodestar/daemon.socket";
   if (!QFileInfo::exists(path)) {
-    path = "/tmp/frkn.socket";
+    path = "/tmp/lodestar.socket";
   }
 #endif
 
@@ -115,6 +117,13 @@ void LocalSocketController::initializeInternal() {
 void LocalSocketController::daemonConnected() {
   logger.debug() << "Daemon connected";
   Q_ASSERT(m_daemonState == eInitializing);
+  // the tunnel config (with the device's private key) goes only to our own
+  // service, not to whatever else opened a pipe of this name
+  if (!amnezia::isTrustedServer(m_socket)) {
+    m_socket->abort();
+    errorOccurred(QLocalSocket::ConnectionRefusedError);
+    return;
+  }
   checkStatus();
 }
 

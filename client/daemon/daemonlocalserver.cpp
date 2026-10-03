@@ -11,6 +11,7 @@
 #include "daemonlocalserverconnection.h"
 #include "leakdetector.h"
 #include "logger.h"
+#include "peercheck.h"
 
 #if defined(MZ_MACOS) || defined(MZ_LINUX)
 #  include <sys/stat.h>
@@ -55,6 +56,12 @@ bool DaemonLocalServer::initialize() {
 
     QLocalSocket* socket = m_server.nextPendingConnection();
     Q_ASSERT(socket);
+    // tunnels are set up as SYSTEM: only for this installation's app
+    if (!amnezia::isTrustedClient(socket)) {
+      socket->abort();
+      socket->deleteLater();
+      return;
+    }
 
     DaemonLocalServerConnection* connection =
         new DaemonLocalServerConnection(&m_server, socket);
@@ -67,7 +74,9 @@ bool DaemonLocalServer::initialize() {
 
 QString DaemonLocalServer::daemonPath() const {
 #if defined(MZ_WINDOWS)
-  return "\\\\.\\pipe\\frkn";
+  // not Dopamine's "frkn": with both installed, the app would hand its
+  // tunnel config (with the private key) to the other one's service
+  return "\\\\.\\pipe\\lodestar";
 #endif
 #if defined(MZ_MACOS) || defined(MZ_LINUX)
   QDir dir("/var/run");
@@ -76,12 +85,12 @@ QString DaemonLocalServer::daemonPath() const {
     return TMP_PATH;
   }
 
-  if (dir.exists("frkn")) {
+  if (dir.exists("lodestar")) {
     logger.debug() << "/var/run/lodestar seems to be usable";
     return VAR_PATH;
   }
 
-  if (!dir.mkdir("frkn")) {
+  if (!dir.mkdir("lodestar")) {
     logger.warning() << "Failed to create /var/run/lodestar";
     return TMP_PATH;
   }

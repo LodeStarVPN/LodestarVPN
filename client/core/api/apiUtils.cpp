@@ -88,7 +88,7 @@ apiDefs::ConfigSource apiUtils::getConfigSource(const QJsonObject &serverConfigO
 
 amnezia::ErrorCode apiUtils::checkNetworkReplyErrors(const QList<QSslError> &sslErrors, const QString &replyErrorString,
                                                      const QNetworkReply::NetworkError &replyError, const int httpStatusCode,
-                                                     const QByteArray &responseBody)
+                                                     const QByteArray &responseBody, bool isDecrypted)
 {
     const int httpStatusCodeConflict = 409;
     const int httpStatusCodeNotFound = 404;
@@ -107,14 +107,19 @@ amnezia::ErrorCode apiUtils::checkNetworkReplyErrors(const QList<QSslError> &ssl
         qDebug() << replyError;
         return amnezia::ErrorCode::ApiUpdateRequestError;
     } else {
-        qDebug() << QString::fromUtf8(responseBody);
         qDebug() << replyError;
         qDebug() << replyErrorString;
-        qDebug() << httpStatusCode;
+        qDebug() << httpStatusCode << "decrypted:" << isDecrypted;
 
+        // The gateway's word on this device or subscription (unlinked, no
+        // place, ended, gone, unlink limit) is acted on: the app disconnects
+        // and removes the subscription's servers. It counts only when it came
+        // encrypted with this request's key and names itself in "error": the
+        // gateway is reached over plain HTTP, and a plain answer or a bare
+        // status could be anyone's on the way. Anything else is a failed request.
         int httpStatusFromBody = -1;
         QString messageFromBody;
-        QJsonDocument jsonDoc = QJsonDocument::fromJson(responseBody);
+        QJsonDocument jsonDoc = isDecrypted ? QJsonDocument::fromJson(responseBody) : QJsonDocument();
         if (jsonDoc.isObject()) {
             QJsonObject jsonObj = jsonDoc.object();
             httpStatusFromBody = jsonObj.value("http_status").toInt(-1);
@@ -133,10 +138,13 @@ amnezia::ErrorCode apiUtils::checkNetworkReplyErrors(const QList<QSslError> &ssl
         if (effectiveStatus == 402 && errorFromBody == QLatin1String("subscription_expired")) {
             return amnezia::ErrorCode::ApiSubscriptionExpiredError;
         }
+        if (effectiveStatus == 429 && errorFromBody == QLatin1String("unlink_limit")) {
+            return amnezia::ErrorCode::ApiUnlinkLimitError;
+        }
         if (effectiveStatus == httpStatusCodeNotFound && errorFromBody == QLatin1String("subscription_not_found")) {
             return amnezia::ErrorCode::ApiSubscriptionNotFoundError;
         }
-        if (effectiveStatus == httpStatusCodeConflict) {
+        if (effectiveStatus == httpStatusCodeConflict && errorFromBody == QLatin1String("device_limit")) {
             return amnezia::ErrorCode::ApiConfigLimitError;
         } else if (effectiveStatus == httpStatusCodeNotFound || messageFromBody == QLatin1String("node_not_found")) {
             return amnezia::ErrorCode::ApiNotFoundError;

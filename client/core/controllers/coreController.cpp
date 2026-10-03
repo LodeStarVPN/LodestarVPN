@@ -173,7 +173,8 @@ void CoreController::initControllers()
 
     connect(m_importController.get(), &ImportController::frknSubscriptionLinkDetected, this,
             [this, fetchSubscriptionConfigs](const QString &subscriptionId) {
-                qDebug() << "[CORE] frkn subscription link detected:" << subscriptionId;
+                // the id is the subscription's key: not in the log
+                qDebug() << "[CORE] subscription link detected";
                 fetchSubscriptionConfigs(subscriptionId);
             });
 

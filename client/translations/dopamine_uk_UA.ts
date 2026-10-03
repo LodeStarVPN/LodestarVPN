@@ -1600,8 +1600,8 @@ Already installed containers were found on the server. All installed containers 
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="59"/>
-        <source>Devices using your subscription. Unlink one you no longer use to free its place.</source>
-        <translation>Пристрої, що користуються підпискою. Відв&apos;яжіть непотрібний, щоб звільнити місце.</translation>
+        <source>Devices using your subscription. Unlink one you no longer use to free its place. One device can be unlinked a day.</source>
+        <translation>Пристрої, що користуються підпискою. Відв’яжіть непотрібний, щоб звільнити місце. Відв’язувати можна один пристрій на добу.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="60"/>
@@ -1617,6 +1617,10 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="75"/>
         <source>Last active: %1</source>
         <translation>Остання активність: %1</translation>
+    </message>
+    <message>
+        <source>The next one can be unlinked after %1.</source>
+        <translation>Наступний можна відв’язати після %1.</translation>
     </message>
 </context>
 <context>
@@ -5343,6 +5347,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <location filename="../core/errorstrings.cpp" line="69"/>
         <source>There is no subscription with this key any more (it was deleted or its key was changed), so its servers were removed from the app. If you have a new key, enter it.</source>
         <translation>Підписки з цим ключем більше немає (її видалили або змінили ключ), тому її сервери видалено із застосунку. Якщо у вас є новий ключ, введіть його.</translation>
+    </message>
+    <message>
+        <source>One device a day can be unlinked from a subscription. Try again later.</source>
+        <translation>Від підписки можна відв’язувати один пристрій на добу. Спробуйте пізніше.</translation>
     </message>
 </context>
 <context>

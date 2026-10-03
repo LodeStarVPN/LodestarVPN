@@ -172,7 +172,8 @@ void PageController::onShowErrorMessage(ErrorCode errorCode)
     // the subscription's word on this device or on the subscription is a
     // notice for the user, not a malfunction to look up: no code
     if (errorCode == ErrorCode::ApiDeviceUnlinkedError || errorCode == ErrorCode::ApiConfigLimitError
-        || errorCode == ErrorCode::ApiSubscriptionExpiredError || errorCode == ErrorCode::ApiSubscriptionNotFoundError) {
+        || errorCode == ErrorCode::ApiSubscriptionExpiredError || errorCode == ErrorCode::ApiSubscriptionNotFoundError
+        || errorCode == ErrorCode::ApiUnlinkLimitError) {
         emit showErrorMessage(errorMessage.trimmed());
         return;
     }

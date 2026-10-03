@@ -45,6 +45,89 @@ constexpr int kSplitRefreshFirstDelayMs = 60 * 1000;
 constexpr int kSplitRefreshIntervalMs = 5 * 60 * 1000;
 #endif
 
+#ifdef Q_OS_WIN
+    #include <QDir>
+    #include <QFileInfo>
+    #include <QSet>
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include <tlhelp32.h>
+
+// Torrent clients go around the VPN by themselves (the app split-tunnel
+// driver): our servers don't carry torrents, the user's own connection does.
+// Found where they are usually installed and among the running programs
+// (portable copies). Without the driver (another VPN client owns it) the
+// list is simply not applied.
+static QStringList torrentClientPaths()
+{
+    static const QStringList programs = {
+        QStringLiteral("qBittorrent/qbittorrent.exe"),       QStringLiteral("uTorrent/uTorrent.exe"),
+        QStringLiteral("uTorrent Web/utweb.exe"),            QStringLiteral("BitTorrent/BitTorrent.exe"),
+        QStringLiteral("BitTorrent Web/btweb.exe"),          QStringLiteral("Transmission/transmission-qt.exe"),
+        QStringLiteral("Transmission/transmission-daemon.exe"), QStringLiteral("Deluge/deluge.exe"),
+        QStringLiteral("Deluge/deluged.exe"),                QStringLiteral("Deluge/deluge-gtk.exe"),
+        QStringLiteral("tixati/tixati.exe"),                 QStringLiteral("BiglyBT/BiglyBT.exe"),
+        QStringLiteral("Vuze/Azureus.exe"),                  QStringLiteral("BitComet/BitComet.exe"),
+        QStringLiteral("PicoTorrent/PicoTorrent.exe"),       QStringLiteral("MediaGet2/mediaget.exe"),
+        QStringLiteral("Zona/Zona.exe"),                     QStringLiteral("Tribler/tribler.exe"),
+    };
+    QSet<QString> names;
+    for (const QString &program : programs) {
+        names.insert(QFileInfo(program).fileName().toLower());
+    }
+
+    QStringList roots;
+    for (const char *variable : { "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)", "APPDATA", "LOCALAPPDATA" }) {
+        const QString root = qEnvironmentVariable(variable);
+        if (!root.isEmpty()) {
+            roots << QDir::fromNativeSeparators(root);
+        }
+    }
+    if (!qEnvironmentVariable("LOCALAPPDATA").isEmpty()) {
+        roots << QDir::fromNativeSeparators(qEnvironmentVariable("LOCALAPPDATA")) + QStringLiteral("/Programs");
+    }
+
+    QStringList found;
+    // the split-tunnel driver takes "C:/dir/app.exe"
+    auto add = [&found](const QString &path) {
+        const QString clean = QDir::cleanPath(QDir::fromNativeSeparators(path));
+        if (!found.contains(clean, Qt::CaseInsensitive)) {
+            found << clean;
+        }
+    };
+    for (const QString &root : roots) {
+        for (const QString &program : programs) {
+            if (QFileInfo::exists(root + QLatin1Char('/') + program)) {
+                add(root + QLatin1Char('/') + program);
+            }
+        }
+    }
+
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W entry {};
+        entry.dwSize = sizeof(entry);
+        for (BOOL ok = Process32FirstW(snapshot, &entry); ok; ok = Process32NextW(snapshot, &entry)) {
+            if (!names.contains(QString::fromWCharArray(entry.szExeFile).toLower())) {
+                continue;
+            }
+            if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID)) {
+                wchar_t buffer[4 * MAX_PATH];
+                DWORD size = sizeof(buffer) / sizeof(buffer[0]);
+                if (QueryFullProcessImageNameW(process, 0, buffer, &size)) {
+                    add(QString::fromWCharArray(buffer, size));
+                }
+                CloseHandle(process);
+            }
+        }
+        CloseHandle(snapshot);
+    }
+    return found;
+}
+#endif
+
 VpnConnection::VpnConnection(std::shared_ptr<Settings> settings, QObject *parent)
     : QObject(parent), m_settings(settings), m_checkTimer(new QTimer(this))
 {
@@ -742,6 +825,22 @@ void VpnConnection::appendSplitTunnelingConfig()
             appsRouteMode = Settings::AppsRouteMode::VpnAllApps;
         }
     }
+
+#ifdef Q_OS_WIN
+    // torrent clients go around the VPN in any case, next to the user's own list
+    if (appsRouteMode != Settings::AppsRouteMode::VpnOnlyForwardApps) {
+        const QStringList torrentClients = torrentClientPaths();
+        for (const QString &path : torrentClients) {
+            if (!appsJsonArray.contains(path)) {
+                appsJsonArray.append(path);
+            }
+        }
+        if (!appsJsonArray.isEmpty()) {
+            appsRouteMode = Settings::AppsRouteMode::VpnAllExceptApps;
+        }
+        qDebug() << "Torrent clients going around the VPN:" << torrentClients.size();
+    }
+#endif
 
     m_vpnConfiguration.insert(config_key::appSplitTunnelType, appsRouteMode);
     m_vpnConfiguration.insert(config_key::splitTunnelApps, appsJsonArray);

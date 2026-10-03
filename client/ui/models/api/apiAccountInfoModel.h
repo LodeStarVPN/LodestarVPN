@@ -2,6 +2,7 @@
 #define APIACCOUNTINFOMODEL_H
 
 #include <QAbstractListModel>
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLocale>
@@ -20,7 +21,8 @@ public:
         EndDateRole,
         IsComponentVisibleRole,
         HasExpiredWorkerRole,
-        IsProtocolSelectionSupportedRole
+        IsProtocolSelectionSupportedRole,
+        UnlinkAvailableAtRole
     };
 
     explicit ApiAccountInfoModel(QObject *parent = nullptr);
@@ -60,6 +62,9 @@ private:
         QStringList supportedProtocols;
 
         QString subscriptionDescription;
+
+        // when another device may be unlinked (one a day), empty = now
+        QDateTime unlinkAvailableAt;
     };
 
     AccountInfoData m_accountInfoData;

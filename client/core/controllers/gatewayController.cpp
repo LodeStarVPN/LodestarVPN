@@ -154,10 +154,9 @@ GatewayController::EncryptedRequestData GatewayController::prepareRequest(const 
 
     encRequestData.requestBody = QJsonDocument(requestBody).toJson();
 
-    qDebug().noquote() << "[AGW REQUEST] key:" << encRequestData.key.toBase64();
-    qDebug().noquote() << "[AGW REQUEST] iv:" << encRequestData.iv.toBase64();
-    qDebug().noquote() << "[AGW REQUEST] salt:" << encRequestData.salt.toBase64();
-    qDebug().noquote() << "[AGW REQUEST] body:" << encRequestData.requestBody;
+    // the key, iv and body would let anyone with the log read the request
+    // (the subscription key is in it) and the response: sizes only
+    qDebug().noquote() << "[AGW REQUEST] encrypted," << encRequestData.requestBody.size() << "bytes";
 
     return encRequestData;
 }
@@ -179,7 +178,7 @@ GatewayController::DecryptionResult GatewayController::tryDecryptResponseBody(co
     } catch (...) {
         result.decryptedBody = encryptedResponseBody;
         result.isDecryptionSuccessful = false;
-        qDebug().noquote() << "[AGW RESPONSE] failed to decrypt, raw (base64):" << encryptedResponseBody.toBase64();
+        qDebug().noquote() << "[AGW RESPONSE] failed to decrypt," << encryptedResponseBody.size() << "bytes";
     }
 
     return result;
@@ -259,7 +258,8 @@ ErrorCode GatewayController::doPost(const QString &endpoint, const QJsonObject &
     }
 
     auto errorCode =
-            apiUtils::checkNetworkReplyErrors(sslErrors, replyErrorString, replyError, httpStatusCode, decryptionResult.decryptedBody);
+            apiUtils::checkNetworkReplyErrors(sslErrors, replyErrorString, replyError, httpStatusCode, decryptionResult.decryptedBody,
+                                              decryptionResult.isDecryptionSuccessful);
     if (errorCode) {
         return errorCode;
     }
@@ -306,7 +306,7 @@ QFuture<QPair<ErrorCode, QByteArray>> GatewayController::postAsync(const QString
                                                          const QList<QSslError> &sslErrors, QNetworkReply::NetworkError replyError,
                                                          const QString &replyErrorString, int httpStatusCode) {
             auto errorCode = apiUtils::checkNetworkReplyErrors(sslErrors, replyErrorString, replyError, httpStatusCode,
-                                                               decryptionResult.decryptedBody);
+                                                               decryptionResult.decryptedBody, decryptionResult.isDecryptionSuccessful);
             if (errorCode) {
                 promise->addResult(qMakePair(errorCode, QByteArray()));
                 promise->finish();
@@ -479,7 +479,8 @@ bool GatewayController::shouldBypassProxy(const QNetworkReply::NetworkError &rep
             // with this request's key, so it is the gateway's own answer
             const QString error = jsonObj.value("error").toString();
             if (error == QLatin1String("device_unlinked") || error == QLatin1String("device_limit")
-                || error == QLatin1String("subscription_expired") || error == QLatin1String("subscription_not_found")) {
+                || error == QLatin1String("subscription_expired") || error == QLatin1String("subscription_not_found")
+                || error == QLatin1String("unlink_limit")) {
                 return false;
             }
         }

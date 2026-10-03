@@ -403,8 +403,8 @@ void ImportController::importConfig()
             emit importFinished();
         }
     } else {
-        qDebug() << "Failed to import profile";
-        qDebug().noquote() << QJsonDocument(m_config).toJson();
+        // the config holds keys: only its fields go to the log
+        qDebug() << "Failed to import profile, fields:" << m_config.keys();
         emit importErrorOccurred(ErrorCode::ImportInvalidConfigError, false);
     }
 

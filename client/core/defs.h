@@ -115,6 +115,7 @@ namespace amnezia
         ApiLocalConfigMissingError = 1114,
         ApiDeviceUnlinkedError = 1115,
         ApiSubscriptionNotFoundError = 1116,
+        ApiUnlinkLimitError = 1117,
 
         // connection errors
         ServerConnectionTimeoutError = 1300,

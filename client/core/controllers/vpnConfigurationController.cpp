@@ -231,6 +231,14 @@ QJsonObject VpnConfigurationsController::createVpnConfiguration(const QPair<QStr
                 inbound[QStringLiteral("port")] = localPort;
                 inbound[QStringLiteral("protocol")] = QStringLiteral("socks");
                 inbound[QStringLiteral("settings")] = QJsonObject { { QStringLiteral("udp"), true } };
+                // what a connection is (BitTorrent, TLS, ...) is told from its first
+                // bytes for the config's routing rules only (the gateway sends torrents
+                // around the VPN); where it goes is not changed by it
+                inbound[QStringLiteral("sniffing")] = QJsonObject {
+                    { QStringLiteral("enabled"), true },
+                    { QStringLiteral("destOverride"), QJsonArray { QStringLiteral("http"), QStringLiteral("tls"), QStringLiteral("quic") } },
+                    { QStringLiteral("routeOnly"), true },
+                };
                 vpnConfigData[QStringLiteral("inbounds")] = QJsonArray { inbound };
             }
         }

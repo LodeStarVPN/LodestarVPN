@@ -2,6 +2,9 @@
 #include "core/networkUtilities.h"
 
 #include <QDebug>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QNetworkInterface>
 #include <QCoreApplication>
 #include <amnezia_xray.h>
@@ -27,6 +30,54 @@
     #include <sys/socket.h>
 #endif
 
+namespace
+{
+    // The config comes over the service's socket, which anyone on the computer
+    // can reach, and Xray runs inside this SYSTEM process: nothing in it may
+    // name files to write or read (logs, certificate files), open the control
+    // API, or offer the proxy beyond this computer. No access log either: the
+    // sites a user visits are not for the log.
+    QByteArray sanitizedConfig(const QString &cfg)
+    {
+        QJsonObject root = QJsonDocument::fromJson(cfg.toUtf8()).object();
+
+        QJsonObject log = root.value("log").toObject();
+        log.remove("error");
+        log["access"] = "none";
+        log["dnsLog"] = false;
+        root["log"] = log;
+        root.remove("api");
+
+        QJsonArray inbounds;
+        for (const QJsonValue &value : root.value("inbounds").toArray()) {
+            QJsonObject inbound = value.toObject();
+            inbound["listen"] = "127.0.0.1";
+            inbounds.append(inbound);
+        }
+        root["inbounds"] = inbounds;
+
+        QJsonArray outbounds;
+        for (const QJsonValue &value : root.value("outbounds").toArray()) {
+            QJsonObject outbound = value.toObject();
+            QJsonObject stream = outbound.value("streamSettings").toObject();
+            for (const QString &key : { QStringLiteral("tlsSettings"), QStringLiteral("xtlsSettings") }) {
+                if (stream.contains(key)) {
+                    QJsonObject tls = stream.value(key).toObject();
+                    tls.remove("certificates");
+                    stream[key] = tls;
+                }
+            }
+            if (outbound.contains("streamSettings")) {
+                outbound["streamSettings"] = stream;
+            }
+            outbounds.append(outbound);
+        }
+        root["outbounds"] = outbounds;
+
+        return QJsonDocument(root).toJson(QJsonDocument::Compact);
+    }
+}
+
 bool Xray::startXray(const QString &cfg)
 {
     qDebug() << "Xray::startXray()";
@@ -46,7 +97,7 @@ bool Xray::startXray(const QString &cfg)
 
     amnezia_xray_setloghandler(ctxLogHandler, this);
 
-    QByteArray bytes = cfg.toUtf8();
+    QByteArray bytes = sanitizedConfig(cfg);
     if (auto err = amnezia_xray_configure(bytes.data()); err != nullptr) {
         qDebug() << "[xray] configuration failed: " << err;
         amnezia_xray_free(err);
