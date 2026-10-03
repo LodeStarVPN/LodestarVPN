@@ -5528,5 +5528,21 @@ For more detailed information, you can
         <source>Save</source>
         <translation type="vanished">Save</translation>
     </message>
+    <message>
+        <source>Add the subscription from the link?</source>
+        <translation>Add the subscription from the link?</translation>
+    </message>
+    <message>
+        <source>A link opened LodestarVPN to add a subscription. Add it only if you got the link from LodestarVPN or from someone you trust.</source>
+        <translation>A link opened LodestarVPN to add a subscription. Add it only if you got the link from LodestarVPN or from someone you trust.</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
 </context>
 </TS>

@@ -70,6 +70,7 @@ private:
 
     QNetworkAccessManager *m_nam;
 protected:
+    void handleSystemLink(const QString &link);
     bool event(QEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 };

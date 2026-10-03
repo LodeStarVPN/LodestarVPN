@@ -122,6 +122,11 @@ signals:
     // forwarded from the platform shake-gesture hook (iOS, Android)
     void shakeDetected();
 
+    // a lodestar://sub/ link from the system (a web page can open one): the
+    // user is asked first, and a yes comes back as subscriptionLinkConfirmed
+    void askToAddSubscriptionLink(const QString &link);
+    void subscriptionLinkConfirmed(const QString &link);
+
 private:
     QSharedPointer<ServersModel> m_serversModel;
 

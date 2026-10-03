@@ -65,7 +65,6 @@ signals:
     void importErrorOccurred(ErrorCode errorCode, bool goToPageHome);
     void frknSubscriptionLinkDetected(const QString &subscriptionId);
     void frknShareLinkDetected(const QString &shareToken);
-    void frknActivationKeyDetected(const QString &code);
     // nothing matched - input is text but not any of the supported formats
     void unknownFormatDetected(const QString &rawInput);
 

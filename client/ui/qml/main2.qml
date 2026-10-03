@@ -118,6 +118,18 @@ Window  {
             popupErrorMessage.open()
         }
 
+        // a subscription link opened from outside the app: added only on a yes
+        function onAskToAddSubscriptionLink(link) {
+            root.show()
+            root.raise()
+            root.requestActivate()
+            root.showQuestionDrawer(qsTr("Add the subscription from the link?"),
+                                    qsTr("A link opened LodestarVPN to add a subscription. Add it only if you got the link from LodestarVPN or from someone you trust."),
+                                    qsTr("Add"), qsTr("Cancel"),
+                                    function() { PageController.subscriptionLinkConfirmed(link) },
+                                    function() {})
+        }
+
         function onShowNotificationMessage(message) {
             popupNotificationMessage.text = message
             popupNotificationMessage.closeButtonVisible = false

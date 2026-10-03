@@ -18,7 +18,6 @@
 #include "ui/controllers/healthCheckController.h"
 #include "ui/controllers/importController.h"
 #include "ui/controllers/installController.h"
-#include "ui/controllers/keyActivationController.h"
 #include "ui/controllers/pageController.h"
 #include "ui/controllers/settingsController.h"
 #include "ui/controllers/sitesController.h"
@@ -103,7 +102,6 @@ private:
 
     QScopedPointer<ApiSettingsController> m_apiSettingsController;
     QScopedPointer<ApiConfigsController> m_apiConfigsController;
-    QScopedPointer<KeyActivationController> m_keyActivationController;
 
     QSharedPointer<ContainersModel> m_containersModel;
     QSharedPointer<ContainersModel> m_defaultServerContainersModel;

@@ -5826,5 +5826,21 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <source>Save</source>
         <translation type="vanished">Сохранить</translation>
     </message>
+    <message>
+        <source>Add the subscription from the link?</source>
+        <translation>Добавить подписку из ссылки?</translation>
+    </message>
+    <message>
+        <source>A link opened LodestarVPN to add a subscription. Add it only if you got the link from LodestarVPN or from someone you trust.</source>
+        <translation>Ссылка открыла LodestarVPN, чтобы добавить подписку. Добавляйте её, только если получили ссылку от LodestarVPN или от того, кому доверяете.</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Добавить</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
 </context>
 </TS>

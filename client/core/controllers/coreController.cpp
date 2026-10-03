@@ -1,6 +1,7 @@
 #include "coreController.h"
 
 #include <QDirIterator>
+#include <QTimer>
 #include <QTranslator>
 #include <memory>
 
@@ -145,10 +146,7 @@ void CoreController::initControllers()
     m_engine->rootContext()->setContextProperty("ApiConfigsController", m_apiConfigsController.get());
     m_connectionController->setApiConfigsController(m_apiConfigsController.get());
 
-    m_keyActivationController.reset(new KeyActivationController());
-    m_engine->rootContext()->setContextProperty("KeyActivationController", m_keyActivationController.get());
-
-    // shared tail of the subscription-id flows (entered UUID, frkn://sub/, activation key):
+    // shared tail of the subscription-id flows (entered UUID, lodestar://sub/):
     // busy on, fetch the configs, import them ALL (no protocol selection screen), go home
     auto fetchSubscriptionConfigs = [this](const QString &subscriptionId) {
         m_pageController->showBusyIndicator(true);
@@ -178,22 +176,9 @@ void CoreController::initControllers()
                 fetchSubscriptionConfigs(subscriptionId);
             });
 
-    connect(m_importController.get(), &ImportController::frknActivationKeyDetected, this,
-            [this](const QString &code) {
-                qDebug() << "[CORE] frkn activation key detected";
-                m_pageController->showBusyIndicator(true);
-                m_keyActivationController->validateKey(code);
-            });
-
-    connect(m_keyActivationController.get(), &KeyActivationController::keyAlreadyLinked, this, fetchSubscriptionConfigs);
-
-    connect(m_keyActivationController.get(), &KeyActivationController::keyActivated, this, fetchSubscriptionConfigs);
-
-    connect(m_keyActivationController.get(), &KeyActivationController::keyErrorOccurred, this,
-            [this](const QString &message) {
-                m_pageController->showBusyIndicator(false);
-                emit m_pageController->showErrorMessage(message);
-            });
+    // a subscription link from outside the app, after the user said yes to it
+    connect(m_pageController.get(), &PageController::subscriptionLinkConfirmed, this,
+            [this](const QString &link) { importConfigFromData(link); });
 
     connect(m_importController.get(), &ImportController::frknShareLinkDetected, this,
             [this](const QString &shareToken) {
@@ -417,6 +402,17 @@ void CoreController::initContainerModelUpdateHandler()
     m_splitPresetsModel->fetchPresets();
     // pick up backend-side config changes (e.g. node IP updates) - throttled inside
     m_apiConfigsController->refreshSubscriptionConfigs();
+    // and while the app stays open (in the tray for days): an hourly look, the
+    // refresh itself still at most every 6 hours, and never under a working
+    // connection - the next connect uses what came
+    auto *refreshTimer = new QTimer(this);
+    refreshTimer->setInterval(60 * 60 * 1000);
+    connect(refreshTimer, &QTimer::timeout, this, [this]() {
+        if (!m_connectionController->isConnected() && !m_connectionController->isConnectionInProgress()) {
+            m_apiConfigsController->refreshSubscriptionConfigs();
+        }
+    });
+    refreshTimer->start();
 }
 
 void CoreController::initTranslationsUpdatedHandler()

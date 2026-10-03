@@ -146,9 +146,7 @@ void DopamineApplication::init()
         const QStringList posArgs = m_parser.positionalArguments();
         for (const QString &arg : posArgs) {
             if (arg.startsWith("lodestar://sub/") || arg.startsWith("lodestar://conn/")) {
-                if (m_coreController) {
-                    m_coreController->importConfigFromData(arg);
-                }
+                handleSystemLink(arg);
                 break;
             }
         }
@@ -294,7 +292,7 @@ void DopamineApplication::startLocalServer() {
             }
             if (!importData.isEmpty() && m_coreController) {
                 emit m_coreController->pageController()->raiseMainWindow();
-                m_coreController->importConfigFromData(importData);
+                handleSystemLink(importData);
             } else if (m_coreController) {
                 emit m_coreController->pageController()->raiseMainWindow();
             }
@@ -312,6 +310,21 @@ void DopamineApplication::startLocalServer() {
     });
 }
 #endif
+
+// A link from the system: a subscription is added only once the user says
+// yes (any web page can open such a link); a shared connection goes as before
+void DopamineApplication::handleSystemLink(const QString &link)
+{
+    if (!m_coreController) {
+        return;
+    }
+    if (link.startsWith("lodestar://sub/")) {
+        // once the event loop runs: at launch the QML is not loaded yet
+        QTimer::singleShot(0, this, [this, link]() { emit m_coreController->pageController()->askToAddSubscriptionLink(link); });
+    } else {
+        m_coreController->importConfigFromData(link);
+    }
+}
 
 bool DopamineApplication::event(QEvent *event)
 {
