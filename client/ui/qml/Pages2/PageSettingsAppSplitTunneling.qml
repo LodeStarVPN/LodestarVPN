@@ -112,6 +112,9 @@ PageType {
 
             headerText: qsTr("Mode")
 
+            // only Android can switch modes: elsewhere the warning below says
+            // which one works, and a locked drop-down only took list space
+            visible: Qt.platform.os === "android"
             enabled: (Qt.platform.os === "android") && root.pageEnabled
 
             listView: ListViewWithRadioButtonType {
@@ -148,7 +151,7 @@ PageType {
 
         WarningType {
             Layout.fillWidth: true
-            Layout.topMargin: 8
+            Layout.topMargin: selector.visible ? 8 : 32
             Layout.leftMargin: 16
             Layout.rightMargin: 16
 
@@ -162,7 +165,7 @@ PageType {
     ListViewType {
         id: listView
 
-        ScrollBar.vertical: ScrollBarType { policy: ScrollBar.AlwaysOn }
+        ScrollBar.vertical: ScrollBarType {}
 
         anchors.top: header.bottom
         anchors.bottom: parent.bottom
@@ -187,11 +190,9 @@ PageType {
         delegate: ColumnLayout {
             width: listView.width
 
+            // the row has its own 16 px inside, in line with the dividers
             LabelWithButtonType {
                 Layout.fillWidth: true
-
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
 
                 text: appPath
                 rightImageSource: "qrc:/images/controls/trash.svg"

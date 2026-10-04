@@ -88,8 +88,8 @@ PageType {
 
             SwitcherType {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
+                // the same 16 px around a switch as on the other settings pages
+                Layout.margins: 16
 
                 enabled: root.pageEnabled
 
@@ -110,7 +110,8 @@ PageType {
     }
 
     CaptionTextType {
-        anchors.centerIn: parent
+        // in the middle of the list area: the page centre fell on the header text
+        anchors.centerIn: listView
         width: parent.width - 32
 
         visible: SplitPresetsModel.count === 0

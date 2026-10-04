@@ -48,18 +48,17 @@ PageType {
             headerText: qsTr("Connections")
         }
 
+        // 40 px buttons leave the title room beside them at the 360 px minimum width
         ImageButtonType {
             id: reloadFromApiButton
-
-            Layout.rightMargin: 4
 
             visible: ServersModel.hasServersFromGatewayApi
 
             image: "qrc:/images/controls/refresh-cw.svg"
             imageColor: DopamineStyle.color.paleGray
 
-            implicitWidth: 48
-            implicitHeight: 48
+            implicitWidth: 40
+            implicitHeight: 40
 
             onClicked: {
                 PageController.showBusyIndicator(true)
@@ -70,13 +69,13 @@ PageType {
         ImageButtonType {
             id: addServerButton
 
-            Layout.rightMargin: 12
+            Layout.rightMargin: 8
 
             image: "qrc:/images/controls/plus.svg"
             imageColor: DopamineStyle.color.paleGray
 
-            implicitWidth: 48
-            implicitHeight: 48
+            implicitWidth: 40
+            implicitHeight: 40
 
             onClicked: PageController.goToPage(PageEnum.PageSetupWizardConfigSource)
         }

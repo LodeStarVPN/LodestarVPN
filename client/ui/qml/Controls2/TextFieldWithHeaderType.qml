@@ -18,6 +18,9 @@ Item {
     property bool rightButtonClickedOnEnter: false
 
     property string buttonText
+    // what the field is for, shown inside it while it is empty; in a multiline
+    // field it wraps by words instead of being cut off
+    property string hintText
     property string buttonImageSource
     property var clickedFunc
 
@@ -107,7 +110,8 @@ Item {
 
                         inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
 
-                        placeholderTextColor: DopamineStyle.color.charcoalGray
+                        placeholderText: root.hintText
+                        placeholderTextColor: root.hintText !== "" ? DopamineStyle.color.mutedGray : DopamineStyle.color.charcoalGray
 
                         selectionColor:  DopamineStyle.color.richBrown
                         selectedTextColor: DopamineStyle.color.paleGray
@@ -148,42 +152,74 @@ Item {
                         }
                     }
 
-                    TextArea {
-                        id: textArea
+                    // a pasted config is ~20 lines: the field grows up to 160 px,
+                    // then scrolls inside its frame instead of painting over the
+                    // buttons below
+                    ScrollView {
+                        id: textAreaScroll
 
                         visible: root.multiline
-                        enabled: root.textFieldEditable
-                        color: root.enabled ? root.textFieldTextColor : root.textFieldTextDisabledColor
-
-                        wrapMode: TextEdit.Wrap
-                        selectByMouse: true
-                        inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
-                        placeholderTextColor: DopamineStyle.color.charcoalGray
-                        selectionColor: DopamineStyle.color.richBrown
-                        selectedTextColor: DopamineStyle.color.paleGray
-
-                        font.pixelSize: 16
-                        font.weight: 400
-                        font.family: "IBM Plex Mono"
+                        clip: true
 
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(160, Math.max(48, contentHeight))
-                        rightPadding: 0
-                        topPadding: 0
-                        leftPadding: 0
-                        bottomPadding: 0
+                        Layout.preferredHeight: Math.min(160, Math.max(48, textArea.contentHeight,
+                                                                       hintItem.visible ? hintItem.implicitHeight : 0))
 
-                        background: Rectangle {
-                            anchors.fill: parent
-                            color: root.backgroundDisabledColor
-                        }
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                        onTextChanged: {
-                            root.errorText = ""
-                        }
+                        TextArea {
+                            id: textArea
 
-                        onActiveFocusChanged: {
-                            backgroud.border.color = getBackgroundBorderColor(root.borderColor)
+                            enabled: root.textFieldEditable
+                            color: root.enabled ? root.textFieldTextColor : root.textFieldTextDisabledColor
+
+                            wrapMode: TextEdit.Wrap
+                            selectByMouse: true
+                            inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
+                            placeholderTextColor: DopamineStyle.color.charcoalGray
+                            selectionColor: DopamineStyle.color.richBrown
+                            selectedTextColor: DopamineStyle.color.paleGray
+
+                            font.pixelSize: 16
+                            font.weight: 400
+                            font.family: "IBM Plex Mono"
+
+                            rightPadding: 0
+                            topPadding: 0
+                            leftPadding: 0
+                            bottomPadding: 0
+
+                            background: Rectangle {
+                                anchors.fill: parent
+                                color: root.backgroundDisabledColor
+                            }
+
+                            // right click: paste, copy, cut (the field has no paste button)
+                            ContextMenu.menu: ContextMenuType {
+                                textObj: textArea
+                            }
+
+                            Text {
+                                id: hintItem
+
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                visible: root.hintText !== "" && textArea.length === 0 && textArea.preeditText === ""
+
+                                text: root.hintText
+                                wrapMode: Text.WordWrap
+                                color: DopamineStyle.color.mutedGray
+                                font: textArea.font
+                            }
+
+                            onTextChanged: {
+                                root.errorText = ""
+                            }
+
+                            onActiveFocusChanged: {
+                                backgroud.border.color = getBackgroundBorderColor(root.borderColor)
+                            }
                         }
                     }
                 }

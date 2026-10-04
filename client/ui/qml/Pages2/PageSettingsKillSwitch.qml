@@ -55,12 +55,17 @@ PageType {
                 }
             }
 
+            // one mode left while the strict one is hidden: a single radio
+            // button that is always on and can't be changed says nothing the
+            // description above doesn't
             VerticalRadioButton {
                 id: softKillSwitch
                 Layout.fillWidth: true
                 Layout.topMargin: 32
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
+
+                visible: strictKillSwitch.visible
 
                 enabled: SettingsController.isKillSwitchEnabled && !ConnectionController.isConnected
                 checked: !SettingsController.strictKillSwitchEnabled
@@ -76,7 +81,9 @@ PageType {
                 Keys.onReturnPressed: this.clicked()
             }
 
-            DividerType {}
+            DividerType {
+                visible: strictKillSwitch.visible
+            }
 
             VerticalRadioButton {
                 id: strictKillSwitch

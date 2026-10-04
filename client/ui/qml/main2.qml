@@ -134,7 +134,9 @@ Window  {
             popupNotificationMessage.text = message
             popupNotificationMessage.closeButtonVisible = false
             popupNotificationMessage.open()
-            popupNotificationTimer.start()
+            // 3 s for a short one, longer for a few lines of text
+            popupNotificationTimer.interval = Math.max(3000, message.length * 60)
+            popupNotificationTimer.restart()
         }
 
         function onGoToPageSettingsBackup() {

@@ -173,12 +173,13 @@ void PageController::onShowErrorMessage(ErrorCode errorCode)
     // notice for the user, not a malfunction to look up: no code
     if (errorCode == ErrorCode::ApiDeviceUnlinkedError || errorCode == ErrorCode::ApiConfigLimitError
         || errorCode == ErrorCode::ApiSubscriptionExpiredError || errorCode == ErrorCode::ApiSubscriptionNotFoundError
-        || errorCode == ErrorCode::ApiUnlinkLimitError) {
+        || errorCode == ErrorCode::ApiUnlinkLimitError || errorCode == ErrorCode::ApiSubscriptionIdNotFoundError) {
         emit showErrorMessage(errorMessage.trimmed());
         return;
     }
-    const auto errorUrl = QStringLiteral("troubleshooting/error-codes/#error-%1-%2").arg(static_cast<int>(errorCode)).arg(utils::enumToString(errorCode).toLower());
-    const auto fullMessage = QStringLiteral("<a href=\"%1\" style=\"color: #FBB26A;\">ErrorCode: %2</a>. %3").arg(errorUrl).arg(static_cast<int>(errorCode)).arg(errorMessage);
+    // "Ошибка 103. <what happened>": the code in the user's language, for
+    // support. No link: there is no error-code page on the site yet
+    const auto fullMessage = tr("Error %1").arg(static_cast<int>(errorCode)) + QStringLiteral(". ") + errorMessage.trimmed();
 
     emit showErrorMessage(fullMessage);
 }

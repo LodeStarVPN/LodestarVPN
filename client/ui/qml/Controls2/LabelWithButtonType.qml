@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
 import Style 1.0
 
@@ -11,7 +12,9 @@ Item {
 
     // property alias focusObjectName: eyeImage.objectName
     property string text
-    property int textMaximumLineCount: 2
+    // RU/UK titles like "Скинути налаштування і видалити всі дані із
+    // застосунку" need a third line at the minimum width
+    property int textMaximumLineCount: 3
     property int textElide: Qt.ElideRight
 
     property string descriptionText
@@ -21,6 +24,9 @@ Item {
     property string buttonImageSource
     property string rightImageSource
     property string leftImageSource
+    // the control icons are drawn light grey: tinted with the text colour they
+    // read in the light theme too (flags and other pictures keep their colours)
+    property string leftImageColor: leftImageSource.indexOf("qrc:/images/controls/") === 0 ? DopamineStyle.color.paleGray : ""
     property bool isLeftImageHoverEnabled: true
     property bool isSmallLeftImage: false
 
@@ -140,6 +146,11 @@ Item {
 
                 anchors.centerIn: parent
                 source: leftImageSource
+
+                layer.enabled: root.leftImageColor !== ""
+                layer.effect: ColorOverlay {
+                    color: root.leftImageColor
+                }
             }
         }
 

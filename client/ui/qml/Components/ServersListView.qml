@@ -231,7 +231,9 @@ ListViewType {
                 objectName: "autoSelectButton"
 
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
+                // in line with the servers' circles and names, which follow a
+                // 24 px flag and the row's 5 px spacing
+                Layout.leftMargin: 16 + 24 + 5
                 Layout.rightMargin: 16
 
                 text: qsTr("Auto-select")
@@ -349,8 +351,19 @@ ListViewType {
 
                     text: listName
                     // no address/protocol/country here - technical details live
-                    // on the server details card; legacy servers keep services
-                    descriptionText: isServerFromGatewayApi ? "" : serverDescription
+                    // on the server details card; legacy servers keep services.
+                    // The ping goes under the name: in a column of its own it
+                    // left the name ~10 letters and long countries broke mid-word
+                    descriptionText: {
+                        var parts = []
+                        if (!isServerFromGatewayApi && serverDescription !== "") {
+                            parts.push(serverDescription)
+                        }
+                        if (SettingsController.isServerPingTextVisible && healthLatency !== -2) {
+                            parts.push(healthLatency >= 0 ? qsTr("%1 ms").arg(healthLatency) : qsTr("offline"))
+                        }
+                        return parts.join(" · ")
+                    }
 
                     checked: index === proxyServersModel.mapFromSource(root.selectedIndex) && !SettingsController.autoServerSelection
                     checkable: true
@@ -407,17 +420,6 @@ ListViewType {
                         layer.effect: ColorOverlay {
                             color: "#FF453A"
                         }
-                    }
-
-                    CaptionTextType {
-                        Layout.alignment: Qt.AlignVCenter
-
-                        visible: SettingsController.isServerPingTextVisible
-
-                        text: healthLatency >= 0 ? healthLatency + " ms" : qsTr("offline")
-                        color: healthLatency >= 0
-                               ? (healthLatency < 120 ? "#34C759" : (healthLatency < 300 ? "#FF9F0A" : "#FF453A"))
-                               : DopamineStyle.color.vibrantRed
                     }
                 }
 

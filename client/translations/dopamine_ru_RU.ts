@@ -244,6 +244,18 @@ for the best server...</source>
         <translation>Поиск
 лучшего сервера...</translation>
     </message>
+    <message>
+        <source>%1 B/s</source>
+        <translation>%1 Б/с</translation>
+    </message>
+    <message>
+        <source>%1 KB/s</source>
+        <translation>%1 КБ/с</translation>
+    </message>
+    <message>
+        <source>%1 MB/s</source>
+        <translation>%1 МБ/с</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionTypeSelectionDrawer</name>
@@ -310,7 +322,7 @@ for the best server...</source>
     <message>
         <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="66"/>
         <source>Split tunneling</source>
-        <translation>Раздельное VPN-туннелирование</translation>
+        <translation>Раздельное туннелирование</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="67"/>
@@ -648,6 +660,10 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <source>Unable change server while there is an active connection</source>
         <translation type="vanished">Невозможно изменить сервер во время активного соединения</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 мс</translation>
     </message>
 </context>
 <context>
@@ -1675,11 +1691,27 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="75"/>
         <source>Last active: %1</source>
-        <translation>Последняя активность: %1</translation>
+        <translation>Активность: %1</translation>
     </message>
     <message>
         <source>The next one can be unlinked after %1.</source>
         <translation>Следующее можно отвязать после %1.</translation>
+    </message>
+    <message>
+        <source>This device</source>
+        <translation>Это устройство</translation>
+    </message>
+    <message>
+        <source>Unlink this device?</source>
+        <translation>Отвязать устройство?</translation>
+    </message>
+    <message>
+        <source>The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it.</source>
+        <translation>Устройство будет отвязано от подписки. Подключить его снова можно через 24 часа, введя на нём ID подписки.</translation>
+    </message>
+    <message>
+        <source>Unlink</source>
+        <translation>Отвязать</translation>
     </message>
 </context>
 <context>
@@ -2093,6 +2125,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Devices</source>
         <translation>Устройства</translation>
     </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 мс</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsApiSubscriptionKey</name>
@@ -2216,7 +2252,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsAppSplitTunneling.qml" line="155"/>
         <source>Only &quot;Apps from the list should not have access via VPN&quot; mode is available on Windows</source>
-        <translation>На Windows доступен только режим &quot;Приложения из списка не должны иметь доступ через VPN&quot;</translation>
+        <translation>На Windows доступен только режим «Приложения из списка не должны работать через VPN»</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsAppSplitTunneling.qml" line="201"/>
@@ -2900,6 +2936,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Clear logs</source>
         <translation>Очистить логи</translation>
     </message>
+    <message>
+        <source>Click to copy it for support</source>
+        <translation>Нажмите, чтобы скопировать для поддержки</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsNewsNotifications</name>
@@ -3441,6 +3481,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Insert</source>
         <translation>Вставить</translation>
     </message>
+    <message>
+        <source>Enter your subscription ID</source>
+        <translation>Введите ID подписки</translation>
+    </message>
 </context>
 <context>
     <name>PageSetupWizardConfigSource</name>
@@ -3672,6 +3716,18 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSetupWizardConfigSource.qml" line="203"/>
         <source>Copy it and send it to support</source>
         <translation>Скопируйте и отправьте в поддержку</translation>
+    </message>
+    <message>
+        <source>Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config</source>
+        <translation>Вставьте ID или ссылку подписки LodestarVPN, ключ подключения или конфиг AmneziaWG/WireGuard</translation>
+    </message>
+    <message>
+        <source>Add this connection?</source>
+        <translation>Добавить подключение?</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Добавить</translation>
     </message>
 </context>
 <context>
@@ -4226,6 +4282,10 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageStart.qml" line="159"/>
         <source>Logging is enabled. Note that logs will be automaticallydisabled after 14 days, and all log files will be deleted.</source>
+        <translation>Логирование включено. Обратите внимание, что логирование будет автоматически отключено через 14 дней, а все файлы логов будут удалены.</translation>
+    </message>
+    <message>
+        <source>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</source>
         <translation>Логирование включено. Обратите внимание, что логирование будет автоматически отключено через 14 дней, а все файлы логов будут удалены.</translation>
     </message>
 </context>
@@ -5503,6 +5563,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <source>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</source>
         <translation>VPN не смог настроить сеть на этом компьютере. Подключитесь ещё раз; если не поможет, перезагрузите компьютер и напишите в поддержку, указав код ошибки.</translation>
     </message>
+    <message>
+        <source>There is no subscription with this ID. Check it and try again.</source>
+        <translation>Подписки с таким ID нет. Проверьте его и попробуйте ещё раз.</translation>
+    </message>
 </context>
 <context>
     <name>RenameServerDrawer</name>
@@ -5575,6 +5639,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <location filename="../ui/qml/Components/ServersListView.qml" line="221"/>
         <source>Check servers</source>
         <translation>Проверить серверы</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 мс</translation>
     </message>
 </context>
 <context>
@@ -5849,6 +5917,13 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <source>Cancel</source>
         <translation>Отмена</translation>
+    </message>
+</context>
+<context>
+    <name>PageController</name>
+    <message>
+        <source>Error %1</source>
+        <translation>Ошибка %1</translation>
     </message>
 </context>
 </TS>

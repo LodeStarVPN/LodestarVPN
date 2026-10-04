@@ -177,8 +177,9 @@ PageType {
                 text: qsTr("Start minimized")
                 descriptionText: qsTr("Launch application minimized (works with autostart option turned on)")
 
+                // the switch greys itself out when disabled; halving the
+                // opacity on top made the description unreadable
                 enabled: switcherAutoStart.checked
-                opacity: enabled ? 1.0 : 0.5
 
                 checked: SettingsController.startMinimized
                 onToggled: function() {

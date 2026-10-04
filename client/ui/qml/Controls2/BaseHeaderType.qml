@@ -28,6 +28,9 @@ Item {
             Header1TextType {
                 id: header
                 Layout.fillWidth: true
+                // words wrap at spaces; only a token wider than the line (a
+                // server renamed without spaces) breaks instead of running off
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 text: root.headerText
                 maximumLineCount: root.headerTextMaximumLineCount
                 elide: root.headerTextElide

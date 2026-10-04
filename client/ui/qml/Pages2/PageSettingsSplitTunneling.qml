@@ -129,7 +129,7 @@ PageType {
     ListViewType {
         id: listView
 
-        ScrollBar.vertical: ScrollBarType { policy: ScrollBar.AlwaysOn }
+        ScrollBar.vertical: ScrollBarType {}
 
         anchors.top: header.bottom
         anchors.topMargin: 16
@@ -409,8 +409,6 @@ PageType {
 
                     LabelWithButtonType {
                         Layout.fillWidth: true
-                        Layout.leftMargin: 16
-                        Layout.rightMargin: 16
 
                         text: title
 

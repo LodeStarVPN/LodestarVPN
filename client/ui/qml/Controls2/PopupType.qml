@@ -13,8 +13,9 @@ Popup {
     property string text
     property bool closeButtonVisible: true
 
-    leftMargin: 25
-    rightMargin: 25
+    // the same side margins as the cards and buttons under it
+    leftMargin: 16
+    rightMargin: 16
     bottomMargin: 70 + SettingsController.safeAreaBottomMargin
 
     width: parent.width - leftMargin - rightMargin
@@ -40,7 +41,7 @@ Popup {
         anchors.fill: parent
 
         color: DopamineStyle.color.charcoalGray
-        radius: 4
+        radius: 12
     }
 
     Timer {
@@ -67,9 +68,16 @@ Popup {
             anchors.leftMargin: 16
             anchors.rightMargin: 16
 
+            spacing: 12
+
             CaptionTextType {
                 horizontalAlignment: Text.AlignLeft
                 Layout.fillWidth: true
+
+                // the caption's default colour is the page background: black on
+                // the grey toast. Light text reads in both themes
+                color: DopamineStyle.color.paleGray
+                linkColor: DopamineStyle.color.paleGray
 
                 onLinkActivated: function(link) {
                     Qt.openUrlExternally(LanguageModel.getCurrentDocsUrl(link))
@@ -89,6 +97,10 @@ Popup {
                 visible: closeButtonVisible
 
                 implicitHeight: 32
+                // a long message wraps instead of squeezing the button under its label
+                Layout.minimumWidth: implicitWidth
+                leftPadding: 16
+                rightPadding: 16
 
                 defaultColor: DopamineStyle.color.mutedGray
                 hoveredColor: DopamineStyle.color.lightGray

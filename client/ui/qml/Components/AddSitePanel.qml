@@ -22,7 +22,9 @@ Item {
     Rectangle {
         id: background
         anchors.fill: parent
-        color: "#0E0F12"
+        // the page background of the current theme (a fixed near-black was a
+        // dark slab in the light theme), like the panels of the split pages
+        color: DopamineStyle.color.midnightBlack
         opacity: 0.85
         z: -1
     }

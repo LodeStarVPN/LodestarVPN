@@ -2462,11 +2462,18 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
         }
 
         auto anySuccess = QSharedPointer<bool>::create(false);
+        auto lastError = QSharedPointer<ErrorCode>::create(ErrorCode::NoError);
         auto processNext = QSharedPointer<std::function<void()>>::create();
-        *processNext = [this, processNext, workItems, anySuccess, authData, userCountryCode, callback]() {
+        *processNext = [this, processNext, workItems, anySuccess, lastError, authData, userCountryCode, callback]() {
             if (workItems->isEmpty()) {
                 finalizeSubscriptionConfigs();
                 qDebug() << "[SUBSCRIPTION] fetch done, success:" << *anySuccess << "configs count:" << m_subscriptionConfigs.size();
+                if (!*anySuccess && *lastError != ErrorCode::NoError) {
+                    // every config was refused: without a word here a mistyped
+                    // ID only made the busy spinner blink
+                    emit errorOccurred(*lastError == ErrorCode::ApiSubscriptionNotFoundError
+                                               ? ErrorCode::ApiSubscriptionIdNotFoundError : *lastError);
+                }
                 callback(*anySuccess);
                 return;
             }
@@ -2519,7 +2526,7 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
             appendProtocolDataToApiPayload(serviceProtocol, protocolData, apiPayload);
 
             executeRequestAsync(QString("%1v1/config"), apiPayload, false,
-                                [this, processNext, anySuccess, authData, serviceObject, connectionObject, serviceType,
+                                [this, processNext, anySuccess, lastError, authData, serviceObject, connectionObject, serviceType,
                                  serviceProtocol, serverCountryCode, connectionUuid, connectionLabel, nodeId,
                                  protocolData](ErrorCode errorCode, const QByteArray &responseBody) {
                 if (errorCode == ErrorCode::NoError) {
@@ -2527,6 +2534,7 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
                     errorCode = fillServerConfig(serviceProtocol, protocolData, responseBody, serverConfig);
                     if (errorCode != ErrorCode::NoError) {
                         qWarning() << "[SUBSCRIPTION] failed to fill config for" << serviceProtocol << serverCountryCode << ":" << static_cast<int>(errorCode);
+                        *lastError = errorCode;
                     } else {
 
             // fillServerConfig may have lost auth_data when the decrypted config didn't include it;
@@ -2598,6 +2606,7 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
                     }
                 } else {
                     qWarning() << "[SUBSCRIPTION] failed to fetch config for" << serviceProtocol << serverCountryCode << ":" << static_cast<int>(errorCode);
+                    *lastError = errorCode;
                 }
                 (*processNext)();
             });

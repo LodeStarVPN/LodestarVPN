@@ -16,7 +16,9 @@ BaseHeaderType {
 
     SwitcherType {
         id: headerSwitcher
-        Layout.alignment: Qt.AlignRight
+        // beside the first line of a wrapped title, not its middle
+        Layout.alignment: Qt.AlignRight | Qt.AlignTop
+        Layout.topMargin: 3
         visible: root.showSwitcher
 
         onToggled: {

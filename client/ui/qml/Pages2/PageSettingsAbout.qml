@@ -128,7 +128,6 @@ PageType {
 
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 8
-                Layout.bottomMargin: 16
                 implicitHeight: 32
 
                 defaultColor: DopamineStyle.color.transparent
@@ -147,10 +146,10 @@ PageType {
             BasicButtonType {
                 id: privacyPolicyButton
 
+                // the same height as the link above, so their hover pills match
                 Layout.alignment: Qt.AlignHCenter
                 Layout.bottomMargin: 16
-                Layout.topMargin: -15
-                implicitHeight: 25
+                implicitHeight: 32
 
                 defaultColor: DopamineStyle.color.transparent
                 hoveredColor: DopamineStyle.color.translucentWhite

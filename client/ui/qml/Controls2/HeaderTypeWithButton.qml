@@ -18,7 +18,8 @@ BaseHeaderType {
         id: headerActionButton
         implicitWidth: 40
         implicitHeight: 40
-        Layout.alignment: Qt.AlignRight
+        // beside the first line of a wrapped title, not its middle
+        Layout.alignment: Qt.AlignRight | Qt.AlignTop
         image: root.actionButtonImage
         imageColor: DopamineStyle.color.paleGray
         visible: image ? true : false

@@ -41,6 +41,10 @@ DrawerType2 {
             Layout.rightMargin: 16
             Layout.leftMargin: 16
 
+            // words wrap at spaces; only a token longer than the line (a long
+            // domain in "Remove <site>?") is broken instead of running off the sheet
+            wrapMode: Text.Wrap
+
             text: root.headerText
         }
 
@@ -49,6 +53,9 @@ DrawerType2 {
             Layout.topMargin: 8
             Layout.rightMargin: 16
             Layout.leftMargin: 16
+
+            // an empty line would leave a gap between the question and the buttons
+            visible: root.descriptionText !== ""
 
             text: root.descriptionText
         }

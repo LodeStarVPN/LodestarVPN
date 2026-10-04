@@ -97,11 +97,11 @@ PageType {
                 }
             }
 
+            // the radio rows and dividers keep their own 16 px: circles and
+            // separators in line with the text and button above and below
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 16
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
 
                 visible: countriesListView.count > 1
                 spacing: 0

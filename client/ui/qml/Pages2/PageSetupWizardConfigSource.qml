@@ -76,12 +76,14 @@ PageType {
         header: ColumnLayout {
             width: listView.width
 
-            RowLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 20 + SettingsController.safeAreaTopMargin
 
-                spacing: 0
+                spacing: 4
 
+                // the arrow on its own row, the title below it at the page margin,
+                // the same as on the other pages of this flow
                 BackButtonType {
                     id: backButton
 
@@ -89,144 +91,135 @@ PageType {
                 }
 
                 HeaderTypeWithButton {
-                id: moreButton
+                    id: moreButton
 
-                property bool isVisible: SettingsController.getInstallationUuid() !== "" || PageController.isStartPageVisible()
+                    property bool isVisible: SettingsController.getInstallationUuid() !== "" || PageController.isStartPageVisible()
 
-                Layout.fillWidth: true
-                Layout.rightMargin: 16
-                Layout.leftMargin: 16
+                    Layout.fillWidth: true
+                    Layout.rightMargin: 16
+                    Layout.leftMargin: 16
 
-                headerText: qsTr("Connection")
+                    headerText: qsTr("Connection")
 
-                actionButtonImage: isVisible ? "qrc:/images/controls/more-vertical.svg" : ""
-                actionButtonFunction: function() {
-                    moreActionsDrawer.openTriggered()
-                }
+                    actionButtonImage: isVisible ? "qrc:/images/controls/more-vertical.svg" : ""
+                    actionButtonFunction: function() {
+                        moreActionsDrawer.openTriggered()
+                    }
 
-                DrawerType2 {
-                    id: moreActionsDrawer
+                    DrawerType2 {
+                        id: moreActionsDrawer
 
-                    parent: root
+                        parent: root
 
-                    anchors.fill: parent
-                    expandedHeight: root.height * 0.5
+                        anchors.fill: parent
 
-                    expandedStateContent: ColumnLayout {
-                        anchors.top: parent.top
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        spacing: 0
+                        expandedStateContent: ColumnLayout {
+                            id: moreActionsContent
 
-                        BaseHeaderType {
-                            Layout.fillWidth: true
-                            Layout.topMargin: 32
-                            Layout.leftMargin: 16
-                            Layout.rightMargin: 16
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            spacing: 0
 
-                            headerText: qsTr("Settings")
-                        }
+                            onImplicitHeightChanged: {
+                                moreActionsDrawer.expandedHeight = moreActionsContent.implicitHeight + 32
+                                        + SettingsController.safeAreaBottomMargin
+                            }
 
-                        SwitcherType {
-                            id: switcher
-                            Layout.fillWidth: true
-                            Layout.topMargin: 16
-                            Layout.leftMargin: 16
-                            Layout.rightMargin: 16
+                            BaseHeaderType {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 32
+                                Layout.leftMargin: 16
+                                Layout.rightMargin: 16
 
-                            text: qsTr("Enable logs")
+                                headerText: qsTr("Settings")
+                            }
 
-                            visible: PageController.isStartPageVisible()
-                            checked: SettingsController.isLoggingEnabled
-                            onToggled: function() {
-                                if (checked !== SettingsController.isLoggingEnabled) {
-                                    SettingsController.isLoggingEnabled = checked
+                            SwitcherType {
+                                id: switcher
+                                Layout.fillWidth: true
+                                Layout.topMargin: 16
+                                Layout.leftMargin: 16
+                                Layout.rightMargin: 16
+
+                                text: qsTr("Enable logs")
+
+                                visible: PageController.isStartPageVisible()
+                                checked: SettingsController.isLoggingEnabled
+                                onToggled: function() {
+                                    if (checked !== SettingsController.isLoggingEnabled) {
+                                        SettingsController.isLoggingEnabled = checked
+                                    }
                                 }
                             }
-                        }
 
-                        LabelWithButtonType {
-                            Layout.fillWidth: true
+                            LabelWithButtonType {
+                                Layout.fillWidth: true
 
-                            text: qsTr("Export client logs")
-                            rightImageSource: "qrc:/images/controls/chevron-right.svg"
+                                text: qsTr("Export client logs")
+                                rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
-                            visible: PageController.isStartPageVisible()
+                                visible: PageController.isStartPageVisible()
 
-                            clickedFunction: function() {
-                                var fileName = ""
-                                if (GC.isMobile()) {
-                                    fileName = "LodestarVPN.log"
-                                } else {
-                                    fileName = SystemController.getFileName(qsTr("Save"),
-                                                                            qsTr("Logs files (*.log)"),
-                                                                            StandardPaths.standardLocations(StandardPaths.DocumentsLocation) + "/LodestarVPN",
-                                                                            true,
-                                                                            ".log")
-                                }
-                                if (fileName !== "") {
-                                    PageController.showBusyIndicator(true)
-                                    SettingsController.exportLogsFile(fileName)
-                                    PageController.showBusyIndicator(false)
-                                    PageController.showNotificationMessage(qsTr("Logs file saved"))
+                                clickedFunction: function() {
+                                    var fileName = ""
+                                    if (GC.isMobile()) {
+                                        fileName = "LodestarVPN.log"
+                                    } else {
+                                        fileName = SystemController.getFileName(qsTr("Save"),
+                                                                                qsTr("Logs files (*.log)"),
+                                                                                StandardPaths.standardLocations(StandardPaths.DocumentsLocation) + "/LodestarVPN",
+                                                                                true,
+                                                                                ".log")
+                                    }
+                                    if (fileName !== "") {
+                                        PageController.showBusyIndicator(true)
+                                        SettingsController.exportLogsFile(fileName)
+                                        PageController.showBusyIndicator(false)
+                                        PageController.showNotificationMessage(qsTr("Logs file saved"))
+                                    }
                                 }
                             }
-                        }
 
-                        LabelWithButtonType {
-                            id: supportUuid
-                            Layout.fillWidth: true
-                            Layout.topMargin: 16
+                            LabelWithButtonType {
+                                id: supportUuid
+                                Layout.fillWidth: true
+                                Layout.topMargin: 16
 
-                            text: qsTr("Support tag")
-                            // the ID itself is not shown, only copied for support
-                            descriptionText: qsTr("Copy it and send it to support")
+                                text: qsTr("Support tag")
+                                // the ID itself is not shown, only copied for support
+                                descriptionText: qsTr("Copy it and send it to support")
 
-                            descriptionOnTop: true
+                                descriptionOnTop: true
 
-                            rightImageSource: "qrc:/images/controls/copy.svg"
-                            rightImageColor: DopamineStyle.color.paleGray
+                                rightImageSource: "qrc:/images/controls/copy.svg"
+                                rightImageColor: DopamineStyle.color.paleGray
 
-                            visible: SettingsController.getInstallationUuid() !== ""
-                            clickedFunction: function() {
-                                GC.copyToClipBoard(SettingsController.getInstallationUuid())
-                                PageController.showNotificationMessage(qsTr("Copied"))
-                                if (!GC.isMobile()) {
-                                    this.rightButton.forceActiveFocus()
+                                visible: SettingsController.getInstallationUuid() !== ""
+                                clickedFunction: function() {
+                                    GC.copyToClipBoard(SettingsController.getInstallationUuid())
+                                    PageController.showNotificationMessage(qsTr("Copied"))
+                                    if (!GC.isMobile()) {
+                                        this.rightButton.forceActiveFocus()
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                }
-            }
-
-            ParagraphTextType {
-                objectName: "insertKeyLabel"
-
-                Layout.fillWidth: true
-                Layout.topMargin: 32
-                Layout.rightMargin: 16
-                Layout.leftMargin: 16
-                Layout.bottomMargin: 24
-
-                text: qsTr("Insert a key or a WireGuard/AmneziaWG config, add a file, or scan the QR-code")
             }
 
             TextFieldWithHeaderType {
                 id: textKey
 
                 Layout.fillWidth: true
+                Layout.topMargin: 32
                 Layout.rightMargin: 16
                 Layout.leftMargin: 16
 
-                headerText: qsTr("Key or config")
-                buttonText: qsTr("Insert")
+                // everything the field accepts, see onUnknownFormatDetected
+                hintText: qsTr("Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config")
                 multiline: true
-
-                clickedFunc: function() {
-                    textKey.insertFromClipboard()
-                }
             }
 
             BasicButtonType {
@@ -447,8 +440,10 @@ PageType {
             anchors.right: parent.right
             spacing: 0
 
-            Component.onCompleted: {
+            // measured again once the texts wrap and the count arrives
+            onImplicitHeightChanged: {
                 subscriptionDrawer.expandedHeight = subscriptionContent.implicitHeight + 32
+                        + SettingsController.safeAreaBottomMargin
             }
 
             Header2Type {
@@ -458,7 +453,9 @@ PageType {
                 Layout.leftMargin: 16
                 Layout.bottomMargin: 16
 
-                headerText: qsTr("Subscription loaded")
+                // a single pasted key or config is one connection, not a subscription
+                headerText: subscriptionDrawer.configCount === 1 ? qsTr("Add this connection?")
+                                                                 : qsTr("Subscription loaded")
             }
 
             ParagraphTextType {
@@ -467,6 +464,8 @@ PageType {
                 Layout.leftMargin: 16
                 Layout.bottomMargin: 24
 
+                visible: subscriptionDrawer.configCount !== 1
+
                 text: qsTr("Found %n configuration(s). Add them all?", "", subscriptionDrawer.configCount)
             }
 
@@ -474,7 +473,8 @@ PageType {
                 id: replacePreviousCheckbox
                 Layout.fillWidth: true
                 Layout.rightMargin: 16
-                Layout.leftMargin: 16
+                // the box itself in line with the texts and buttons at 16 px
+                Layout.leftMargin: 0
                 Layout.bottomMargin: 16
 
                 text: qsTr("Delete previous configurations")
@@ -488,7 +488,8 @@ PageType {
                 Layout.leftMargin: 16
                 Layout.bottomMargin: 8
 
-                text: qsTr("Add %n server(s)", "", subscriptionDrawer.configCount)
+                text: subscriptionDrawer.configCount === 1 ? qsTr("Add")
+                                                           : qsTr("Add %n server(s)", "", subscriptionDrawer.configCount)
 
                 clickedFunc: function() {
                     PageController.showBusyIndicator(true)
@@ -501,7 +502,6 @@ PageType {
                 Layout.fillWidth: true
                 Layout.rightMargin: 16
                 Layout.leftMargin: 16
-                Layout.bottomMargin: 16
 
                 defaultColor: DopamineStyle.color.transparent
                 hoveredColor: DopamineStyle.color.translucentWhite

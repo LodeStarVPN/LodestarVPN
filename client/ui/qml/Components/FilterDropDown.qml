@@ -44,6 +44,8 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
 
             color: DopamineStyle.color.paleGray
+            // one line under the chevron: elide only works without wrapping
+            wrapMode: Text.NoWrap
             elide: Text.ElideRight
 
             text: {
@@ -116,13 +118,15 @@ Rectangle {
             model: root.filterModel
             clip: true
             interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
 
             delegate: Rectangle {
                 width: list.width
                 height: 44
                 radius: 12
 
-                color: delegateMouseArea.containsMouse ? DopamineStyle.color.lightGray : DopamineStyle.color.transparent
+                // the hover tint every other row uses: lightGray hid the text
+                color: delegateMouseArea.containsMouse ? DopamineStyle.color.translucentWhite : DopamineStyle.color.transparent
 
                 ButtonTextType {
                     anchors.left: parent.left
@@ -132,6 +136,7 @@ Rectangle {
                     anchors.rightMargin: 12
 
                     horizontalAlignment: Text.AlignLeft
+                    wrapMode: Text.NoWrap
                     elide: Text.ElideRight
 
                     text: name

@@ -14,6 +14,7 @@
 class HealthCheckController;
 class ApiConfigsController;
 class QTcpSocket;
+class QSslSocket;
 
 class ConnectionController : public QObject
 {
@@ -165,6 +166,40 @@ private:
     static constexpr int kLivePingIntervalMs = 3000;
     static constexpr int kLivePingTimeoutMs = 4000;
     static constexpr int kIpTrafficTimeoutMs = 8000;
+    // ---
+
+    // --- stalled-tunnel watchdog (WG/AWG on desktop) ---
+    // A tunnel can stay up, with a handshake every 2 min, while real traffic
+    // no longer gets through: on 2026-10-04 for minutes only small packets
+    // came back (the live ping and DNS answered, pages did not load) until
+    // the user reconnected, and the new connection worked at once. Every
+    // kStallProbeIntervalMs a TLS handshake through the tunnel brings a few
+    // full-size packets back. Once a probe has passed on this connection, two
+    // failed ones in a row reconnect, as the user's off/on did, but only
+    // while some packets still arrive: with nothing arriving at all the
+    // network is down and WireGuard resumes by itself once it is back, and a
+    // tunnel that moves a lot works (a probe host is slow or unreachable).
+    // At most one reconnect per kStallReconnectGapMs.
+    void startStallWatch();
+    void stopStallWatch();
+    void probeStall();
+    void finishStallProbe(QSslSocket *socket, bool ok);
+
+    QTimer *m_stallTimer = nullptr;
+    QSslSocket *m_stallSocket = nullptr;
+    bool m_stallWatching = false;
+    bool m_stallArmed = false;        // a probe passed on this connection
+    bool m_stallTcpConnected = false; // the running probe got past the TCP connect
+    int m_stallFailures = 0;          // failed probes in a row
+    int m_stallHostIndex = 0;
+    quint64 m_stallRxPrevious = 0;    // bytes received while the previous probe ran
+    quint64 m_stallRxCurrent = 0;     // ... and since the current one began
+    QElapsedTimer m_stallLastReconnect;
+    static constexpr int kStallProbeIntervalMs = 30000;
+    static constexpr int kStallRetryMs = 5000;
+    static constexpr int kStallProbeTimeoutMs = 10000;
+    static constexpr quint64 kStallBusyRxBytes = 256 * 1024;
+    static constexpr qint64 kStallReconnectGapMs = 3 * 60 * 1000;
     // ---
 
     // --- manual-connect watchdog ---

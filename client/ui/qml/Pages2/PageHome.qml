@@ -72,15 +72,26 @@ PageType {
                 property bool isLoggingEnabled: SettingsController.isLoggingEnabled
 
                 Layout.alignment: Qt.AlignHCenter
+                // centred on the settings gear beside it, styled like the
+                // split tunneling button at the bottom
+                Layout.topMargin: 6
+                leftPadding: 12
+                rightPadding: 12
 
                 implicitHeight: 36
 
                 defaultColor: DopamineStyle.color.transparent
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
-                disabledColor: DopamineStyle.color.mutedGray
+                // while the busy spinner disables the page it only dims, it
+                // does not turn into a grey blob that hides its own text
+                disabledColor: DopamineStyle.color.transparent
                 textColor: DopamineStyle.color.mutedGray
                 borderWidth: 0
+
+                buttonTextLabel.lineHeight: 20
+                buttonTextLabel.font.pixelSize: 14
+                buttonTextLabel.font.weight: 500
 
                 visible: isLoggingEnabled ? true : false
                 text: qsTr("Diagnostic Mode Enabled")
@@ -144,6 +155,12 @@ PageType {
                 implicitHeight: ConnectionController.isConnected ? 112 : 96
                 radius: 20
 
+                // the ring above is centred in what is left: it glides with
+                // the card instead of jumping 8 px when the state changes
+                Behavior on implicitHeight {
+                    NumberAnimation { duration: 300; easing.type: Easing.InOutSine }
+                }
+
                 color: serverCardMouse.containsPress ? DopamineStyle.color.sheerWhite
                                                      : DopamineStyle.color.translucentWhite
 
@@ -165,6 +182,8 @@ PageType {
                             wrapMode: Text.NoWrap
                             font.pixelSize: 24
                             font.weight: 600
+                            // a 24 px line needs more than the type's 21.6
+                            lineHeight: 30
 
                             text: SettingsController.autoServerSelection && !ConnectionController.isConnected
                                   ? qsTr("Auto-select")
@@ -192,7 +211,6 @@ PageType {
 
                             CaptionTextType {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 160
                                 Layout.minimumWidth: 80
 
                                 color: DopamineStyle.color.mutedGray
@@ -202,7 +220,7 @@ PageType {
                                 maximumLineCount: 1
 
                                 text: "↓ " + ConnectionController.downloadSpeed
-                                      + "   ↑ " + ConnectionController.uploadSpeed
+                                      + "  ↑ " + ConnectionController.uploadSpeed
                             }
 
                             Rectangle {
@@ -226,7 +244,7 @@ PageType {
                                          && ConnectionController.ping !== ""
                                 font.pixelSize: 13
 
-                                text: ConnectionController.ping + " ms"
+                                text: qsTr("%1 ms").arg(ConnectionController.ping)
                                 color: {
                                     const ms = Number(ConnectionController.ping)
                                     return ms < 120 ? "#34C759" : (ms < 300 ? "#FF9F0A" : "#FF453A")
@@ -294,7 +312,7 @@ PageType {
                 defaultColor: DopamineStyle.color.transparent
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
-                disabledColor: DopamineStyle.color.mutedGray
+                disabledColor: DopamineStyle.color.transparent
                 textColor: DopamineStyle.color.mutedGray
                 borderWidth: 0
 

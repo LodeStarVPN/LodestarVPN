@@ -240,6 +240,18 @@ for the best server...</source>
         <translation>Пошук
 найкращого сервера...</translation>
     </message>
+    <message>
+        <source>%1 B/s</source>
+        <translation>%1 Б/с</translation>
+    </message>
+    <message>
+        <source>%1 KB/s</source>
+        <translation>%1 КБ/с</translation>
+    </message>
+    <message>
+        <source>%1 MB/s</source>
+        <translation>%1 МБ/с</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionTypeSelectionDrawer</name>
@@ -621,6 +633,10 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <source>Unable change server while there is an active connection</source>
         <translation type="vanished">Не можна змінити сервер при активному підключенні</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 мс</translation>
     </message>
 </context>
 <context>
@@ -1386,7 +1402,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettings.qml" line="134"/>
         <source>Connection</source>
-        <translation>Підключення</translation>
+        <translation>З’єднання</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettings.qml" line="147"/>
@@ -1620,11 +1636,27 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="75"/>
         <source>Last active: %1</source>
-        <translation>Остання активність: %1</translation>
+        <translation>Активність: %1</translation>
     </message>
     <message>
         <source>The next one can be unlinked after %1.</source>
         <translation>Наступний можна відв’язати після %1.</translation>
+    </message>
+    <message>
+        <source>This device</source>
+        <translation>Цей пристрій</translation>
+    </message>
+    <message>
+        <source>Unlink this device?</source>
+        <translation>Відв’язати пристрій?</translation>
+    </message>
+    <message>
+        <source>The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it.</source>
+        <translation>Пристрій буде відв’язано від підписки. Підключити його знову можна через 24 години, ввівши на ньому ID підписки.</translation>
+    </message>
+    <message>
+        <source>Unlink</source>
+        <translation>Відв’язати</translation>
     </message>
 </context>
 <context>
@@ -2025,6 +2057,10 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsApiServerInfo.qml" line="38"/>
         <source>Devices</source>
         <translation>Пристрої</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 мс</translation>
     </message>
 </context>
 <context>
@@ -2762,7 +2798,7 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsLogging.qml" line="230"/>
         <location filename="../ui/qml/Pages2/PageSettingsLogging.qml" line="256"/>
         <source>Logs files (*.log)</source>
-        <translation>Logs files (*.log)</translation>
+        <translation>Файли логів (*.log)</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsLogging.qml" line="239"/>
@@ -2824,6 +2860,10 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsLogging.qml" line="117"/>
         <source>Clear logs</source>
         <translation>Видалити логи</translation>
+    </message>
+    <message>
+        <source>Click to copy it for support</source>
+        <translation>Натисніть, щоб скопіювати для підтримки</translation>
     </message>
 </context>
 <context>
@@ -3205,7 +3245,7 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsSplitTunneling.qml" line="439"/>
         <location filename="../ui/qml/Pages2/PageSettingsSplitTunneling.qml" line="452"/>
         <source>Sites files (*.json)</source>
-        <translation>Sites files (*.json)</translation>
+        <translation>Файли сайтів (*.json)</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsSplitTunneling.qml" line="333"/>
@@ -3370,6 +3410,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Insert</source>
         <translation>Вставити</translation>
     </message>
+    <message>
+        <source>Enter your subscription ID</source>
+        <translation>Введіть ID підписки</translation>
+    </message>
 </context>
 <context>
     <name>PageSetupWizardConfigSource</name>
@@ -3411,7 +3455,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSetupWizardConfigSource.qml" line="182"/>
         <source>Logs files (*.log)</source>
-        <translation>Logs files (*.log)</translation>
+        <translation>Файли логів (*.log)</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSetupWizardConfigSource.qml" line="191"/>
@@ -3601,6 +3645,18 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSetupWizardConfigSource.qml" line="203"/>
         <source>Copy it and send it to support</source>
         <translation>Скопіюйте та надішліть у підтримку</translation>
+    </message>
+    <message>
+        <source>Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config</source>
+        <translation>Вставте ID або посилання підписки LodestarVPN, ключ підключення або конфіг AmneziaWG/WireGuard</translation>
+    </message>
+    <message>
+        <source>Add this connection?</source>
+        <translation>Додати підключення?</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Додати</translation>
     </message>
 </context>
 <context>
@@ -4158,6 +4214,10 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageStart.qml" line="159"/>
         <source>Logging is enabled. Note that logs will be automaticallydisabled after 14 days, and all log files will be deleted.</source>
+        <translation>Логування увімкнено. Зверніть увагу: логи будуть автоматично вимкнені через 14 днів, а всі файли логів будуть видалені.</translation>
+    </message>
+    <message>
+        <source>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</source>
         <translation>Логування увімкнено. Зверніть увагу: логи будуть автоматично вимкнені через 14 днів, а всі файли логів будуть видалені.</translation>
     </message>
 </context>
@@ -5360,13 +5420,17 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <source>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</source>
         <translation>VPN не зміг налаштувати мережу на цьому комп’ютері. Підключіться ще раз; якщо не допоможе, перезавантажте комп’ютер і напишіть у підтримку, вказавши код помилки.</translation>
     </message>
+    <message>
+        <source>There is no subscription with this ID. Check it and try again.</source>
+        <translation>Підписки з таким ID немає. Перевірте його і спробуйте ще раз.</translation>
+    </message>
 </context>
 <context>
     <name>RenameServerDrawer</name>
     <message>
         <location filename="../ui/qml/Components/RenameServerDrawer.qml" line="30"/>
         <source>Server name</source>
-        <translation>Імя сервера</translation>
+        <translation>Ім’я сервера</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/RenameServerDrawer.qml" line="41"/>
@@ -5379,7 +5443,7 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <location filename="../ui/qml/Components/SelectLanguageDrawer.qml" line="48"/>
         <source>Choose language</source>
-        <translation>Выберите язык</translation>
+        <translation>Оберіть мову</translation>
     </message>
 </context>
 <context>
@@ -5432,6 +5496,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <location filename="../ui/qml/Components/ServersListView.qml" line="221"/>
         <source>Check servers</source>
         <translation>Перевірити сервери</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 мс</translation>
     </message>
 </context>
 <context>
@@ -5699,6 +5767,13 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <source>Cancel</source>
         <translation>Скасувати</translation>
+    </message>
+</context>
+<context>
+    <name>PageController</name>
+    <message>
+        <source>Error %1</source>
+        <translation>Помилка %1</translation>
     </message>
 </context>
 </TS>

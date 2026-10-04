@@ -68,6 +68,7 @@ QString errorString(ErrorCode code) {
     case (ErrorCode::ApiConfigLimitError): errorMessage = QObject::tr("The subscription has no free place for this device, so its servers were removed from the app. Unlink a device you no longer use in the app on another device (subscription settings, Active devices), then enter the subscription key here again."); break;
     case (ErrorCode::ApiUnlinkLimitError): errorMessage = QObject::tr("One device a day can be unlinked from a subscription. Try again later."); break;
     case (ErrorCode::ApiSubscriptionNotFoundError): errorMessage = QObject::tr("There is no subscription with this key any more (it was deleted or its key was changed), so its servers were removed from the app. If you have a new key, enter it."); break;
+    case (ErrorCode::ApiSubscriptionIdNotFoundError): errorMessage = QObject::tr("There is no subscription with this ID. Check it and try again."); break;
     case (ErrorCode::ApiDeviceUnlinkedError): errorMessage = QObject::tr("This device is no longer linked to the subscription, so its servers were removed from the app. To use it here again, enter the subscription key: it works if the subscription has a free place."); break;
     case (ErrorCode::ApiNotFoundError): errorMessage = QObject::tr("Error when retrieving configuration from API"); break;
     case (ErrorCode::ApiMigrationError): errorMessage = QObject::tr("A migration error has occurred. Please contact our technical support"); break;

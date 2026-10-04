@@ -16,6 +16,8 @@ Flickable {
 
     clip: true
     width: parent.width
+    // a fast flick stops at the top and the bottom instead of flying past them
+    boundsBehavior: Flickable.StopAtBounds
 
     anchors.bottom: parent.bottom
     anchors.left: parent.left

@@ -57,6 +57,7 @@ PageType {
 
                 Layout.fillWidth: true
                 Layout.topMargin: 16
+                Layout.bottomMargin: 10
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
@@ -77,6 +78,8 @@ PageType {
                 id: pingTextSwitcher
 
                 Layout.fillWidth: true
+                Layout.topMargin: 10
+                Layout.bottomMargin: 10
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
@@ -96,10 +99,11 @@ PageType {
 
             LabelWithButtonType {
                 Layout.fillWidth: true
-                Layout.topMargin: -8
 
                 text: qsTr("Subscription ID")
-                descriptionText: ApiConfigsController.subscriptionId !== "" ? ApiConfigsController.subscriptionId : qsTr("not set")
+                // the ID is the key to the subscription: copied for support,
+                // never shown (it would end up in every screenshot)
+                descriptionText: ApiConfigsController.subscriptionId !== "" ? qsTr("Click to copy it for support") : qsTr("not set")
                 rightImageSource: "qrc:/images/controls/copy.svg"
 
                 clickedFunction: function() {
@@ -112,7 +116,6 @@ PageType {
 
             LabelWithButtonType {
                 Layout.fillWidth: true
-                Layout.topMargin: -8
 
                 text: qsTr("Clear logs")
                 leftImageSource: "qrc:/images/controls/trash.svg"
@@ -140,8 +143,6 @@ PageType {
         }
 
         model: logTypes
-
-        snapMode: ListView.SnapOneItem
 
         delegate: ColumnLayout {
             id: delegateContent

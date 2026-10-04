@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QRandomGenerator>
 #include <QRegularExpression>
+#include <QSslSocket>
 #include <QTcpSocket>
 
 #include <algorithm>
@@ -279,6 +280,7 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
         // live speed meter for the server card: bytesChanged carries per-interval
         // deltas on all platforms, so speed = delta / elapsed
         if (m_isConnected) {
+            m_stallRxCurrent += receivedBytes;
             const qint64 elapsedMs = m_speedTimer.isValid() ? m_speedTimer.restart() : 0;
             if (!m_speedTimer.isValid()) {
                 m_speedTimer.start();
@@ -334,13 +336,17 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
 
 QString ConnectionController::formatSpeed(qint64 bytesPerSec)
 {
-    if (bytesPerSec < 1024) {
-        return QStringLiteral("%1 B/s").arg(bytesPerSec);
+    // at most "999 KB/s" or "99.9 MB/s": a decimal only below 100, the next
+    // unit from 1000, so both directions fit the server card side by side
+    if (bytesPerSec < 1000) {
+        return tr("%1 B/s").arg(bytesPerSec);
     }
-    if (bytesPerSec < 1024 * 1024) {
-        return QStringLiteral("%1 KB/s").arg(bytesPerSec / 1024.0, 0, 'f', 1);
+    const double kilobytes = bytesPerSec / 1024.0;
+    if (kilobytes < 1000) {
+        return tr("%1 KB/s").arg(kilobytes, 0, 'f', kilobytes < 100 ? 1 : 0);
     }
-    return QStringLiteral("%1 MB/s").arg(bytesPerSec / 1024.0 / 1024.0, 0, 'f', 1);
+    const double megabytes = kilobytes / 1024.0;
+    return tr("%1 MB/s").arg(megabytes, 0, 'f', megabytes < 100 ? 1 : 0);
 }
 
 void ConnectionController::startLivePing()
@@ -433,6 +439,144 @@ void ConnectionController::finishLivePing(QTcpSocket *socket, bool ok)
         m_ping = text;
         emit pingChanged();
     }
+}
+
+void ConnectionController::startStallWatch()
+{
+#if defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)
+    if (m_stallWatching || m_tunnelRow < 0 || !QSslSocket::supportsSsl()) {
+        return;
+    }
+    // WG/AWG only: their byte counters are the tunnel's own (xray's come from
+    // its connect probe, and its connections end inside the app)
+    const DockerContainer container = qvariant_cast<DockerContainer>(
+            m_serversModel->data(m_tunnelRow, ServersModel::Roles::DefaultContainerRole));
+    if (container != DockerContainer::Awg && container != DockerContainer::Awg2 && container != DockerContainer::WireGuard) {
+        return;
+    }
+    if (!m_stallTimer) {
+        m_stallTimer = new QTimer(this);
+        m_stallTimer->setSingleShot(true);
+        connect(m_stallTimer, &QTimer::timeout, this, &ConnectionController::probeStall);
+    }
+    m_stallWatching = true;
+    m_stallArmed = false;
+    m_stallFailures = 0;
+    m_stallTimer->start(kStallRetryMs); // the first probe arms the watchdog
+#endif
+}
+
+void ConnectionController::stopStallWatch()
+{
+    m_stallWatching = false;
+    if (m_stallTimer) {
+        m_stallTimer->stop();
+    }
+    if (m_stallSocket) {
+        QSslSocket *socket = m_stallSocket;
+        m_stallSocket = nullptr;
+        socket->disconnect(this);
+        socket->abort();
+        socket->deleteLater();
+    }
+}
+
+void ConnectionController::probeStall()
+{
+    if (!m_isConnected || !m_stallWatching || m_stallSocket) {
+        return;
+    }
+
+    // public anycast DNS servers all answer TLS on 443 without a name; their
+    // certificate flight is a few KB of full-size packets
+    static const char *const hosts[] = { "1.1.1.1", "8.8.8.8", "1.0.0.1", "9.9.9.9" };
+    static constexpr int hostCount = int(sizeof(hosts) / sizeof(hosts[0]));
+
+    m_stallRxPrevious = m_stallRxCurrent;
+    m_stallRxCurrent = 0;
+    m_stallTcpConnected = false;
+
+    auto *socket = new QSslSocket(this);
+    m_stallSocket = socket;
+    // only that the bytes arrive matters, not whose certificate they carry
+    socket->setPeerVerifyMode(QSslSocket::VerifyNone);
+
+    connect(socket, &QSslSocket::connected, this, [this, socket]() {
+        if (m_stallSocket == socket) {
+            m_stallTcpConnected = true;
+        }
+    });
+    connect(socket, &QSslSocket::sslErrors, socket, [socket](const QList<QSslError> &) { socket->ignoreSslErrors(); });
+    connect(socket, &QSslSocket::encrypted, this, [this, socket]() { finishStallProbe(socket, true); });
+    connect(socket, &QSslSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError) {
+        finishStallProbe(socket, false);
+    });
+    QTimer::singleShot(kStallProbeTimeoutMs, socket, [this, socket]() { finishStallProbe(socket, false); });
+
+    socket->connectToHostEncrypted(QString::fromLatin1(hosts[m_stallHostIndex % hostCount]), 443);
+    m_stallHostIndex = (m_stallHostIndex + 1) % hostCount; // the next probe asks another host
+}
+
+void ConnectionController::finishStallProbe(QSslSocket *socket, bool ok)
+{
+    if (m_stallSocket != socket) {
+        return;
+    }
+    const bool tcpConnected = m_stallTcpConnected;
+    m_stallSocket = nullptr;
+    socket->disconnect(this);
+    socket->abort();
+    socket->deleteLater();
+
+    if (!m_isConnected || !m_stallWatching) {
+        return;
+    }
+
+    if (ok) {
+        if (m_stallFailures > 0) {
+            qInfo() << "[WATCHDOG] traffic passes through the tunnel again";
+        } else if (!m_stallArmed) {
+            qDebug() << "[WATCHDOG] a TLS handshake through the tunnel passes: watching it";
+        }
+        m_stallArmed = true;
+        m_stallFailures = 0;
+        m_stallTimer->start(kStallProbeIntervalMs);
+        return;
+    }
+
+    ++m_stallFailures;
+    const quint64 received = m_stallRxPrevious + m_stallRxCurrent;
+    qWarning().nospace() << "[WATCHDOG] TLS handshake through the tunnel failed "
+                         << (tcpConnected ? "after the TCP connect" : "without a TCP connection") << " ("
+                         << m_stallFailures << " in a row), the tunnel received " << received << " bytes meanwhile";
+
+    if (m_stallFailures < 2) {
+        m_stallTimer->start(kStallRetryMs); // confirm soon, with another host
+        return;
+    }
+    m_stallTimer->start(kStallProbeIntervalMs);
+    if (!m_stallArmed) {
+        // never passed on this connection: the probe hosts may be unreachable
+        // from this server, which says nothing about the tunnel
+        return;
+    }
+    if (received == 0) {
+        qInfo() << "[WATCHDOG] nothing arrives at all: the network is down, the tunnel resumes by itself";
+        return;
+    }
+    if (received > kStallBusyRxBytes) {
+        qInfo() << "[WATCHDOG] the tunnel carries traffic: leaving it";
+        return;
+    }
+    if (m_stallLastReconnect.isValid() && m_stallLastReconnect.elapsed() < kStallReconnectGapMs) {
+        qInfo() << "[WATCHDOG] reconnected less than" << kStallReconnectGapMs / 60000 << "min ago: not again yet";
+        return;
+    }
+
+    qWarning() << "[WATCHDOG] the tunnel is up but real traffic does not get through: reconnecting";
+    m_stallLastReconnect.start();
+    stopStallWatch();
+    openConnection();
 }
 
 void ConnectionController::setHealthCheckController(HealthCheckController *healthCheckController)
@@ -1453,8 +1597,10 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
     }
     if (m_isConnected) {
         startLivePing();
+        startStallWatch();
     } else {
         stopLivePing();
+        stopStallWatch();
     }
     emit connectionStateChanged();
 }
@@ -1483,8 +1629,10 @@ void ConnectionController::toggleConnection()
     }
 
     if (isConnectionInProgress()) {
+        qInfo() << "[UI] cancel the connection in progress";
         closeConnection();
     } else if (isConnected()) {
+        qInfo() << "[UI] disconnect requested";
         closeConnection();
     } else {
         emit prepareConfig();

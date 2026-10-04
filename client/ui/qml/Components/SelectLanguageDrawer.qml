@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
 import Style 1.0
 
@@ -150,6 +151,12 @@ DrawerType2 {
                                 height: 24
 
                                 Layout.rightMargin: 8
+
+                                // drawn light grey: visible in the light theme too
+                                layer.enabled: true
+                                layer.effect: ColorOverlay {
+                                    color: DopamineStyle.color.paleGray
+                                }
                             }
                         }
 

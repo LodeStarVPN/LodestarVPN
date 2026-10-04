@@ -37,6 +37,7 @@ DrawerType2 {
             id: saveButton
 
             Layout.fillWidth: true
+            Layout.topMargin: 16
 
             text: qsTr("Save")
 

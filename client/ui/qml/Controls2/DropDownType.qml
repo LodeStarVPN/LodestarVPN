@@ -13,7 +13,7 @@ Item {
     property string text
     property string textColor: DopamineStyle.color.paleGray
     property string textDisabledColor: DopamineStyle.color.mutedGray
-    property int textMaximumLineCount: 2
+    property int textMaximumLineCount: 3
     property int textElide: Qt.ElideRight
 
     property string descriptionText

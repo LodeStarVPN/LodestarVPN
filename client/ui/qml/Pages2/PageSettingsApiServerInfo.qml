@@ -218,7 +218,9 @@ PageType {
 
                 imageSource: "qrc:/images/controls/gauge.svg"
                 leftText: qsTr("Speed")
-                rightText: "↓ " + ConnectionController.downloadSpeed + "   ↑ " + ConnectionController.uploadSpeed
+                // one direction per line: the two values never squeeze the title
+                rightText: "↓ " + ConnectionController.downloadSpeed + "
+↑ " + ConnectionController.uploadSpeed
                 visible: ServersModel.processedIndex === ServersModel.defaultIndex
                          && ConnectionController.isConnected && ConnectionController.downloadSpeed !== ""
             }
@@ -227,9 +229,9 @@ PageType {
                 Layout.fillWidth: true
                 Layout.margins: 16
 
-                imageSource: "qrc:/images/controls/gauge.svg"
+                imageSource: "qrc:/images/controls/history.svg"
                 leftText: qsTr("Ping")
-                rightText: ConnectionController.ping + " ms"
+                rightText: qsTr("%1 ms").arg(ConnectionController.ping)
                 visible: ServersModel.processedIndex === ServersModel.defaultIndex
                          && ConnectionController.isConnected
                          && ConnectionController.ping !== ""
@@ -238,10 +240,6 @@ PageType {
 
             DividerType {
                 Layout.topMargin: 16
-            }
-
-            DividerType {
-                visible: footer.isVisibleForAmneziaFree
             }
 
             LabelWithButtonType {
@@ -266,7 +264,6 @@ PageType {
 
             LabelWithButtonType {
                 Layout.fillWidth: true
-                Layout.topMargin: footer.isVisibleForAmneziaFree ? 0 : 32
 
                 text: qsTr("Support")
                 descriptionText: "lodestarvpn.com/support"

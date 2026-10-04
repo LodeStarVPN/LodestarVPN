@@ -41,6 +41,7 @@ PageType {
 
             Layout.fillWidth: true
             Layout.leftMargin: 16
+            Layout.rightMargin: 16
 
             headerText: qsTr("DNS Exceptions")
             descriptionText: qsTr("DNS servers listed here will remain accessible when KillSwitch is active")
@@ -49,6 +50,8 @@ PageType {
 
     ListView {
         id: listView
+
+        boundsBehavior: Flickable.StopAtBounds
 
         anchors.top: header.bottom
         anchors.topMargin: 16

@@ -124,6 +124,8 @@ namespace amnezia
         ApiDeviceUnlinkedError = 1115,
         ApiSubscriptionNotFoundError = 1116,
         ApiUnlinkLimitError = 1117,
+        // an ID typed or pasted to add a subscription that the gateway does not know
+        ApiSubscriptionIdNotFoundError = 1118,
 
         // connection errors
         ServerConnectionTimeoutError = 1300,

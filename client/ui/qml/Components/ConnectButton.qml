@@ -389,6 +389,16 @@ Button {
     implicitWidth: 190
     implicitHeight: 190
 
+    // PageHome stretches the button to the free height (~420 px), so without
+    // a mask the empty sky above and below the ring connected or disconnected
+    // on a stray click. Only the ring and the sky inside it take clicks and
+    // hover; Enter / Space with the button focused still work
+    containmentMask: QtObject {
+        function contains(point: point) : bool {
+            return Math.hypot(point.x - root.width / 2, point.y - root.height / 2) <= 96
+        }
+    }
+
     text: holdingLand ? heldText : ConnectionController.connectionStateText
 
 //    enabled: !ConnectionController.isConnectionInProgress
@@ -559,11 +569,16 @@ Button {
     }
 
     contentItem: Text {
-        height: 24
-
         font.family: "IBM Plex Mono"
         font.weight: 700
         font.pixelSize: 20
+
+        // a long state ("Переподключение...", "for the best server...") is
+        // made smaller, down to 14 px, then wrapped between words, so it
+        // stays inside the ring
+        wrapMode: Text.WordWrap
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: 14
 
         color: root.shownState === "connected" ? connectedTextColor : textColor
         text: root.text
@@ -581,11 +596,24 @@ Button {
         }
     }
 
+    // the input that pressed the button goes to the log with the connect or
+    // disconnect it caused, so a stray press can be told from a deliberate one
+    property string lastInput: "click"
+
     onClicked: {
+        console.info("[UI] connect button pressed by", lastInput, "while",
+                     ConnectionController.isConnected ? "connected"
+                     : ConnectionController.isConnectionInProgress ? "connecting" : "disconnected")
+        lastInput = "click"
         ServersModel.setProcessedServerIndex(ServersModel.defaultIndex)
         ConnectionController.connectButtonClicked()
     }
 
-    Keys.onEnterPressed: this.clicked()
-    Keys.onReturnPressed: this.clicked()
+    Keys.onEnterPressed: { lastInput = "Enter"; this.clicked() }
+    Keys.onReturnPressed: { lastInput = "Enter"; this.clicked() }
+    // Space is still handled by the button itself
+    Keys.onSpacePressed: function(event) {
+        lastInput = "Space"
+        event.accepted = false
+    }
 }

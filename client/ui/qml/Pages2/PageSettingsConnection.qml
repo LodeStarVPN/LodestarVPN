@@ -98,6 +98,10 @@ PageType {
                 }
             }
 
+            // separates its long description from the next item, as everywhere
+            DividerType {
+                visible: routeLanSwitch.visible
+            }
         }
 
         footer: ColumnLayout { // TODO(CyAn84): move to delegate,add DelegateChooser when have migrated to 6.9

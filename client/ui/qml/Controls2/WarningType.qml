@@ -38,9 +38,11 @@ Rectangle {
 
         Image {
             Layout.alignment: Qt.AlignTop
-
-            width: iconWidth
-            height: iconHeight
+            // a layout sizes the icon by these, not by width/height (the
+            // 24 px picture otherwise stood out beside the 13 px text)
+            Layout.preferredWidth: root.iconWidth
+            Layout.preferredHeight: root.iconHeight
+            sourceSize: Qt.size(root.iconWidth, root.iconHeight)
 
             source: iconPath
 

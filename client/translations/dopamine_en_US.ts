@@ -230,6 +230,18 @@ for the best server...</translation>
         <source>Settings updated successfully</source>
         <translation type="vanished">Settings updated successfully</translation>
     </message>
+    <message>
+        <source>%1 B/s</source>
+        <translation>%1 B/s</translation>
+    </message>
+    <message>
+        <source>%1 KB/s</source>
+        <translation>%1 KB/s</translation>
+    </message>
+    <message>
+        <source>%1 MB/s</source>
+        <translation>%1 MB/s</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionTypeSelectionDrawer</name>
@@ -601,6 +613,10 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <source>Servers</source>
         <translation type="vanished">Servers</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 ms</translation>
     </message>
 </context>
 <context>
@@ -1563,6 +1579,22 @@ Already installed containers were found on the server. All installed containers 
         <source>The next one can be unlinked after %1.</source>
         <translation>The next one can be unlinked after %1.</translation>
     </message>
+    <message>
+        <source>This device</source>
+        <translation>This device</translation>
+    </message>
+    <message>
+        <source>Unlink this device?</source>
+        <translation>Unlink this device?</translation>
+    </message>
+    <message>
+        <source>The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it.</source>
+        <translation>The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it.</translation>
+    </message>
+    <message>
+        <source>Unlink</source>
+        <translation>Unlink</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsApiInstructions</name>
@@ -1962,6 +1994,10 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsApiServerInfo.qml" line="38"/>
         <source>Devices</source>
         <translation>Devices</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 ms</translation>
     </message>
 </context>
 <context>
@@ -2758,6 +2794,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Clear logs</source>
         <translation>Clear logs</translation>
     </message>
+    <message>
+        <source>Click to copy it for support</source>
+        <translation>Click to copy it for support</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsNewsNotifications</name>
@@ -3287,6 +3327,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Insert</source>
         <translation>Insert</translation>
     </message>
+    <message>
+        <source>Enter your subscription ID</source>
+        <translation>Enter your subscription ID</translation>
+    </message>
 </context>
 <context>
     <name>PageSetupWizardConfigSource</name>
@@ -3514,6 +3558,18 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSetupWizardConfigSource.qml" line="203"/>
         <source>Copy it and send it to support</source>
         <translation>Copy it and send it to support</translation>
+    </message>
+    <message>
+        <source>Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config</source>
+        <translation>Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config</translation>
+    </message>
+    <message>
+        <source>Add this connection?</source>
+        <translation>Add this connection?</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Add</translation>
     </message>
 </context>
 <context>
@@ -4013,6 +4069,10 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageStart.qml" line="159"/>
         <source>Logging is enabled. Note that logs will be automaticallydisabled after 14 days, and all log files will be deleted.</source>
         <translation>Logging is enabled. Note that logs will be automaticallydisabled after 14 days, and all log files will be deleted.</translation>
+    </message>
+    <message>
+        <source>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</source>
+        <translation>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</translation>
     </message>
 </context>
 <context>
@@ -5248,6 +5308,10 @@ For more detailed information, you can
         <source>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</source>
         <translation>The VPN could not set up the network on this computer. Connect again; if that does not help, restart the computer and write to support with the error code.</translation>
     </message>
+    <message>
+        <source>There is no subscription with this ID. Check it and try again.</source>
+        <translation>There is no subscription with this ID. Check it and try again.</translation>
+    </message>
 </context>
 <context>
     <name>RenameServerDrawer</name>
@@ -5320,6 +5384,10 @@ For more detailed information, you can
         <location filename="../ui/qml/Components/ServersListView.qml" line="221"/>
         <source>Check servers</source>
         <translation>Check servers</translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation>%1 ms</translation>
     </message>
 </context>
 <context>
@@ -5551,6 +5619,13 @@ For more detailed information, you can
     <message>
         <source>Cancel</source>
         <translation>Cancel</translation>
+    </message>
+</context>
+<context>
+    <name>PageController</name>
+    <message>
+        <source>Error %1</source>
+        <translation>Error %1</translation>
     </message>
 </context>
 </TS>

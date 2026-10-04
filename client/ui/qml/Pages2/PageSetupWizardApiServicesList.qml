@@ -70,13 +70,8 @@ PageType {
                 Layout.rightMargin: 16
                 Layout.leftMargin: 16
                 Layout.bottomMargin: 16
-                headerText: qsTr("Subscription ID")
-                textField.placeholderText: qsTr("Paste or type it")
-                buttonText: qsTr("Insert")
-
-                clickedFunc: function() {
-                    subscriptionIdField.insertFromClipboard()
-                }
+                // a one-line placeholder never wraps: short enough for RU/UK
+                hintText: qsTr("Enter your subscription ID")
 
                 textField.onTextChanged: {
                     ApiConfigsController.setSubscriptionId(textField.text.trim())

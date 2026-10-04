@@ -295,10 +295,16 @@ void CoreController::initNotificationHandler()
             &NotificationHandler::setConnectionState);
 
     connect(m_notificationHandler.get(), &NotificationHandler::raiseRequested, m_pageController.get(), &PageController::raiseMainWindow);
-    connect(m_notificationHandler.get(), &NotificationHandler::connectRequested, m_connectionController.get(),
-            static_cast<void (ConnectionController::*)()>(&ConnectionController::openConnection));
-    connect(m_notificationHandler.get(), &NotificationHandler::disconnectRequested, m_connectionController.get(),
-            &ConnectionController::closeConnection);
+    // the tray's own lines in the log: a connect or disconnect with no line
+    // before it came from somewhere else
+    connect(m_notificationHandler.get(), &NotificationHandler::connectRequested, m_connectionController.get(), [this]() {
+        qInfo() << "[TRAY] Connect chosen in the tray menu";
+        m_connectionController->openConnection();
+    });
+    connect(m_notificationHandler.get(), &NotificationHandler::disconnectRequested, m_connectionController.get(), [this]() {
+        qInfo() << "[TRAY] Disconnect chosen in the tray menu";
+        m_connectionController->closeConnection();
+    });
     connect(this, &CoreController::translationsUpdated, m_notificationHandler.get(), &NotificationHandler::onTranslationsUpdated);
 
     auto* trayHandler = qobject_cast<SystemTrayNotificationHandler*>(m_notificationHandler.get());
@@ -477,6 +483,7 @@ QSharedPointer<PageController> CoreController::pageController() const
 
 void CoreController::openConnectionByIndex(int serverIndex)
 {
+    qInfo() << "[APP] --connect" << serverIndex << "from the command line";
     if (m_serversModel) {
         m_serversModel->setProcessedServerIndex(serverIndex);
         m_serversModel->setDefaultServerIndex(serverIndex);

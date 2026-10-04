@@ -76,9 +76,12 @@ PageType {
                 Layout.topMargin: 6
 
                 // the OS the device reported and when it was last active; its id
-                // (supportTag) is only used to unlink it, never shown
-                text: (osVersion !== "" ? osVersion : qsTr("Device")) + (isCurrentDevice ? qsTr(" (current device)") : "")
-                descriptionText: lastUpdate !== "" ? qsTr("Last active: %1").arg(lastUpdate) : ""
+                // (supportTag) is only used to unlink it, never shown. "This
+                // device" goes under the name: glued to it, it read as part of
+                // the name and made the row taller
+                text: osVersion !== "" ? osVersion : qsTr("Device")
+                descriptionText: isCurrentDevice ? qsTr("This device")
+                                                 : (lastUpdate !== "" ? qsTr("Last active: %1").arg(lastUpdate) : "")
                 rightImageSource: "qrc:/images/controls/trash.svg"
 
                 clickedFunction: function() {
@@ -87,9 +90,10 @@ PageType {
                         return
                     }
 
-                    var headerText = qsTr("Are you sure you want to unlink this device?")
-                    var descriptionText = qsTr("The device will be unlinked from your subscription. To use the subscription on it again, enter the subscription key there.")
-                    var yesButtonText = qsTr("Continue")
+                    var headerText = qsTr("Unlink this device?")
+                    // the gateway lets an unlinked device back only after 24 h
+                    var descriptionText = qsTr("The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it.")
+                    var yesButtonText = qsTr("Unlink")
                     var noButtonText = qsTr("Cancel")
 
                     var yesButtonFunction = function() {

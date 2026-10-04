@@ -7,6 +7,8 @@ import "TextTypes"
 ListView {
     id: menuContent
 
+    boundsBehavior: Flickable.StopAtBounds
+
     property var rootWidth
 
     property var selectedText
