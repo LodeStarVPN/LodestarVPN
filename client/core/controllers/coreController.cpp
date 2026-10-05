@@ -196,11 +196,15 @@ void CoreController::initControllers()
     m_healthCheckController.reset(new HealthCheckController(m_serversModel, this));
     m_engine->rootContext()->setContextProperty("HealthCheckController", m_healthCheckController.get());
     m_connectionController->setHealthCheckController(m_healthCheckController.get());
-    // our subscription's ping: the way to the relay plus the gateway's own figure
+    // our subscription's ping: its own server where the app has a config,
+    // else the landmarks next to its servers, else the relay plus the gateway's figure
     m_healthCheckController->setGatewayProbe(
             [settings = m_settings]() { return GatewayController::currentEndpoint(settings->getGatewayEndpoint()); },
             [api = m_apiConfigsController.get()](const QString &country, const QString &protocol) {
                 return api->countryServerMs(country, protocol);
+            },
+            [api = m_apiConfigsController.get()](const QString &country, const QString &protocol) {
+                return api->countryLandmarks(country, protocol);
             });
     connect(m_apiConfigsController.get(), &ApiConfigsController::countryLoadsUpdated, m_healthCheckController.get(),
             &HealthCheckController::onServerLegsUpdated);

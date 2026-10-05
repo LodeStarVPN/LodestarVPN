@@ -34,16 +34,21 @@ public:
     bool isProbing() const { return m_probeActive; }
     qint64 lastProbeMsecs() const { return m_lastRunMsecs; }
 
-    // Our subscription's servers are never probed from here: that would show
-    // every server's address to whoever watches the traffic. Their ping is the
-    // way to the gateway's relay (probed here, gatewayEndpoint) plus the
-    // gateway's own time to the country's servers (serverLeg: ms, -1 none
-    // answers, -2 unknown).
+    // Our subscription's rows: the server of a row the app has a config of is
+    // probed as any server (its address is in this device's traffic whenever
+    // it connects anyway); a row without one, or whose server does not answer,
+    // shows the ping from here to its landmarks — public hosts next to our
+    // servers of that country (landmarks: "ip:port" list) — so no other
+    // address of ours shows in the traffic. When no landmark answers either:
+    // the way to the gateway's relay (gatewayEndpoint) plus the gateway's own
+    // time to the servers (serverLeg: ms, -1 none answers, -2 unknown).
     void setGatewayProbe(std::function<QString()> gatewayEndpoint,
-                         std::function<int(const QString &country, const QString &protocol)> serverLeg);
+                         std::function<int(const QString &country, const QString &protocol)> serverLeg,
+                         std::function<QStringList(const QString &country, const QString &protocol)> landmarks);
 
 public slots:
-    // the gateway's legs came (again): the estimates are made with them
+    // the gateway's figures came (again): landmarks not probed yet are, and
+    // the estimates are made with the new legs
     void onServerLegsUpdated();
 
 signals:
@@ -63,6 +68,7 @@ private:
         QString path;
         bool httpsProbe = false;
         bool gatewayRelay = false; // the way to the gateway's relay: feeds the estimates
+        QStringList landmarkKeys;  // a landmark: the "country|protocol" groups it stands for
     };
 
     struct WgTarget
@@ -99,13 +105,29 @@ private:
 
     // emits probingFinished once every queue and in-flight probe of the run is done
     void maybeFinishProbe();
-    // our subscription's rows: the way to the relay plus the gateway's leg
-    void applyGatewayEstimates();
+    // our subscription's rows: what a row shows, from its own server's probe,
+    // its landmarks' and the relay estimate, in that order (see setGatewayProbe)
+    void applyGatewayRow(int row);
+    void applyGatewayRows();
+    // a result for rows of a target: our subscription's rows go through
+    // applyGatewayRow, the others are set as they come
+    void applyRowsResult(const QList<int> &rows, int latencyMs);
+    // queues a TCP probe of each landmark of the run's groups not probed yet
+    void queueLandmarks();
 
     std::function<QString()> m_gatewayEndpoint;
     std::function<int(const QString &, const QString &)> m_serverLeg;
+    std::function<QStringList(const QString &, const QString &)> m_landmarks;
     int m_relayMs = -2;
     qint64 m_relayAt = 0;
+
+    // this run's state of our subscription's rows; ms >= 0, -1 none answered,
+    // -2 still probing; a row or group missing has no probe of that kind
+    QHash<int, QString> m_gatewayKey;      // row -> "COUNTRY|protocol"
+    QHash<int, int> m_ownPending;          // row -> its own server's probes left
+    QHash<int, int> m_ownResult;           // row -> its own server's best
+    QHash<QString, int> m_landmarkPending; // group -> landmark probes left
+    QHash<QString, int> m_landmarkResult;  // group -> its landmarks' best
 
     QSharedPointer<ServersModel> m_serversModel;
 
@@ -125,6 +147,7 @@ private:
 
     qint64 m_lastRunMsecs = 0;
     bool m_probeActive = false;
+    bool m_runOpen = false; // a run started and not stopped (the VPN off)
 
     static constexpr int kMaxParallel = 8;
     static constexpr int kWgMaxParallel = 3;

@@ -242,11 +242,19 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
         if (retryWithNextIp()) {
             return; // connectToServerIndexWithIp restarts the watchdog
         }
+        const int row = m_ipPoolRow >= 0 ? m_ipPoolRow : m_tunnelRow;
         resetIpPool();
         m_manualConnectTimer->stop();
+        emit disconnectFromVpn();
+        // a server of our subscription that does not come up may have changed
+        // (keys, port, MTU): one fresh config from the gateway before giving up
+        if (!m_poolRefreshAttempted && m_apiConfigsController && row >= 0
+            && m_serversModel->data(row, ServersModel::Roles::IsServerFromGatewayApiRole).toBool()) {
+            beginPoolRefresh(row); // continues once the tunnel is down
+            return;
+        }
         m_isConnectionInProgress = false;
         m_connectionStateText = tr("Connect");
-        emit disconnectFromVpn();
         emit connectionErrorOccurred(ErrorCode::ServerConnectionTimeoutError);
         emit connectionStateChanged();
     });

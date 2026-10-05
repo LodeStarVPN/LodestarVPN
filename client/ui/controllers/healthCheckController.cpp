@@ -91,40 +91,129 @@ namespace
 }
 
 void HealthCheckController::setGatewayProbe(std::function<QString()> gatewayEndpoint,
-                                            std::function<int(const QString &, const QString &)> serverLeg)
+                                            std::function<int(const QString &, const QString &)> serverLeg,
+                                            std::function<QStringList(const QString &, const QString &)> landmarks)
 {
     m_gatewayEndpoint = std::move(gatewayEndpoint);
     m_serverLeg = std::move(serverLeg);
+    m_landmarks = std::move(landmarks);
 }
 
-void HealthCheckController::applyGatewayEstimates()
+void HealthCheckController::applyGatewayRow(int row)
 {
-    // the relay did not answer: the gateway cannot be asked, nothing is claimed
-    // about the servers (they may well work)
-    if (m_relayMs < 0 || !m_serverLeg) {
+    const QString key = m_gatewayKey.value(row);
+    // -3: no probe of that kind at all (no config of its own, no landmarks)
+    const int own = m_ownResult.value(row, -3);
+    if (own >= 0) {
+        m_serversModel->setHealthResult(row, own);
         return;
     }
-    const int count = m_serversModel->getServersCount();
-    for (int row = 0; row < count; ++row) {
-        QString country;
-        QString protocol;
-        if (!gatewayRowOf(m_serversModel, row, country, protocol) || country.isEmpty()) {
-            continue;
-        }
-        const int leg = m_serverLeg(country, protocol);
+    if (own == -2) {
+        return; // its own server first
+    }
+    const int landmark = m_landmarkResult.value(key, -3);
+    if (landmark >= 0) {
+        m_serversModel->setHealthResult(row, landmark);
+        return;
+    }
+    if (landmark == -2) {
+        return;
+    }
+    // nothing answered, or there was nothing to ask: the way to the relay
+    // plus the gateway's own time to the servers
+    if (m_relayMs >= 0 && m_serverLeg && QDateTime::currentMSecsSinceEpoch() - m_relayAt < 3 * 60 * 1000) {
+        const int leg = m_serverLeg(key.section(QLatin1Char('|'), 0, 0), key.section(QLatin1Char('|'), 1));
         if (leg >= 0) {
             m_serversModel->setHealthResult(row, m_relayMs + leg);
-        } else if (leg == -1) {
-            m_serversModel->setHealthResult(row, -1);
+            return;
+        }
+    }
+    if (own == -1) {
+        // its own server did not answer and nothing says otherwise
+        m_serversModel->setHealthResult(row, -1);
+    }
+}
+
+void HealthCheckController::applyGatewayRows()
+{
+    for (auto it = m_gatewayKey.cbegin(); it != m_gatewayKey.cend(); ++it) {
+        applyGatewayRow(it.key());
+    }
+}
+
+void HealthCheckController::applyRowsResult(const QList<int> &rows, int latencyMs)
+{
+    for (const int row : rows) {
+        if (!m_gatewayKey.contains(row)) {
+            m_serversModel->setHealthResult(row, latencyMs);
+            continue;
+        }
+        // a row's own server may have several addresses: the best of them, once
+        // one answers or all are done
+        const int left = m_ownPending.value(row) - 1;
+        m_ownPending.insert(row, left);
+        const int best = m_ownResult.value(row, -2);
+        if (latencyMs >= 0) {
+            m_ownResult.insert(row, best >= 0 ? qMin(best, latencyMs) : latencyMs);
+        } else if (left <= 0 && best < 0) {
+            m_ownResult.insert(row, -1);
+        }
+        applyGatewayRow(row);
+    }
+}
+
+void HealthCheckController::queueLandmarks()
+{
+    if (!m_landmarks) {
+        return;
+    }
+    // each landmark once, whatever groups it stands for
+    QHash<QString, int> queued; // "ip:port" -> its place in m_queue
+    const QSet<QString> keys(m_gatewayKey.cbegin(), m_gatewayKey.cend());
+    for (const QString &key : keys) {
+        if (m_landmarkResult.contains(key)) {
+            continue; // probed in this run already
+        }
+        int added = 0;
+        for (const QString &landmark : m_landmarks(key.section(QLatin1Char('|'), 0, 0), key.section(QLatin1Char('|'), 1))) {
+            const int colon = landmark.lastIndexOf(QLatin1Char(':'));
+            const quint16 port = colon > 0 ? landmark.mid(colon + 1).toUShort() : 0;
+            if (port == 0) {
+                continue;
+            }
+            const auto seen = queued.constFind(landmark);
+            if (seen != queued.constEnd()) {
+                m_queue[seen.value()].landmarkKeys.append(key);
+            } else {
+                Target target;
+                target.host = landmark.left(colon);
+                target.port = port;
+                target.landmarkKeys.append(key);
+                queued.insert(landmark, m_queue.size());
+                m_queue.append(target);
+            }
+            ++added;
+        }
+        if (added > 0) {
+            m_landmarkPending.insert(key, added);
+            m_landmarkResult.insert(key, -2);
         }
     }
 }
 
 void HealthCheckController::onServerLegsUpdated()
 {
-    if (m_relayMs >= 0 && QDateTime::currentMSecsSinceEpoch() - m_relayAt < 3 * 60 * 1000) {
-        applyGatewayEstimates();
+    // with the VPN on, probes would go through the tunnel: only for a run that is open
+    if (!m_runOpen) {
+        return;
     }
+    // landmarks that came after the run started are probed now
+    const int before = m_queue.size();
+    queueLandmarks();
+    if (m_queue.size() > before) {
+        startNext();
+    }
+    applyGatewayRows();
 }
 
 void HealthCheckController::startProbe(bool force)
@@ -144,11 +233,18 @@ void HealthCheckController::startProbe(bool force)
     // clear displayed values: badges reappear only as fresh results arrive
     m_serversModel->clearHealthResults();
 
-    // our subscription's rows are left to the relay's probe below
-    QSet<int> gatewayRows;
+    // our subscription's rows, by country and protocol (see setGatewayProbe):
+    // the ones with a config are probed below as any server
+    m_gatewayKey.clear();
+    m_ownPending.clear();
+    m_ownResult.clear();
+    m_landmarkPending.clear();
+    m_landmarkResult.clear();
     for (int i = 0; i < m_serversModel->getServersCount(); ++i) {
-        if (m_serversModel->data(i, ServersModel::Roles::IsServerFromGatewayApiRole).toBool()) {
-            gatewayRows.insert(i);
+        QString country;
+        QString protocol;
+        if (gatewayRowOf(m_serversModel, i, country, protocol) && !country.isEmpty()) {
+            m_gatewayKey.insert(i, country.toUpper() + QLatin1Char('|') + protocol);
         }
     }
 
@@ -156,7 +252,7 @@ void HealthCheckController::startProbe(bool force)
     const int count = m_serversModel->getServersCount();
     for (int i = 0; i < count; ++i) {
         const QString protocol = m_serversModel->data(i, ServersModel::Roles::ServiceProtocolRole).toString();
-        if (protocol != QStringLiteral("vless") || gatewayRows.contains(i)) {
+        if (protocol != QStringLiteral("vless")) {
             continue;
         }
 
@@ -270,7 +366,7 @@ void HealthCheckController::startProbe(bool force)
     // (libwg-go on Apple platforms, core/wgHandshakeProbe on Android/Windows)
     for (int i = 0; i < count; ++i) {
         const QString protocol = m_serversModel->data(i, ServersModel::Roles::ServiceProtocolRole).toString();
-        if ((protocol != QStringLiteral("awg") && protocol != QStringLiteral("wireguard")) || gatewayRows.contains(i)) {
+        if (protocol != QStringLiteral("awg") && protocol != QStringLiteral("wireguard")) {
             continue;
         }
 
@@ -391,7 +487,7 @@ void HealthCheckController::startProbe(bool force)
     // real handshake + auth + HTTP request through the server
     for (int i = 0; i < count; ++i) {
         const QString protocol = m_serversModel->data(i, ServersModel::Roles::ServiceProtocolRole).toString();
-        if (protocol != QStringLiteral("hysteria2") || gatewayRows.contains(i)) {
+        if (protocol != QStringLiteral("hysteria2")) {
             continue;
         }
 
@@ -468,8 +564,29 @@ void HealthCheckController::startProbe(bool force)
     }
 #endif
 
+    // our rows' own probes: a row waits for every address of its server
+    const auto countOwn = [this](const QList<int> &rows) {
+        for (const int row : rows) {
+            if (m_gatewayKey.contains(row)) {
+                m_ownPending.insert(row, m_ownPending.value(row) + 1);
+                m_ownResult.insert(row, -2);
+            }
+        }
+    };
+    for (const Target &target : std::as_const(m_queue)) {
+        countOwn(target.rows);
+    }
+    for (const WgTarget &target : std::as_const(m_wgQueue)) {
+        countOwn(target.rows);
+    }
+    for (const H2Target &target : std::as_const(m_h2Queue)) {
+        countOwn(target.rows);
+    }
+    // their countries' landmarks, for the rows without a config or whose server is silent
+    queueLandmarks();
+
     // the way to the gateway's relay: one TCP connect, the same an app request takes
-    if (!gatewayRows.isEmpty() && m_gatewayEndpoint) {
+    if (!m_gatewayKey.isEmpty() && m_gatewayEndpoint) {
         const QUrl relay(m_gatewayEndpoint());
         if (relay.isValid() && !relay.host().isEmpty()) {
             Target target;
@@ -480,6 +597,7 @@ void HealthCheckController::startProbe(bool force)
         }
     }
 
+    m_runOpen = true;
     startNext();
     startNextWg();
     startNextH2();
@@ -504,6 +622,7 @@ void HealthCheckController::maybeFinishProbe()
 
 void HealthCheckController::stopProbe()
 {
+    m_runOpen = false;
     for (QTcpSocket *socket : m_socketTargets.keys()) {
         socket->abort();
         socket->deleteLater();
@@ -637,11 +756,27 @@ void HealthCheckController::finishSocket(QTcpSocket *socket, int latencyMs)
         m_relayMs = latencyMs;
         m_relayAt = QDateTime::currentMSecsSinceEpoch();
         qDebug() << "[HEALTH] way to the gateway's relay:" << latencyMs << "ms";
-        applyGatewayEstimates();
+        applyGatewayRows();
     }
-    for (const int row : target.rows) {
-        m_serversModel->setHealthResult(row, latencyMs);
+    if (!target.landmarkKeys.isEmpty()) {
+        qDebug() << "[HEALTH] landmark for" << target.landmarkKeys << ":" << latencyMs << "ms";
+        for (const QString &key : target.landmarkKeys) {
+            const int left = m_landmarkPending.value(key) - 1;
+            m_landmarkPending.insert(key, left);
+            const int best = m_landmarkResult.value(key, -2);
+            if (latencyMs >= 0) {
+                m_landmarkResult.insert(key, best >= 0 ? qMin(best, latencyMs) : latencyMs);
+            } else if (left <= 0 && best < 0) {
+                m_landmarkResult.insert(key, -1);
+            }
+        }
+        for (auto it = m_gatewayKey.cbegin(); it != m_gatewayKey.cend(); ++it) {
+            if (target.landmarkKeys.contains(it.value())) {
+                applyGatewayRow(it.key());
+            }
+        }
     }
+    applyRowsResult(target.rows, latencyMs);
 
     startNext();
     maybeFinishProbe();
@@ -695,9 +830,7 @@ void HealthCheckController::finishWatcher(QFutureWatcher<int> *watcher)
         target.attempts++;
         m_wgQueue.append(target);
     } else {
-        for (const int row : target.rows) {
-            m_serversModel->setHealthResult(row, rttMs);
-        }
+        applyRowsResult(target.rows, rttMs);
     }
 
     startNextWg();
@@ -780,9 +913,7 @@ void HealthCheckController::finishH2Watcher(QFutureWatcher<int> *watcher)
     qDebug() << "[HEALTH] h2 probe" << target.host << "delay:" << delayMs;
     watcher->deleteLater();
 
-    for (const int row : target.rows) {
-        m_serversModel->setHealthResult(row, delayMs);
-    }
+    applyRowsResult(target.rows, delayMs);
 
     startNextH2();
     maybeFinishProbe();

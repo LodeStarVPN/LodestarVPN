@@ -93,6 +93,9 @@ public slots:
     // the time from the gateway to this subscription's servers of the country
     // (v1/load server_ms): ms, -1 none answers, -2 unknown
     int countryServerMs(const QString &countryCode, const QString &protocol) const;
+    // (v1/load landmarks): "ip:port" of public hosts next to the subscription's
+    // servers of that country, to ping instead of them; empty when unknown
+    QStringList countryLandmarks(const QString &countryCode, const QString &protocol) const;
     // by the opaque server id from the config's node_ids
     double nodeWeight(const QString &nodeId, const QString &protocol) const;
 
@@ -240,6 +243,7 @@ private:
 
     QHash<QString, double> m_countryLoads; // "DE|awg" -> 0..1
     QHash<QString, int> m_countryServerMs;  // "DE|awg" -> ms from the gateway, -1 none answers
+    QHash<QString, QStringList> m_countryLandmarks; // "DE|awg" -> "ip:port" to ping
     QHash<QString, double> m_nodeWeights;  // "awg|<node id>" -> spare capacity
     qint64 m_loadFetchedAt = 0;
     bool m_loadRequestInFlight = false;

@@ -190,6 +190,35 @@ namespace
         return protocolData;
     }
 
+    // The AWG key pair an entry was set up with. The server's peer is keyed by
+    // its public half: a fetch that keeps it keeps the peer, and a tunnel that
+    // runs on it right now. The public half is derived, never trusted as stored.
+    bool savedAwgClientKey(const QJsonObject &serverConfig, QString &privateKey, QString &publicKey)
+    {
+        const QJsonArray containers = serverConfig.value(config_key::containers).toArray();
+        const QString containerName = ContainerProps::containerTypeToString(DockerContainer::Awg);
+        for (const QJsonValue &containerValue : containers) {
+            const QJsonObject awgProtocolConfig = containerValue.toObject().value(containerName).toObject();
+            if (awgProtocolConfig.isEmpty()) {
+                continue;
+            }
+            const QJsonObject lastConfig =
+                    QJsonDocument::fromJson(awgProtocolConfig.value(config_key::last_config).toString().toUtf8()).object();
+            const QString saved = lastConfig.value(config_key::client_priv_key).toString();
+            if (saved.isEmpty() || saved == QLatin1String("$WIREGUARD_CLIENT_PRIVATE_KEY")) {
+                return false;
+            }
+            const QString derived = WireguardConfigurator::genPublicKeyFromPrivate(saved);
+            if (derived.isEmpty()) {
+                return false;
+            }
+            privateKey = saved;
+            publicKey = derived;
+            return true;
+        }
+        return false;
+    }
+
     void appendProtocolDataToApiPayload(const QString &protocol, const ProtocolData &protocolData, QJsonObject &apiPayload)
     {
         const QString p = canonicalServiceProtocol(protocol);
@@ -1366,40 +1395,11 @@ void ApiConfigsController::prepareGatewayConfigUpdate(const int serverIndex, con
     // for the same client IP and the handshake is dropped or races with the old one.
     // (n/a for shares: their keys are issued by the backend, nothing to reuse)
     if (!isShared && isConnectEvent && canonicalServiceProtocol(gatewayRequestData.serviceProtocol) == configKey::awg) {
-        const auto containers = serverConfig.value(config_key::containers).toArray();
-        const QString containerName = ContainerProps::containerTypeToString(DockerContainer::Awg);
-        for (const QJsonValue &containerValue : containers) {
-            const auto awgProtocolConfig = containerValue.toObject().value(containerName).toObject();
-            if (awgProtocolConfig.isEmpty()) {
-                continue;
-            }
-            const auto lastConfig = QJsonDocument::fromJson(awgProtocolConfig.value(config_key::last_config).toString().toUtf8()).object();
-            QString savedClientPrivKey = lastConfig.value(config_key::client_priv_key).toString();
-            QString savedClientPubKey = lastConfig.value(config_key::client_pub_key).toString();
-
-            // The public key can always be derived from the private key, so a stored
-            // private key alone is enough to keep the same server-side peer on reconnect.
-            // AGW configs often persist only client_priv_key, which previously blocked reuse
-            // and caused a fresh key (and a new server peer for the same client IP) every time.
-            if (!savedClientPrivKey.isEmpty()) {
-                const QString derivedPubKey = WireguardConfigurator::genPublicKeyFromPrivate(savedClientPrivKey);
-                if (savedClientPubKey.isEmpty()) {
-                    savedClientPubKey = derivedPubKey;
-                } else if (savedClientPubKey != derivedPubKey) {
-                    qWarning() << "[API IMPORT] saved AWG public key does not match private key, deriving correct one"
-                                << "serverIndex:" << serverIndex;
-                    savedClientPubKey = derivedPubKey;
-                }
-            }
-
-            if (!savedClientPrivKey.isEmpty() && !savedClientPubKey.isEmpty()) {
-                update.protocolData.wireGuardClientPrivKey = savedClientPrivKey;
-                update.protocolData.wireGuardClientPubKey = savedClientPubKey;
-                qDebug() << "[API IMPORT] reusing existing AWG client key for connect event, serverIndex:" << serverIndex;
-            } else {
-                qDebug() << "[API IMPORT] no saved AWG client key to reuse, generating new one, serverIndex:" << serverIndex;
-            }
-            break;
+        if (savedAwgClientKey(serverConfig, update.protocolData.wireGuardClientPrivKey,
+                              update.protocolData.wireGuardClientPubKey)) {
+            qDebug() << "[API IMPORT] reusing existing AWG client key for connect event, serverIndex:" << serverIndex;
+        } else {
+            qDebug() << "[API IMPORT] no saved AWG client key to reuse, generating new one, serverIndex:" << serverIndex;
         }
     }
 
@@ -2503,6 +2503,22 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
                                << "label=" << connectionLabel;
 
             ProtocolData protocolData = generateProtocolData(serviceProtocol);
+            // the device keeps its AWG key of an entry it has: a new one would cut
+            // a tunnel running on the old one (this reload is the list's refresh
+            // button, pressed while connected as well)
+            if (canonicalServiceProtocol(serviceProtocol) == configKey::awg && !connectionUuid.isEmpty()) {
+                for (int row = 0; row < m_serversModel->getServersCount(); ++row) {
+                    const QJsonObject rowConfig = m_serversModel->getServerConfig(row);
+                    const QJsonObject rowApi = rowConfig.value(configKey::apiConfig).toObject();
+                    if (rowApi.value(QStringLiteral("connection_uuid")).toString() == connectionUuid
+                        && rowApi.value(QStringLiteral("node_id")).toString() == nodeId
+                        && savedAwgClientKey(rowConfig, protocolData.wireGuardClientPrivKey,
+                                             protocolData.wireGuardClientPubKey)) {
+                        qDebug() << "[SUBSCRIPTION] keeping the AWG key of row" << row;
+                        break;
+                    }
+                }
+            }
 
             GatewayRequestData gatewayRequestData { QSysInfo::productType(),
                                                     QString(APP_VERSION),
@@ -2935,6 +2951,7 @@ void ApiConfigsController::refreshLoadIfStale()
         const QJsonObject data = QJsonDocument::fromJson(responseBody).object();
         m_countryLoads.clear();
         m_countryServerMs.clear();
+        m_countryLandmarks.clear();
         for (const QJsonValue &value : data.value(QStringLiteral("countries")).toArray()) {
             const QJsonObject country = value.toObject();
             const QString key = country.value(QStringLiteral("country_code")).toString().toUpper() + "|"
@@ -2942,6 +2959,15 @@ void ApiConfigsController::refreshLoadIfStale()
             m_countryLoads.insert(key, country.value(QStringLiteral("load")).toDouble());
             if (country.contains(QStringLiteral("server_ms"))) {
                 m_countryServerMs.insert(key, country.value(QStringLiteral("server_ms")).toInt(-2));
+            }
+            QStringList landmarks;
+            for (const QJsonValue &landmark : country.value(QStringLiteral("landmarks")).toArray()) {
+                if (!landmark.toString().isEmpty()) {
+                    landmarks.append(landmark.toString());
+                }
+            }
+            if (!landmarks.isEmpty()) {
+                m_countryLandmarks.insert(key, landmarks);
             }
         }
         // per protocol: one box may serve both, with different loads
@@ -2965,6 +2991,14 @@ int ApiConfigsController::countryServerMs(const QString &countryCode, const QStr
         return -2;
     }
     return m_countryServerMs.value(countryCode.toUpper() + "|" + protocol.toLower(), -2);
+}
+
+QStringList ApiConfigsController::countryLandmarks(const QString &countryCode, const QString &protocol) const
+{
+    if (QDateTime::currentMSecsSinceEpoch() - m_loadFetchedAt > kLoadMaxAgeMs) {
+        return {};
+    }
+    return m_countryLandmarks.value(countryCode.toUpper() + "|" + protocol.toLower());
 }
 
 double ApiConfigsController::countryLoad(const QString &countryCode, const QString &protocol) const
