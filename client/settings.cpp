@@ -7,6 +7,7 @@
 #include "version.h"
 
 #include "containers/containers_defs.h"
+#include "core/controllers/gatewayController.h"
 #include "logger.h"
 
 namespace
@@ -16,8 +17,8 @@ namespace
 
     // our gateway (AGW protocol), set at build time: see client/CMakeLists.txt
     constexpr char gatewayEndpoint[] = LODESTAR_GATEWAY_URL;
-    // Secondary API host, tried once when the primary one times out / is
-    // unreachable (see GatewayController). Must serve the same backend.
+    // Secondary API host, tried when the primary one gives no answer (see
+    // GatewayController). Must lead to the same gateway.
     constexpr char gatewayEndpointFallback[] = LODESTAR_GATEWAY_FALLBACK_URL;
 }
 
@@ -48,6 +49,14 @@ Settings::Settings(QObject *parent) : QObject(parent), m_settings(ORGANIZATION_N
     }
 
     m_gatewayEndpoint = gatewayEndpoint;
+
+    // the gateway's relays it named itself, and the one that answered last
+    GatewayController::restoreEndpoints(m_settings.value("Conf/gatewayEndpoints").toStringList(),
+                                        m_settings.value("Conf/gatewayEndpointCurrent").toString());
+    GatewayController::setEndpointsListener([this](const QStringList &known, const QString &current) {
+        m_settings.setValue("Conf/gatewayEndpoints", known);
+        m_settings.setValue("Conf/gatewayEndpointCurrent", current);
+    });
 }
 
 int Settings::serversCount() const

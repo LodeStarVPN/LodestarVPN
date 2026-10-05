@@ -1,6 +1,8 @@
 #ifndef HEALTHCHECKCONTROLLER_H
 #define HEALTHCHECKCONTROLLER_H
 
+#include <functional>
+
 #include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QHash>
@@ -32,6 +34,18 @@ public:
     bool isProbing() const { return m_probeActive; }
     qint64 lastProbeMsecs() const { return m_lastRunMsecs; }
 
+    // Our subscription's servers are never probed from here: that would show
+    // every server's address to whoever watches the traffic. Their ping is the
+    // way to the gateway's relay (probed here, gatewayEndpoint) plus the
+    // gateway's own time to the country's servers (serverLeg: ms, -1 none
+    // answers, -2 unknown).
+    void setGatewayProbe(std::function<QString()> gatewayEndpoint,
+                         std::function<int(const QString &country, const QString &protocol)> serverLeg);
+
+public slots:
+    // the gateway's legs came (again): the estimates are made with them
+    void onServerLegsUpdated();
+
 signals:
     void probingFinished();
 
@@ -48,6 +62,7 @@ private:
         QString sni;
         QString path;
         bool httpsProbe = false;
+        bool gatewayRelay = false; // the way to the gateway's relay: feeds the estimates
     };
 
     struct WgTarget
@@ -84,6 +99,13 @@ private:
 
     // emits probingFinished once every queue and in-flight probe of the run is done
     void maybeFinishProbe();
+    // our subscription's rows: the way to the relay plus the gateway's leg
+    void applyGatewayEstimates();
+
+    std::function<QString()> m_gatewayEndpoint;
+    std::function<int(const QString &, const QString &)> m_serverLeg;
+    int m_relayMs = -2;
+    qint64 m_relayAt = 0;
 
     QSharedPointer<ServersModel> m_serversModel;
 

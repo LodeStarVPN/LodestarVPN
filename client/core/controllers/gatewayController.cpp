@@ -56,6 +56,28 @@ namespace
     constexpr int httpStatusCodeConflict = 409;
 
     constexpr int httpStatusCodeNotImplemented = 501;
+
+    // the gateway itself gave no answer there (no connection, a timeout, a
+    // relay whose tunnel is down): worth the next address. Its own refusal is not
+    bool unanswered(ErrorCode errorCode, bool answeredByGateway)
+    {
+        return !answeredByGateway && (errorCode == ErrorCode::ApiConfigTimeoutError || errorCode == ErrorCode::ApiConfigDownloadError);
+    }
+
+    // a gateway address as requests use it: http(s), a host, ending in "/"
+    QString normalizedEndpoint(const QString &raw)
+    {
+        const QUrl url(raw.trimmed(), QUrl::StrictMode);
+        if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))
+            || url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment()) {
+            return {};
+        }
+        QString endpoint = url.toString(QUrl::FullyEncoded);
+        if (!endpoint.endsWith(QLatin1Char('/'))) {
+            endpoint += QLatin1Char('/');
+        }
+        return endpoint;
+    }
 }
 
 GatewayController::GatewayController(const QString &gatewayEndpoint, const bool isDevEnvironment, const int requestTimeoutMsecs,
@@ -184,25 +206,123 @@ GatewayController::DecryptionResult GatewayController::tryDecryptResponseBody(co
     return result;
 }
 
+void GatewayController::restoreEndpoints(const QStringList &known, const QString &current)
+{
+    QMutexLocker lock(&s_endpointsMutex);
+    s_knownEndpoints.clear();
+    for (const QString &raw : known) {
+        const QString endpoint = normalizedEndpoint(raw);
+        if (!endpoint.isEmpty() && !s_knownEndpoints.contains(endpoint)) {
+            s_knownEndpoints.append(endpoint);
+        }
+    }
+    s_currentEndpoint = normalizedEndpoint(current);
+}
+
+void GatewayController::setEndpointsListener(std::function<void(const QStringList &, const QString &)> listener)
+{
+    QMutexLocker lock(&s_endpointsMutex);
+    s_endpointsListener = std::move(listener);
+}
+
+QString GatewayController::currentEndpoint(const QString &fallback)
+{
+    QMutexLocker lock(&s_endpointsMutex);
+    return s_currentEndpoint.isEmpty() ? fallback : s_currentEndpoint;
+}
+
+// the order a request tries the gateway's addresses in: the one that answered
+// last, the ones the app was built with, then the relays the gateway named
+QStringList GatewayController::candidateEndpoints() const
+{
+    QStringList list;
+    const auto add = [&list](const QString &endpoint) {
+        if (!endpoint.isEmpty() && !list.contains(endpoint)) {
+            list.append(endpoint);
+        }
+    };
+    if (m_isDevEnvironment) {
+        add(m_gatewayEndpoint);
+        return list;
+    }
+    QMutexLocker lock(&s_endpointsMutex);
+    add(s_currentEndpoint);
+    add(m_gatewayEndpoint);
+    add(m_fallbackEndpoint);
+    for (const QString &endpoint : std::as_const(s_knownEndpoints)) {
+        add(endpoint);
+    }
+    return list;
+}
+
+// The gateway answered at this address: it becomes the one tried first, and the
+// relays the answer names replace the ones known (an address it no longer names
+// is left for one it does)
+void GatewayController::noteAnswered(const QString &gatewayEndpoint, const QByteArray &responseBody)
+{
+    QStringList named;
+    const QJsonValue listed = QJsonDocument::fromJson(responseBody).object().value(QStringLiteral("gateway_endpoints"));
+    for (const QJsonValue &value : listed.toArray()) {
+        const QString endpoint = normalizedEndpoint(value.toString());
+        if (!endpoint.isEmpty() && !named.contains(endpoint) && named.size() < 16) {
+            named.append(endpoint);
+        }
+    }
+
+    std::function<void(const QStringList &, const QString &)> listener;
+    QStringList known;
+    QString current;
+    {
+        QMutexLocker lock(&s_endpointsMutex);
+        const QString currentBefore = s_currentEndpoint;
+        const QStringList knownBefore = s_knownEndpoints;
+        s_currentEndpoint = normalizedEndpoint(gatewayEndpoint);
+        if (!named.isEmpty()) {
+            s_knownEndpoints = named;
+            if (!named.contains(s_currentEndpoint)) {
+                s_currentEndpoint = named.first();
+            }
+        }
+        if (s_currentEndpoint == currentBefore && s_knownEndpoints == knownBefore) {
+            return;
+        }
+        listener = s_endpointsListener;
+        known = s_knownEndpoints;
+        current = s_currentEndpoint;
+    }
+    qInfo() << "[AGW] gateway addresses now:" << known.size() << "named by the gateway";
+    if (listener) {
+        listener(known, current);
+    }
+}
+
 ErrorCode GatewayController::post(const QString &endpoint, const QJsonObject apiPayload, QByteArray &responseBody)
 {
-    ErrorCode errorCode = doPost(endpoint, apiPayload, responseBody);
-
-    // The primary API host timed out or is unreachable - retry once against the
-    // fallback host (same backend, different name). HTTP-level errors (404/409/501)
-    // are not retried: the fallback would answer the same.
-    if (!m_fallbackEndpoint.isEmpty() && m_fallbackEndpoint != m_gatewayEndpoint
-        && (errorCode == ErrorCode::ApiConfigTimeoutError || errorCode == ErrorCode::ApiConfigDownloadError)) {
-        qWarning() << "[AGW] primary endpoint failed with" << static_cast<int>(errorCode)
-                   << "— retrying via fallback endpoint" << m_fallbackEndpoint;
-        m_gatewayEndpoint = m_fallbackEndpoint;
-        m_proxyUrl.clear();
-        errorCode = doPost(endpoint, apiPayload, responseBody);
+    // The gateway gave no answer at an address (timed out, unreachable, a relay
+    // whose tunnel is down) - the next one is tried. Its own answers, refusals
+    // included, are not retried: every address leads to the same gateway.
+    const QStringList tries = candidateEndpoints();
+    ErrorCode errorCode = ErrorCode::ApiConfigDownloadError;
+    for (int i = 0; i < tries.size(); ++i) {
+        if (i > 0) {
+            qWarning() << "[AGW] no answer from gateway address" << i << "of" << tries.size() << "(" << static_cast<int>(errorCode)
+                       << "), trying the next";
+            m_proxyUrl.clear();
+        }
+        m_gatewayEndpoint = tries.at(i);
+        bool answered = false;
+        errorCode = doPost(endpoint, apiPayload, responseBody, answered);
+        if (!unanswered(errorCode, answered)) {
+            if (answered && !m_isDevEnvironment) {
+                noteAnswered(tries.at(i), errorCode == ErrorCode::NoError ? responseBody : QByteArray());
+            }
+            break;
+        }
     }
     return errorCode;
 }
 
-ErrorCode GatewayController::doPost(const QString &endpoint, const QJsonObject &apiPayload, QByteArray &responseBody)
+ErrorCode GatewayController::doPost(const QString &endpoint, const QJsonObject &apiPayload, QByteArray &responseBody, bool &answered)
 {
     EncryptedRequestData encRequestData = prepareRequest(endpoint, apiPayload);
     if (encRequestData.errorCode != ErrorCode::NoError) {
@@ -257,6 +377,7 @@ ErrorCode GatewayController::doPost(const QString &endpoint, const QJsonObject &
         bypassProxy(endpoint, serviceType, userCountryCode, requestFunction, replyProcessingFunction);
     }
 
+    answered = decryptionResult.isDecryptionSuccessful;
     auto errorCode =
             apiUtils::checkNetworkReplyErrors(sslErrors, replyErrorString, replyError, httpStatusCode, decryptionResult.decryptedBody,
                                               decryptionResult.isDecryptionSuccessful);
@@ -277,6 +398,44 @@ QFuture<QPair<ErrorCode, QByteArray>> GatewayController::postAsync(const QString
 {
     auto promise = QSharedPointer<QPromise<QPair<ErrorCode, QByteArray>>>::create();
     promise->start();
+    const QStringList tries = candidateEndpoints();
+    if (tries.isEmpty()) {
+        promise->addResult(qMakePair(ErrorCode::ApiConfigDownloadError, QByteArray()));
+        promise->finish();
+        return promise->future();
+    }
+    postAsyncFrom(endpoint, apiPayload, tries, 0, promise);
+    return promise->future();
+}
+
+// one address after another, as post() does
+void GatewayController::postAsyncFrom(const QString &endpoint, const QJsonObject &apiPayload, const QStringList &tries, int index,
+                                      QSharedPointer<QPromise<QPair<ErrorCode, QByteArray>>> promise)
+{
+    m_gatewayEndpoint = tries.at(index);
+    auto answered = std::make_shared<bool>(false);
+    postAsyncOnce(endpoint, apiPayload, answered)
+            .then(this, [this, endpoint, apiPayload, tries, index, promise, answered](QPair<ErrorCode, QByteArray> result) {
+                if (unanswered(result.first, *answered) && index + 1 < tries.size()) {
+                    qWarning() << "[AGW] no answer from gateway address" << index + 1 << "of" << tries.size() << "("
+                               << static_cast<int>(result.first) << "), trying the next";
+                    m_proxyUrl.clear();
+                    postAsyncFrom(endpoint, apiPayload, tries, index + 1, promise);
+                    return;
+                }
+                if (*answered && !m_isDevEnvironment) {
+                    noteAnswered(tries.at(index), result.first == ErrorCode::NoError ? result.second : QByteArray());
+                }
+                promise->addResult(result);
+                promise->finish();
+            });
+}
+
+QFuture<QPair<ErrorCode, QByteArray>> GatewayController::postAsyncOnce(const QString &endpoint, const QJsonObject apiPayload,
+                                                                       std::shared_ptr<bool> answered)
+{
+    auto promise = QSharedPointer<QPromise<QPair<ErrorCode, QByteArray>>>::create();
+    promise->start();
 
     EncryptedRequestData encRequestData = prepareRequest(endpoint, apiPayload);
     if (encRequestData.errorCode != ErrorCode::NoError) {
@@ -291,7 +450,7 @@ QFuture<QPair<ErrorCode, QByteArray>> GatewayController::postAsync(const QString
 
     connect(reply, &QNetworkReply::sslErrors, [sslErrors](const QList<QSslError> &errors) { *sslErrors = errors; });
 
-    connect(reply, &QNetworkReply::finished, reply, [promise, sslErrors, encRequestData, endpoint, apiPayload, reply, this]() mutable {
+    connect(reply, &QNetworkReply::finished, reply, [promise, sslErrors, encRequestData, endpoint, apiPayload, reply, answered, this]() mutable {
         QByteArray encryptedResponseBody = reply->readAll();
         QString replyErrorString = reply->errorString();
         auto replyError = reply->error();
@@ -302,9 +461,10 @@ QFuture<QPair<ErrorCode, QByteArray>> GatewayController::postAsync(const QString
         auto decryptionResult =
                 tryDecryptResponseBody(encryptedResponseBody, replyError, encRequestData.key, encRequestData.iv, encRequestData.salt);
 
-        auto processResponse = [promise, encRequestData](const GatewayController::DecryptionResult &decryptionResult,
-                                                         const QList<QSslError> &sslErrors, QNetworkReply::NetworkError replyError,
-                                                         const QString &replyErrorString, int httpStatusCode) {
+        auto processResponse = [promise, encRequestData, answered](const GatewayController::DecryptionResult &decryptionResult,
+                                                                   const QList<QSslError> &sslErrors, QNetworkReply::NetworkError replyError,
+                                                                   const QString &replyErrorString, int httpStatusCode) {
+            *answered = decryptionResult.isDecryptionSuccessful;
             auto errorCode = apiUtils::checkNetworkReplyErrors(sslErrors, replyErrorString, replyError, httpStatusCode,
                                                                decryptionResult.decryptedBody, decryptionResult.isDecryptionSuccessful);
             if (errorCode) {

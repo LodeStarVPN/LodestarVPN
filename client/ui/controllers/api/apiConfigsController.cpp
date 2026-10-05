@@ -2934,11 +2934,15 @@ void ApiConfigsController::refreshLoadIfStale()
         }
         const QJsonObject data = QJsonDocument::fromJson(responseBody).object();
         m_countryLoads.clear();
+        m_countryServerMs.clear();
         for (const QJsonValue &value : data.value(QStringLiteral("countries")).toArray()) {
             const QJsonObject country = value.toObject();
             const QString key = country.value(QStringLiteral("country_code")).toString().toUpper() + "|"
                     + country.value(QStringLiteral("protocol")).toString().toLower();
             m_countryLoads.insert(key, country.value(QStringLiteral("load")).toDouble());
+            if (country.contains(QStringLiteral("server_ms"))) {
+                m_countryServerMs.insert(key, country.value(QStringLiteral("server_ms")).toInt(-2));
+            }
         }
         // per protocol: one box may serve both, with different loads
         m_nodeWeights.clear();
@@ -2951,7 +2955,16 @@ void ApiConfigsController::refreshLoadIfStale()
         }
         m_loadFetchedAt = QDateTime::currentMSecsSinceEpoch();
         qDebug() << "[LOAD] countries:" << m_countryLoads.size() << "servers:" << m_nodeWeights.size();
+        emit countryLoadsUpdated();
     });
+}
+
+int ApiConfigsController::countryServerMs(const QString &countryCode, const QString &protocol) const
+{
+    if (QDateTime::currentMSecsSinceEpoch() - m_loadFetchedAt > kLoadMaxAgeMs) {
+        return -2;
+    }
+    return m_countryServerMs.value(countryCode.toUpper() + "|" + protocol.toLower(), -2);
 }
 
 double ApiConfigsController::countryLoad(const QString &countryCode, const QString &protocol) const

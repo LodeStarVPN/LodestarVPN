@@ -8,6 +8,7 @@
 #include <QSslSocket>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QUrl>
 #include <QtConcurrent/QtConcurrent>
 
 #include <atomic>
@@ -66,6 +67,66 @@ HealthCheckController::HealthCheckController(const QSharedPointer<ServersModel> 
 {
 }
 
+namespace
+{
+    // a row of our subscription: its country and protocol as the gateway names them
+    bool gatewayRowOf(const QSharedPointer<ServersModel> &model, int row, QString &country, QString &protocol)
+    {
+        if (!model->data(row, ServersModel::Roles::IsServerFromGatewayApiRole).toBool()) {
+            return false;
+        }
+        const QJsonObject apiConfig = model->getServerConfig(row).value(QStringLiteral("api_config")).toObject();
+        country = apiConfig.value(QStringLiteral("server_country_code")).toString();
+        if (country.isEmpty()) {
+            country = apiConfig.value(QStringLiteral("user_country_code")).toString();
+        }
+        protocol = apiConfig.value(QStringLiteral("service_protocol")).toString().toLower();
+        if (protocol.startsWith(QLatin1String("awg")) || protocol.contains(QLatin1String("amneziawg"))) {
+            protocol = QStringLiteral("awg");
+        } else if (protocol.contains(QLatin1String("vless"))) {
+            protocol = QStringLiteral("vless");
+        }
+        return true;
+    }
+}
+
+void HealthCheckController::setGatewayProbe(std::function<QString()> gatewayEndpoint,
+                                            std::function<int(const QString &, const QString &)> serverLeg)
+{
+    m_gatewayEndpoint = std::move(gatewayEndpoint);
+    m_serverLeg = std::move(serverLeg);
+}
+
+void HealthCheckController::applyGatewayEstimates()
+{
+    // the relay did not answer: the gateway cannot be asked, nothing is claimed
+    // about the servers (they may well work)
+    if (m_relayMs < 0 || !m_serverLeg) {
+        return;
+    }
+    const int count = m_serversModel->getServersCount();
+    for (int row = 0; row < count; ++row) {
+        QString country;
+        QString protocol;
+        if (!gatewayRowOf(m_serversModel, row, country, protocol) || country.isEmpty()) {
+            continue;
+        }
+        const int leg = m_serverLeg(country, protocol);
+        if (leg >= 0) {
+            m_serversModel->setHealthResult(row, m_relayMs + leg);
+        } else if (leg == -1) {
+            m_serversModel->setHealthResult(row, -1);
+        }
+    }
+}
+
+void HealthCheckController::onServerLegsUpdated()
+{
+    if (m_relayMs >= 0 && QDateTime::currentMSecsSinceEpoch() - m_relayAt < 3 * 60 * 1000) {
+        applyGatewayEstimates();
+    }
+}
+
 void HealthCheckController::startProbe(bool force)
 {
     if (m_serversModel.isNull()) {
@@ -83,11 +144,19 @@ void HealthCheckController::startProbe(bool force)
     // clear displayed values: badges reappear only as fresh results arrive
     m_serversModel->clearHealthResults();
 
+    // our subscription's rows are left to the relay's probe below
+    QSet<int> gatewayRows;
+    for (int i = 0; i < m_serversModel->getServersCount(); ++i) {
+        if (m_serversModel->data(i, ServersModel::Roles::IsServerFromGatewayApiRole).toBool()) {
+            gatewayRows.insert(i);
+        }
+    }
+
     // collect targets: vless (TCP) servers only; everything else stays n/a
     const int count = m_serversModel->getServersCount();
     for (int i = 0; i < count; ++i) {
         const QString protocol = m_serversModel->data(i, ServersModel::Roles::ServiceProtocolRole).toString();
-        if (protocol != QStringLiteral("vless")) {
+        if (protocol != QStringLiteral("vless") || gatewayRows.contains(i)) {
             continue;
         }
 
@@ -201,7 +270,7 @@ void HealthCheckController::startProbe(bool force)
     // (libwg-go on Apple platforms, core/wgHandshakeProbe on Android/Windows)
     for (int i = 0; i < count; ++i) {
         const QString protocol = m_serversModel->data(i, ServersModel::Roles::ServiceProtocolRole).toString();
-        if (protocol != QStringLiteral("awg") && protocol != QStringLiteral("wireguard")) {
+        if ((protocol != QStringLiteral("awg") && protocol != QStringLiteral("wireguard")) || gatewayRows.contains(i)) {
             continue;
         }
 
@@ -322,7 +391,7 @@ void HealthCheckController::startProbe(bool force)
     // real handshake + auth + HTTP request through the server
     for (int i = 0; i < count; ++i) {
         const QString protocol = m_serversModel->data(i, ServersModel::Roles::ServiceProtocolRole).toString();
-        if (protocol != QStringLiteral("hysteria2")) {
+        if (protocol != QStringLiteral("hysteria2") || gatewayRows.contains(i)) {
             continue;
         }
 
@@ -398,6 +467,18 @@ void HealthCheckController::startProbe(bool force)
         }
     }
 #endif
+
+    // the way to the gateway's relay: one TCP connect, the same an app request takes
+    if (!gatewayRows.isEmpty() && m_gatewayEndpoint) {
+        const QUrl relay(m_gatewayEndpoint());
+        if (relay.isValid() && !relay.host().isEmpty()) {
+            Target target;
+            target.host = relay.host();
+            target.port = static_cast<quint16>(relay.port(relay.scheme() == QLatin1String("https") ? 443 : 80));
+            target.gatewayRelay = true;
+            m_queue.append(target);
+        }
+    }
 
     startNext();
     startNextWg();
@@ -552,6 +633,12 @@ void HealthCheckController::finishSocket(QTcpSocket *socket, int latencyMs)
     m_attempts.remove(socket);
     socket->deleteLater();
 
+    if (target.gatewayRelay) {
+        m_relayMs = latencyMs;
+        m_relayAt = QDateTime::currentMSecsSinceEpoch();
+        qDebug() << "[HEALTH] way to the gateway's relay:" << latencyMs << "ms";
+        applyGatewayEstimates();
+    }
     for (const int row : target.rows) {
         m_serversModel->setHealthResult(row, latencyMs);
     }

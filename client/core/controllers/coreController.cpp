@@ -1,5 +1,7 @@
 #include "coreController.h"
 
+#include "core/controllers/gatewayController.h"
+
 #include <QDirIterator>
 #include <QTimer>
 #include <QTranslator>
@@ -194,6 +196,14 @@ void CoreController::initControllers()
     m_healthCheckController.reset(new HealthCheckController(m_serversModel, this));
     m_engine->rootContext()->setContextProperty("HealthCheckController", m_healthCheckController.get());
     m_connectionController->setHealthCheckController(m_healthCheckController.get());
+    // our subscription's ping: the way to the relay plus the gateway's own figure
+    m_healthCheckController->setGatewayProbe(
+            [settings = m_settings]() { return GatewayController::currentEndpoint(settings->getGatewayEndpoint()); },
+            [api = m_apiConfigsController.get()](const QString &country, const QString &protocol) {
+                return api->countryServerMs(country, protocol);
+            });
+    connect(m_apiConfigsController.get(), &ApiConfigsController::countryLoadsUpdated, m_healthCheckController.get(),
+            &HealthCheckController::onServerLegsUpdated);
 
     // probes are only meaningful with the VPN off - once a tunnel comes up, in-flight
     // probes die (their traffic routes into the tunnel) and stale "offline" badges
