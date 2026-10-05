@@ -1221,6 +1221,20 @@ void ServersModel::setHealthResult(int serverIndex, int latencyMs)
     emit dataChanged(modelIndex, modelIndex, { HealthLatencyRole });
 }
 
+void ServersModel::clearOfflineHealthResults()
+{
+    for (auto it = m_healthResults.begin(); it != m_healthResults.end();) {
+        if (it.value() < 0) {
+            const int row = it.key();
+            it = m_healthResults.erase(it);
+            const QModelIndex modelIndex = index(row);
+            emit dataChanged(modelIndex, modelIndex, { HealthLatencyRole });
+        } else {
+            ++it;
+        }
+    }
+}
+
 void ServersModel::clearHealthResults()
 {
     if (m_healthResults.isEmpty()) {

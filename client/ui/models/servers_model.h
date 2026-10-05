@@ -147,6 +147,8 @@ public slots:
     // -1 offline, missing = unknown
     void setHealthResult(int serverIndex, int latencyMs);
     void clearHealthResults();
+    // drops the "offline" verdicts only (the figures stay)
+    void clearOfflineHealthResults();
 
     QJsonObject getServerConfig(const int serverIndex) const;
 

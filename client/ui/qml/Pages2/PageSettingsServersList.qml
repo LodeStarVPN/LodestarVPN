@@ -21,9 +21,12 @@ PageType {
     Connections {
         target: ApiConfigsController
 
-        // reloadSubscriptionConfigs is async - the busy indicator hides when it reports
+        // reloadSubscriptionConfigs is async - the busy indicator hides when it reports;
+        // the refresh measures the servers' ping anew too (with the VPN off only:
+        // through the tunnel every figure would be the way via the connected server)
         function onReloadSubscriptionConfigsFinished(success) {
             PageController.showBusyIndicator(false)
+            HealthCheckController.startProbe(true)
         }
     }
 

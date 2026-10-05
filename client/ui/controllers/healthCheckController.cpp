@@ -216,9 +216,23 @@ void HealthCheckController::onServerLegsUpdated()
     applyGatewayRows();
 }
 
+void HealthCheckController::setVpnActive(bool active)
+{
+    if (active && !m_vpnActive) {
+        stopProbe();
+    }
+    m_vpnActive = active;
+}
+
 void HealthCheckController::startProbe(bool force)
 {
     if (m_serversModel.isNull()) {
+        return;
+    }
+    if (m_vpnActive) {
+        // the figures from before the connect stay; a waiter (auto selection)
+        // sees no run and decides on them
+        qDebug() << "[HEALTH] the VPN is on: no probes through the tunnel";
         return;
     }
 

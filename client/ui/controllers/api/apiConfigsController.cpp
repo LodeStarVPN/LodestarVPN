@@ -2750,6 +2750,22 @@ void ApiConfigsController::reloadSubscriptionConfigs()
             return;
         }
 
+        // the rows are made anew below: their ping figures go over to the new ones
+        // (with the VPN on nothing measures them again — through the tunnel a
+        // figure would be the way via the connected server)
+        const auto rowKey = [this](int row) {
+            const QJsonObject api = m_serversModel->getServerConfig(row).value(configKey::apiConfig).toObject();
+            const QString connection = api.value(QStringLiteral("connection_uuid")).toString();
+            return connection.isEmpty() ? QString() : connection + QLatin1Char('|') + api.value(QStringLiteral("node_id")).toString();
+        };
+        QHash<QString, int> figures;
+        for (int i = 0; i < m_serversModel->getServersCount(); ++i) {
+            const int ms = m_serversModel->data(i, ServersModel::Roles::HealthLatencyRole).toInt();
+            if (!rowKey(i).isEmpty() && ms != -2) {
+                figures.insert(rowKey(i), ms);
+            }
+        }
+
         // remove previously imported subscription servers (they carry connection_uuid)
         for (int i = m_serversModel->getServersCount() - 1; i >= 0; --i) {
             const QJsonObject serverConfig = m_serversModel->getServerConfig(i);
@@ -2788,6 +2804,12 @@ void ApiConfigsController::reloadSubscriptionConfigs()
         }
         if (newDefaultIndex >= 0) {
             m_serversModel->setDefaultServerIndex(newDefaultIndex);
+        }
+        for (int i = 0; i < m_serversModel->getServersCount(); ++i) {
+            const auto figure = figures.constFind(rowKey(i));
+            if (figure != figures.constEnd()) {
+                m_serversModel->setHealthResult(i, figure.value());
+            }
         }
         emit reloadSubscriptionConfigsFinished(true);
     });

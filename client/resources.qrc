@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>agw_public.pem</file>
+        <file>gateway_ca.pem</file>
         <file>fonts/IBMPlexMono-Regular.ttf</file>
         <file>fonts/IBMPlexMono-Medium.ttf</file>
         <file>fonts/IBMPlexMono-SemiBold.ttf</file>

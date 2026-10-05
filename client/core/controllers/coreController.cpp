@@ -209,13 +209,16 @@ void CoreController::initControllers()
     connect(m_apiConfigsController.get(), &ApiConfigsController::countryLoadsUpdated, m_healthCheckController.get(),
             &HealthCheckController::onServerLegsUpdated);
 
-    // probes are only meaningful with the VPN off - once a tunnel comes up, in-flight
-    // probes die (their traffic routes into the tunnel) and stale "offline" badges
-    // would linger next to the very server we are connected to
+    // probes are only meaningful with the VPN off: through the tunnel every server
+    // shows the way via the connected one. While it is up no run starts, the list
+    // keeps the figures from before the connect, and the "offline" verdicts go (the
+    // server we are connected to may be one)
     connect(m_vpnConnection.get(), &VpnConnection::connectionStateChanged, this, [this](Vpn::ConnectionState state) {
-        if (state == Vpn::ConnectionState::Connecting || state == Vpn::ConnectionState::Connected) {
-            m_healthCheckController->stopProbe();
-            m_serversModel->clearHealthResults();
+        const bool active = state != Vpn::ConnectionState::Disconnected && state != Vpn::ConnectionState::Error
+                && state != Vpn::ConnectionState::Unknown;
+        m_healthCheckController->setVpnActive(active);
+        if (state == Vpn::ConnectionState::Connected) {
+            m_serversModel->clearOfflineHealthResults();
         }
     });
 }

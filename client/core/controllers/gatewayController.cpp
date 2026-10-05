@@ -10,6 +10,8 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QPromise>
+#include <QSslCertificate>
+#include <QSslConfiguration>
 #include <QUrl>
 
 #include "QBlockCipher.h"
@@ -26,6 +28,20 @@
 
 namespace
 {
+    // The gateway's own certificate authority (client/gateway_ca.pem, a build
+    // input like its key): HTTPS to a relay is trusted by it alone, so a
+    // relay's TLS ends at the gateway and nobody in between can stand in for
+    // it. Empty in a build without one: the system's authorities then.
+    const QList<QSslCertificate> &gatewayAuthority()
+    {
+        static const QList<QSslCertificate> authority = [] {
+            QFile file(QStringLiteral(":/gateway_ca.pem"));
+            return file.open(QIODevice::ReadOnly) ? QSslCertificate::fromData(file.readAll(), QSsl::Pem)
+                                                  : QList<QSslCertificate>();
+        }();
+        return authority;
+    }
+
     QByteArray loadAgwPublicKey()
     {
         QFile keyFile(QStringLiteral(":/agw_public.pem"));
@@ -105,6 +121,11 @@ GatewayController::EncryptedRequestData GatewayController::prepareRequest(const 
     encRequestData.request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     encRequestData.request.setRawHeader(QString("X-Client-Request-ID").toUtf8(), QUuid::createUuid().toString(QUuid::WithoutBraces).toUtf8());
     encRequestData.request.setUrl(endpoint.arg(m_proxyUrl.isEmpty() ? m_gatewayEndpoint : m_proxyUrl));
+    if (encRequestData.request.url().scheme() == QLatin1String("https") && !gatewayAuthority().isEmpty()) {
+        QSslConfiguration ssl = encRequestData.request.sslConfiguration();
+        ssl.setCaCertificates(gatewayAuthority());
+        encRequestData.request.setSslConfiguration(ssl);
+    }
 
     // bypass killSwitch exceptions for API-gateway
 #ifdef AMNEZIA_DESKTOP
@@ -351,6 +372,8 @@ ErrorCode GatewayController::doPost(const QString &endpoint, const QJsonObject &
     if (sslErrors.isEmpty() && shouldBypassProxy(replyError, decryptionResult.decryptedBody, decryptionResult.isDecryptionSuccessful)) {
         auto requestFunction = [&encRequestData, &encryptedResponseBody](const QString &url) {
             encRequestData.request.setUrl(url);
+            // a proxy is not one of our relays: the system's authorities
+            encRequestData.request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
             return amnApp->networkManager()->post(encRequestData.request, encRequestData.requestBody);
         };
 
@@ -868,6 +891,8 @@ void GatewayController::bypassProxyAsync(
 
     QNetworkRequest request = encRequestData.request;
     request.setUrl(endpoint.arg(proxyUrl));
+    // a proxy is not one of our relays: the system's authorities
+    request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
 
     QNetworkReply *reply = amnApp->networkManager()->post(request, encRequestData.requestBody);
 

@@ -29,6 +29,11 @@ public:
     Q_INVOKABLE void startProbe(bool force = false);
     Q_INVOKABLE void stopProbe();
 
+    // With the VPN on, every probe would go through the tunnel and show the
+    // way via the connected server (Germany "117 ms" through the Netherlands):
+    // no run starts then, and the figures from before the connect stay.
+    void setVpnActive(bool active);
+
     // true while a probe run has unfinished targets; probingFinished fires once
     // when the last target of the run resolves (also on an external stopProbe)
     bool isProbing() const { return m_probeActive; }
@@ -148,6 +153,7 @@ private:
     qint64 m_lastRunMsecs = 0;
     bool m_probeActive = false;
     bool m_runOpen = false; // a run started and not stopped (the VPN off)
+    bool m_vpnActive = false;
 
     static constexpr int kMaxParallel = 8;
     static constexpr int kWgMaxParallel = 3;

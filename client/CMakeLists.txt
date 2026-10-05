@@ -47,6 +47,15 @@ endif()
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/agw_public.pem")
     message(FATAL_ERROR "Put the gateway's RSA public key at client/agw_public.pem or set LODESTAR_GATEWAY_KEY")
 endif()
+# The gateway's own certificate authority (LODESTAR_GATEWAY_CA, PEM): HTTPS to
+# its relays is trusted by it alone. Without one the file is empty and an
+# https gateway URL is checked against the system's authorities.
+set(LODESTAR_GATEWAY_CA "$ENV{LODESTAR_GATEWAY_CA}" CACHE FILEPATH "Gateway certificate authority (PEM, optional)")
+if(NOT LODESTAR_GATEWAY_CA STREQUAL "")
+    configure_file("${LODESTAR_GATEWAY_CA}" "${CMAKE_CURRENT_SOURCE_DIR}/gateway_ca.pem" COPYONLY)
+elseif(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gateway_ca.pem")
+    file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/gateway_ca.pem" "")
+endif()
 
 add_definitions(-DPROD_S3_ENDPOINT="$ENV{PROD_S3_ENDPOINT}")
 add_definitions(-DDEV_AGW_ENDPOINT="$ENV{DEV_AGW_ENDPOINT}")
