@@ -4,7 +4,16 @@ import android.content.Context
 import android.net.VpnService.Builder
 import java.io.File
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.Socket
+import java.util.concurrent.CopyOnWriteArrayList
 import go.Seq
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.amnezia.vpn.protocol.BadConfigException
 import org.amnezia.vpn.protocol.Protocol
 import org.amnezia.vpn.protocol.ProtocolState.CONNECTED
@@ -23,6 +32,12 @@ import org.json.JSONObject
 
 private const val TAG = "Xray"
 private const val LIBXRAY_TAG = "libXray"
+
+// two independent targets: one of them being unreachable from the exit must not fail a
+// working server (the same pair as the desktop's TunnelHttpProbe)
+private val PROBE_HOSTS = listOf("cp.cloudflare.com", "www.gstatic.com")
+// inside the app's 12 s window for one address (ConnectionController::kPoolAttemptTimeoutMs)
+private const val PROBE_TIMEOUT_MS = 7000L
 
 class Xray : Protocol() {
 
@@ -89,9 +104,61 @@ class Xray : Protocol() {
         }
 
         start(xrayConfig, xrayJsonConfigString, vpnBuilder, protect)
+        // xray starts without reaching its server, and tun2socks answers TCP handshakes by
+        // itself, so a blocked server would look connected with nothing loading. An HTTP
+        // answer through xray's own SOCKS inbound is the proof; without it the app goes on
+        // to the server's next address (the desktop does the same in XrayProtocol)
+        if (!proveTraffic(xrayConfig.socksPort)) {
+            LibXray.stopXray()
+            LibXray.stopTun2Socks()
+            throw VpnStartException("No answer through the server")
+        }
         state.value = CONNECTED
         isRunning = true
     }
+
+    private suspend fun proveTraffic(socksPort: Int): Boolean = withContext(Dispatchers.IO) {
+        val sockets = CopyOnWriteArrayList<Socket>()
+        val answers = Channel<Boolean>(Channel.UNLIMITED)
+        for (host in PROBE_HOSTS) {
+            launch { answers.send(probeHost(socksPort, host, sockets)) }
+        }
+        // the deadline closes whatever still waits: a closed socket ends its probe at once
+        val deadline = launch {
+            delay(PROBE_TIMEOUT_MS)
+            sockets.forEach { runCatching { it.close() } }
+        }
+        var proven = false
+        for (i in PROBE_HOSTS.indices) {
+            if (answers.receive()) {
+                proven = true
+                break
+            }
+        }
+        deadline.cancel()
+        sockets.forEach { runCatching { it.close() } }
+        Log.i(TAG, if (proven) "Traffic proven: an HTTP answer through the server" else "No HTTP answer through the server")
+        proven
+    }
+
+    private fun probeHost(socksPort: Int, host: String, sockets: MutableList<Socket>): Boolean =
+        try {
+            Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))).use { socket ->
+                sockets.add(socket)
+                socket.soTimeout = PROBE_TIMEOUT_MS.toInt()
+                // unresolved: the name goes to xray, which resolves it on the far side
+                socket.connect(InetSocketAddress.createUnresolved(host, 80), PROBE_TIMEOUT_MS.toInt())
+                socket.getOutputStream().apply {
+                    write("HEAD /generate_204 HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n".toByteArray())
+                    flush()
+                }
+                val status = socket.getInputStream().bufferedReader().readLine()
+                status != null && status.startsWith("HTTP/")
+            }
+        } catch (e: IOException) {
+            Log.w(TAG, "Probe $host: ${e.message}")
+            false
+        }
 
     private fun parseConfig(config: JSONObject, xrayJsonConfig: JSONObject): XrayConfig {
         return XrayConfig.build {

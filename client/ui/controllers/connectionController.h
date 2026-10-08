@@ -107,6 +107,7 @@ private:
     // tunnel is down, else it would be routed into it; a cancel or a new
     // connect in between voids the retry.
     void beginPoolRefresh(int row);
+    void sendPoolRefresh();
     void onPoolRefreshed(int row, const QByteArray &connectionBefore, bool ok);
 
     // --- device check ---
@@ -207,6 +208,9 @@ private:
     // an answer) - without this the UI spins "Connecting..." forever. On
     // expiry: try the next pool address, otherwise fail loudly.
     QTimer *m_manualConnectTimer = nullptr;
+    // Android: the attempt's timers paused while the system's permission dialogs are up
+    bool m_resumeManualTimer = false;
+    bool m_resumeAutoTimer = false;
     static constexpr int kManualConnectTimeoutMs = 20000;
     // per address while the pool has more left: WG/AWG retries its handshake
     // every 5 s, so this is ~3 tries before moving to the next address

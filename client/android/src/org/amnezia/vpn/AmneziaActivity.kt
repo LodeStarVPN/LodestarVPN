@@ -159,8 +159,8 @@ class AmneziaActivity : QtActivity() {
                     ServiceEvent.ERROR -> {
                         msg.data?.getString(MSG_ERROR)?.let { error ->
                             Log.e(TAG, "From VpnService: $error")
+                            QtAndroidController.onServiceErrorMessage(error)
                         }
-                        // todo: add error reporting to Qt
                         QtAndroidController.onServiceError()
                     }
                 }
@@ -640,6 +640,11 @@ class AmneziaActivity : QtActivity() {
                 Prefs.save(PREFS_NOTIFICATION_PERMISSION_ASKED, true)
                 onChecked()
             }
+            // closed without an answer (back): a "no", or the connect would wait for ever
+            .setOnCancelListener {
+                Prefs.save(PREFS_NOTIFICATION_PERMISSION_ASKED, true)
+                onChecked()
+            }
             .setPositiveButton(R.string.yes) { _, _ ->
                 val saveAsked: () -> Unit = {
                     Prefs.save(PREFS_NOTIFICATION_PERMISSION_ASKED, true)
@@ -729,8 +734,14 @@ class AmneziaActivity : QtActivity() {
     fun start(vpnConfig: String) {
         Log.v(TAG, "Start VPN")
         mainScope.launch {
+            // the system's VPN and notification dialogs wait for the user as long as
+            // it takes: the app's connect timers stop meanwhile (ConnectionController),
+            // or the attempt is given up mid-dialog and the tunnel then comes up under
+            // an app that has moved on
+            QtAndroidController.onVpnPermissionPending(true)
             checkVpnPermission {
                 checkNotificationPermission {
+                    QtAndroidController.onVpnPermissionPending(false)
                     startVpn(vpnConfig)
                 }
             }

@@ -24,6 +24,10 @@
     #include "platforms/windows/windowsutils.h"
 #endif
 
+#ifdef Q_OS_ANDROID
+    #include "platforms/android/android_controller.h"
+#endif
+
 #include "utilities.h"
 #include "core/controllers/vpnConfigurationController.h"
 #include "ui/controllers/api/apiConfigsController.h"
@@ -117,6 +121,19 @@ void patchAddressInJsonObject(QJsonObject &obj, const QString &ip)
     if (!nestedConfig.isEmpty()) {
         obj[QStringLiteral("config")] = patchAddressInConfigString(nestedConfig, ip);
     }
+}
+
+// Android's xray reports Connected only after an HTTP answer came through it
+// (Xray.kt, proveTraffic). The counters of its tun prove nothing there —
+// tun2socks answers TCP handshakes itself - so the proof is not asked twice
+bool connectedIsProbed(DockerContainer container)
+{
+#ifdef Q_OS_ANDROID
+    return container == DockerContainer::Xray || container == DockerContainer::SSXray;
+#else
+    Q_UNUSED(container)
+    return false;
+#endif
 }
 
 void patchProtocolObject(QJsonObject &protocolObject, const QString &ip)
@@ -259,8 +276,53 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
         emit connectionStateChanged();
     });
 
+#ifdef Q_OS_ANDROID
+    // the first connect asks the system for the VPN permission (and the app for
+    // notifications): the dialogs wait for the user as long as it takes, so the
+    // attempt's timers wait too - given up mid-dialog, the attempt moved on and the
+    // tunnel then came up under an app showing "Disconnecting" that could not stop it
+    connect(AndroidController::instance(), &AndroidController::vpnPermissionPending, this, [this](bool pending) {
+        if (pending) {
+            m_resumeManualTimer = m_resumeManualTimer || m_manualConnectTimer->isActive();
+            m_resumeAutoTimer = m_resumeAutoTimer || m_autoAttemptTimer->isActive();
+            m_manualConnectTimer->stop();
+            m_autoAttemptTimer->stop();
+            return;
+        }
+        if (m_resumeManualTimer) {
+            m_manualConnectTimer->start(); // the attempt's full time, from now
+        }
+        if (m_resumeAutoTimer) {
+            m_autoAttemptTimer->start();
+        }
+        m_resumeManualTimer = false;
+        m_resumeAutoTimer = false;
+    });
+    // refused: the attempt ends here, as if the user cancelled it
+    connect(AndroidController::instance(), &AndroidController::vpnPermissionRejected, this, [this]() {
+        m_resumeManualTimer = false;
+        m_resumeAutoTimer = false;
+        if (!isConnectionInProgress()) {
+            return;
+        }
+        qInfo() << "[CONNECT] the VPN permission was refused: the attempt ends";
+        closeConnection();
+        m_isConnectionInProgress = false;
+        m_connectionStateText = tr("Connect");
+        emit connectionStateChanged();
+    });
+#endif
+
 #if defined(Q_OS_IOS) || defined(MACOS_NE) || defined(Q_OS_ANDROID)
     connect(qApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+#ifdef Q_OS_ANDROID
+        // the tunnel watchdog runs while the app is on screen (startStallWatch)
+        if (state != Qt::ApplicationActive) {
+            stopStallWatch();
+        } else if (m_isConnected) {
+            startStallWatch();
+        }
+#endif
         if (state != Qt::ApplicationActive || !m_isConnected) {
             return;
         }
@@ -451,10 +513,17 @@ void ConnectionController::finishLivePing(QTcpSocket *socket, bool ok)
 
 void ConnectionController::startStallWatch()
 {
-#if defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)
+#if (defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)) || defined(Q_OS_ANDROID)
     if (m_stallWatching || m_tunnelRow < 0 || !QSslSocket::supportsSsl()) {
         return;
     }
+#ifdef Q_OS_ANDROID
+    // on a phone only while the app is on screen: in the background the system cuts
+    // the app's own network (Doze), and a failed probe there says nothing of the tunnel
+    if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
+        return;
+    }
+#endif
     // WG/AWG only: their byte counters are the tunnel's own (xray's come from
     // its connect probe, and its connections end inside the app)
     const DockerContainer container = qvariant_cast<DockerContainer>(
@@ -707,11 +776,12 @@ void ConnectionController::dialServerIndex(int serverIndex)
         return;
     }
 
-#if defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)
+#if (defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)) || defined(Q_OS_ANDROID)
     // single-address xray: XrayProtocol proves real traffic on desktop (see
-    // startTrafficProbe), so run the same check as for a pool of one - a dead
-    // server (blocked, stale config) then goes through the gateway refresh and
-    // ends in an error instead of sitting in "Connected" with nothing loading
+    // startTrafficProbe), Xray.kt before its Connected on Android, so run the
+    // same check as for a pool of one - a dead server (blocked, stale config)
+    // then goes through the gateway refresh and ends in an error instead of
+    // sitting in "Connected" with nothing loading
     const DockerContainer container = qvariant_cast<DockerContainer>(
             m_serversModel->data(serverIndex, ServersModel::Roles::DefaultContainerRole));
     if (container == DockerContainer::Xray || container == DockerContainer::SSXray) {
@@ -854,6 +924,24 @@ void ConnectionController::beginPoolRefresh(int row)
     m_isConnectionInProgress = true;
     m_connectionStateText = tr("Connecting...");
     emit connectionStateChanged();
+}
+
+// the dead tunnel is down, so the request now reaches the gateway
+void ConnectionController::sendPoolRefresh()
+{
+    if (m_poolRefreshRow < 0 || !m_apiConfigsController) {
+        return;
+    }
+    const int row = m_poolRefreshRow;
+    const QByteArray before = m_poolRefreshConnectionBefore;
+    const quint64 attempt = m_connectAttempt;
+    m_poolRefreshRow = -1;
+    m_apiConfigsController->updateServiceFromGatewayAsync(row, QString(), QString(), false, true,
+                                                          [this, row, before, attempt](bool ok) {
+        if (attempt == m_connectAttempt) {
+            onPoolRefreshed(row, before, ok);
+        }
+    });
 }
 
 void ConnectionController::onPoolRefreshed(int row, const QByteArray &connectionBefore, bool ok)
@@ -1381,8 +1469,16 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
             // "Connected" alone proves nothing for xray/hysteria: a broken entry
             // can still bring a tunnel up, so require real bytes before declaring
             // success. WG/AWG on Apple NE skip this - their Connected is already
-            // handshake-gated (see the Connected case below).
-            if (m_autoCandidatePos < m_autoCandidates.size()) {
+            // handshake-gated (see the Connected case below) - and so does
+            // Android's xray, whose Connected follows an answer through it.
+            const bool probed = m_autoCandidatePos < m_autoCandidates.size()
+                    && connectedIsProbed(qvariant_cast<DockerContainer>(m_serversModel->data(
+                            m_autoCandidates.at(m_autoCandidatePos).row, ServersModel::Roles::DefaultContainerRole)));
+            if (probed) {
+                qDebug() << "[AUTO] answer-confirmed connect on row" << m_autoCandidates.at(m_autoCandidatePos).row;
+                markEndpointWorking(m_currentEndpoint);
+                finalizeAutoSuccess();
+            } else if (m_autoCandidatePos < m_autoCandidates.size()) {
                 m_autoAwaitingTraffic = true;
                 m_autoAttemptTimer->start(kAutoTrafficTimeoutMs);
             } else {
@@ -1469,8 +1565,8 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
             const DockerContainer container = qvariant_cast<DockerContainer>(
                     m_serversModel->data(m_ipPoolRow, ServersModel::Roles::DefaultContainerRole));
             if (container == DockerContainer::Awg || container == DockerContainer::Awg2
-                || container == DockerContainer::WireGuard) {
-                qDebug() << "[IPPOOL] handshake-confirmed connect on row" << m_ipPoolRow;
+                || container == DockerContainer::WireGuard || connectedIsProbed(container)) {
+                qDebug() << "[IPPOOL] handshake- or answer-confirmed connect on row" << m_ipPoolRow;
                 markEndpointWorking(m_currentEndpoint);
                 resetIpPool(); // success - the next connect starts from a fresh random pool
                 // fall through to the common Connected handling in the switch below
@@ -1502,7 +1598,22 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
                 m_state = state;
                 return;
             }
+            [[maybe_unused]] const int row = m_ipPoolRow;
             resetIpPool(); // pool exhausted - fall through to the normal error/UI path
+#ifdef Q_OS_ANDROID
+            // Android's xray ends a server that answers nothing through it with an
+            // error (its tunnel is already down by then): one fresh config from the
+            // gateway before giving up, as when an address never comes up
+            if (state == Vpn::ConnectionState::Error && !m_poolRefreshAttempted && m_apiConfigsController && row >= 0
+                && m_serversModel->data(row, ServersModel::Roles::IsServerFromGatewayApiRole).toBool()) {
+                markEndpointFailed(m_currentEndpoint);
+                m_manualConnectTimer->stop();
+                m_state = state;
+                beginPoolRefresh(row);
+                sendPoolRefresh();
+                return;
+            }
+#endif
         }
     }
 
@@ -1563,19 +1674,7 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
         if (!m_connectionSwitching) {
             m_manualConnectTimer->stop();
         }
-        if (m_poolRefreshRow >= 0 && m_apiConfigsController) {
-            // the dead tunnel is down, so the request now reaches the gateway
-            const int row = m_poolRefreshRow;
-            const QByteArray before = m_poolRefreshConnectionBefore;
-            const quint64 attempt = m_connectAttempt;
-            m_poolRefreshRow = -1;
-            m_apiConfigsController->updateServiceFromGatewayAsync(row, QString(), QString(), false, true,
-                                                                  [this, row, before, attempt](bool ok) {
-                if (attempt == m_connectAttempt) {
-                    onPoolRefreshed(row, before, ok);
-                }
-            });
-        }
+        sendPoolRefresh();
         break;
     }
     case Vpn::ConnectionState::Disconnecting: {

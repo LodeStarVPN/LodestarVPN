@@ -88,7 +88,7 @@ class AuthActivity : FragmentActivity() {
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setAllowedAuthenticators(AUTHENTICATORS)
-            .setTitle("Dopamine")
+            .setTitle("LodestarVPN")
             .setSubtitle(biometricManager.getStrings(AUTHENTICATORS)?.promptMessage)
             .build()
 

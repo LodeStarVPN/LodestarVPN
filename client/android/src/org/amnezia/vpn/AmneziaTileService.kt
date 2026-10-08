@@ -28,8 +28,8 @@ import org.amnezia.vpn.protocol.ProtocolState.RECONNECTING
 import org.amnezia.vpn.protocol.ProtocolState.UNKNOWN
 import org.amnezia.vpn.util.Log
 
-private const val TAG = "FRKNTileService"
-private const val DEFAULT_TILE_LABEL = "FRKN"
+private const val TAG = "LodestarTileService"
+private const val DEFAULT_TILE_LABEL = "LodestarVPN"
 
 class AmneziaTileService : TileService() {
 

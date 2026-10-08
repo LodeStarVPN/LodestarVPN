@@ -2751,7 +2751,7 @@ void ApiConfigsController::reloadSubscriptionConfigs()
         }
 
         // the rows are made anew below: their ping figures go over to the new ones
-        // (with the VPN on nothing measures them again — through the tunnel a
+        // (with the VPN on nothing measures them again - through the tunnel a
         // figure would be the way via the connected server)
         const auto rowKey = [this](int row) {
             const QJsonObject api = m_serversModel->getServerConfig(row).value(configKey::apiConfig).toObject();

@@ -4,7 +4,7 @@ set(PROJECT Dopamine)
 # LodestarVPN's own version (the 4.8.x line was upstream Dopamine's): one
 # number everywhere - app, exe resources, MSI. Bump it for every build that
 # goes to people, or the MSI cannot upgrade an installed one.
-set(DOPAMINE_VERSION 1.0.15)
+set(DOPAMINE_VERSION 1.0.16)
 
 project(${PROJECT} VERSION ${DOPAMINE_VERSION}
         DESCRIPTION "LodestarVPN"
@@ -33,9 +33,11 @@ if("${CMAKE_PROJECT_VERSION_TWEAK}" STREQUAL "")
 else()
     set(DOPAMINE_BUILD_NUMBER ${CMAKE_PROJECT_VERSION_TWEAK})
 endif()
-# versionCode must keep growing monotonically (Google Play / APK update
-# requirement) - it does NOT follow the marketing version reset to 1.0.x
-set(APP_ANDROID_VERSION_CODE 2138)
+# versionCode must keep growing (an APK installs over an older one only):
+# major*1000000 + minor*1000 + patch, so 1.0.15 is 1000015. The package is our
+# own (org.lodestar.vpn), FRKN's codes do not apply to it
+math(EXPR APP_ANDROID_VERSION_CODE
+     "${CMAKE_PROJECT_VERSION_MAJOR} * 1000000 + ${CMAKE_PROJECT_VERSION_MINOR} * 1000 + ${CMAKE_PROJECT_VERSION_PATCH}")
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     set(MZ_PLATFORM_NAME "linux")

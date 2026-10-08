@@ -31,11 +31,18 @@ android {
     packaging {
         // compress .so binary libraries
         jniLibs.useLegacyPackaging = true
+        // only the ABIs the app itself is built for: a library that came for another ABI
+        // inside an AAR (libgojni has all four) would make a phone of that ABI pick it and
+        // then not find the app's own library
+        val builtAbis = qtTargetAbiList.split(',').map { it.trim() }.toSet()
+        listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64").filterNot { it in builtAbis }
+            .forEach { jniLibs.excludes += "/lib/$it/**" }
     }
 
     defaultConfig {
-        applicationId = "org.frkn.dopamine"
+        applicationId = "org.lodestar.vpn"
         targetSdk = qtTargetSdkVersion.toInt()
+        manifestPlaceholders["appName"] = "LodestarVPN"
 
         // keeps language resources for only the locales specified below
         resourceConfigurations += listOf("en", "ru", "b+zh+Hans")
@@ -52,12 +59,18 @@ android {
         }
     }
 
+    // the release key comes from the environment (deploy/build_android_local.sh). Without
+    // it a release APK stays unsigned: a debug key in its place would make every later
+    // update refuse to install over it
+    val releaseKeyPath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
     signingConfigs {
-        register("release") {
-            storeFile = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull?.let { file(it) }
-            storePassword = providers.environmentVariable("ANDROID_KEYSTORE_KEY_PASS").orNull
-            keyAlias = providers.environmentVariable("ANDROID_KEYSTORE_KEY_ALIAS").orNull
-            keyPassword = providers.environmentVariable("ANDROID_KEYSTORE_KEY_PASS").orNull
+        if (releaseKeyPath != null) {
+            register("release") {
+                storeFile = file(releaseKeyPath)
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_KEY_PASS").orNull
+                keyAlias = providers.environmentVariable("ANDROID_KEYSTORE_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("ANDROID_KEYSTORE_KEY_PASS").orNull
+            }
         }
     }
 
@@ -67,7 +80,7 @@ android {
             packaging {
                 resources.excludes += "DebugProbesKt.bin"
             }
-            signingConfig = signingConfigs["release"]
+            signingConfig = signingConfigs.findByName("release")
         }
 
         create("fdroid") {
@@ -82,7 +95,7 @@ android {
             isEnable = true
             reset()
             include(*qtTargetAbiList.split(',').toTypedArray())
-            isUniversalApk = false
+            isUniversalApk = true
         }
     }
 

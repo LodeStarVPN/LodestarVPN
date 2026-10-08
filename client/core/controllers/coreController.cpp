@@ -8,6 +8,7 @@
 #include <memory>
 
 #if defined(Q_OS_ANDROID)
+    #include <QGuiApplication>
     #include "core/installedAppsImageProvider.h"
     #include "platforms/android/android_controller.h"
 #endif
@@ -250,12 +251,35 @@ void CoreController::initAndroidController()
         qFatal("Android controller initialization failed");
     }
 
+    // what another app hands over (ImportConfigActivity): as on desktop, our own links
+    // only - a subscription once the user says yes (any web page can open such a link),
+    // a shared connection as before; configs from outside are not imported
     connect(AndroidController::instance(), &AndroidController::importConfigFromOutside, this, [this](QString data) {
-        emit m_pageController->goToPageHome();
-        if (m_importController->extractConfigFromData(data)) {
-            emit m_pageController->goToPageViewConfig();
+        const QString link = data.trimmed();
+        if (link.startsWith("lodestar://sub/")) {
+            // the question only, no page change: going home closes the drawer it opens in.
+            // And only with the app active again: the link comes while ImportConfigActivity
+            // is on top, and a drawer opened before that is closed by the app going inactive
+            // (DrawerType2); a moment later, once the window has settled
+            const auto ask = [this, link]() {
+                QTimer::singleShot(300, this, [this, link]() { emit m_pageController->askToAddSubscriptionLink(link); });
+            };
+            if (QGuiApplication::applicationState() == Qt::ApplicationActive) {
+                ask();
+            } else {
+                auto waiting = std::make_shared<QMetaObject::Connection>();
+                *waiting = connect(qApp, &QGuiApplication::applicationStateChanged, this,
+                                   [waiting, ask](Qt::ApplicationState state) {
+                                       if (state == Qt::ApplicationActive) {
+                                           QObject::disconnect(*waiting);
+                                           ask();
+                                       }
+                                   });
+            }
+        } else if (link.startsWith("lodestar://conn/")) {
+            importConfigFromData(link);
         } else {
-            oneshot_sub_fetch(m_importController.get(), m_pageController.get(), this);
+            qWarning() << "[CORE] a link from another app is not ours: ignored";
         }
     });
 

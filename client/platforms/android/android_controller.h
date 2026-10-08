@@ -64,7 +64,10 @@ signals:
     void status(ConnectionState state);
     void serviceDisconnected();
     void serviceError();
+    // an error the service named that the app has a code of its own for
+    void serviceErrorCode(ErrorCode error);
     void vpnPermissionRejected();
+    void vpnPermissionPending(bool pending);
     void notificationStateChanged();
     void vpnStateChanged(ConnectionState state);
     void statisticsUpdated(quint64 rxBytes, quint64 txBytes);
@@ -96,7 +99,9 @@ private:
     static void onStatus(JNIEnv *env, jobject thiz, jint stateCode);
     static void onServiceDisconnected(JNIEnv *env, jobject thiz);
     static void onServiceError(JNIEnv *env, jobject thiz);
+    static void onServiceErrorMessage(JNIEnv *env, jobject thiz, jstring message);
     static void onVpnPermissionRejected(JNIEnv *env, jobject thiz);
+    static void onVpnPermissionPending(JNIEnv *env, jobject thiz, jboolean pending);
     static void onNotificationStateChanged(JNIEnv *env, jobject thiz);
     static void onVpnStateChanged(JNIEnv *env, jobject thiz, jint stateCode);
     static void onStatisticsUpdate(JNIEnv *env, jobject thiz, jlong rxBytes, jlong txBytes);

@@ -8,6 +8,7 @@ set(ANDROID_PLATFORM "android-${APP_ANDROID_MIN_SDK}" CACHE STRING
 qt_policy(SET QTP0002 NEW)
 
 set_target_properties(${PROJECT} PROPERTIES
+    QT_ANDROID_APP_NAME "LodestarVPN"
     QT_ANDROID_VERSION_NAME ${CMAKE_PROJECT_VERSION}
     QT_ANDROID_VERSION_CODE ${APP_ANDROID_VERSION_CODE}
     QT_ANDROID_MIN_SDK_VERSION ${APP_ANDROID_MIN_SDK}
@@ -44,8 +45,12 @@ set(SOURCES ${SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/core/installedAppsImageProvider.cpp
 )
 
-foreach(abi IN ITEMS ${QT_ANDROID_ABIS})
-    set_property(TARGET ${PROJECT} PROPERTY QT_ANDROID_EXTRA_LIBS
+set(TARGET_ABIS ${QT_ANDROID_ABIS})
+if("${TARGET_ABIS}" STREQUAL "")
+    set(TARGET_ABIS ${CMAKE_ANDROID_ARCH_ABI})
+endif()
+foreach(abi IN ITEMS ${TARGET_ABIS})
+    set_property(TARGET ${PROJECT} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/amneziawg/android/${abi}/libwg-go.so
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/openssl/android/${abi}/libcrypto_3.so
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/openssl/android/${abi}/libssl_3.so

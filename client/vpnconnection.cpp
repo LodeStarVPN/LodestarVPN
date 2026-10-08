@@ -457,7 +457,9 @@ void VpnConnection::disconnectSlots()
 ErrorCode VpnConnection::lastError() const
 {
 #ifdef Q_OS_ANDROID
-    return ErrorCode::AndroidError;
+    // the service names a code only for what the app knows (AndroidController::serviceErrorCode)
+    const auto named = static_cast<ErrorCode>(m_lastError.load());
+    return named != ErrorCode::NoError ? named : ErrorCode::AndroidError;
 #endif
 
     const auto error = static_cast<ErrorCode>(m_lastError.load());
@@ -878,6 +880,8 @@ void VpnConnection::createAndroidConnections()
     connect(AndroidController::instance(), &AndroidController::connectionStateChanged, androidVpnProtocol,
             &AndroidVpnProtocol::setConnectionState);
     connect(AndroidController::instance(), &AndroidController::statisticsUpdated, androidVpnProtocol, &AndroidVpnProtocol::setBytesChanged);
+    connect(AndroidController::instance(), &AndroidController::serviceErrorCode, androidVpnProtocol,
+            [this](ErrorCode error) { rememberError(error); });
 }
 
 AndroidVpnProtocol *VpnConnection::createDefaultAndroidVpnProtocol()

@@ -30,7 +30,7 @@
 
     <application
         android:name=".AmneziaApplication"
-        android:label="-- %%INSERT_APP_NAME%% --"
+        android:label="@string/app_name"
         android:icon="@mipmap/icon"
         android:roundIcon="@mipmap/icon_round"
         android:banner="@mipmap/ic_banner"
@@ -42,6 +42,7 @@
 
         <activity
             android:name=".AmneziaActivity"
+            android:label="@string/app_name"
             android:configChanges="uiMode|screenSize|smallestScreenSize|screenLayout|orientation|density
                 |fontScale|layoutDirection|locale|keyboard|keyboardHidden|navigation|mcc|mnc"
             android:launchMode="singleInstance"
@@ -53,11 +54,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="org.frkn.dopamine.IMPORT_CONFIG" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <intent-filter>
@@ -107,11 +103,13 @@
             android:exported="true"
             android:theme="@style/Translucent">
 
+            <!-- what the system may hand over: our own links only (lodestar://sub/<key>,
+                 lodestar://conn/<token>), opened or shared as text — as on desktop, where
+                 a link never imports a server and a subscription waits for the user's yes -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
 
-                <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
@@ -120,43 +118,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="vpn" android:host="*" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="frkn" android:host="*" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:scheme="file" />
-                <data android:scheme="content" />
-                <data android:mimeType="*/*" />
-                <data android:host="*" />
-
-                <data android:pathPattern=".*\\.vpn" />
-                <data android:pathPattern=".*\\..*\\.vpn" />
-                <data android:pathPattern=".*\\..*\\..*\\.vpn" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.vpn" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.vpn" />
-
-                <data android:pathPattern=".*\\.cfg" />
-                <data android:pathPattern=".*\\..*\\.cfg" />
-                <data android:pathPattern=".*\\..*\\..*\\.cfg" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.cfg" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.cfg" />
-
-                <data android:pathPattern=".*\\.conf" />
-                <data android:pathPattern=".*\\..*\\.conf" />
-                <data android:pathPattern=".*\\..*\\..*\\.conf" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.conf" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.conf" />
+                <data android:scheme="lodestar" android:host="sub" />
+                <data android:scheme="lodestar" android:host="conn" />
             </intent-filter>
         </activity>
 
@@ -189,7 +152,7 @@
         <service
             android:name=".AmneziaTileService"
             android:process=":amneziaTileService"
-            android:icon="@drawable/ic_amnezia_round"
+            android:icon="@drawable/ic_lodestar"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">
 
@@ -204,7 +167,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="org.frkn.dopamine.qtprovider"
+            android:authorities="${applicationId}.qtprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths" />

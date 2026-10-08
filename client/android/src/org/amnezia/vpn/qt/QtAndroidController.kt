@@ -15,8 +15,12 @@ object QtAndroidController {
     external fun onStatus(stateCode: Int)
     external fun onServiceDisconnected()
     external fun onServiceError()
+    // what the service said, before onServiceError: the app turns the ones it knows into its error codes
+    external fun onServiceErrorMessage(message: String)
 
     external fun onVpnPermissionRejected()
+    // true while the system's VPN or notification dialogs wait for the user
+    external fun onVpnPermissionPending(pending: Boolean)
     external fun onNotificationStateChanged()
     external fun onVpnStateChanged(stateCode: Int)
     external fun onStatisticsUpdate(rxBytes: Long, txBytes: Long)

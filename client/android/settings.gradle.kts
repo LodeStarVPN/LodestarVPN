@@ -26,7 +26,7 @@ plugins {
     id("settings-property-delegate")
 }
 
-rootProject.name = "FRKN"
+rootProject.name = "LodestarVPN"
 rootProject.buildFileName = "build.gradle.kts"
 
 include(":qt")

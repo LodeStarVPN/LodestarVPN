@@ -97,7 +97,9 @@ bool AndroidController::initialize()
         {"onStatus", "(I)V", reinterpret_cast<void *>(onStatus)},
         {"onServiceDisconnected", "()V", reinterpret_cast<void *>(onServiceDisconnected)},
         {"onServiceError", "()V", reinterpret_cast<void *>(onServiceError)},
+        {"onServiceErrorMessage", "(Ljava/lang/String;)V", reinterpret_cast<void *>(onServiceErrorMessage)},
         {"onVpnPermissionRejected", "()V", reinterpret_cast<void *>(onVpnPermissionRejected)},
+        {"onVpnPermissionPending", "(Z)V", reinterpret_cast<void *>(onVpnPermissionPending)},
         {"onNotificationStateChanged", "()V", reinterpret_cast<void *>(onNotificationStateChanged)},
         {"onVpnStateChanged", "(I)V", reinterpret_cast<void *>(onVpnStateChanged)},
         {"onStatisticsUpdate", "(JJ)V", reinterpret_cast<void *>(onStatisticsUpdate)},
@@ -473,6 +475,27 @@ void AndroidController::onServiceError(JNIEnv *env, jobject thiz)
     Q_UNUSED(thiz);
 
     emit AndroidController::instance()->serviceError();
+}
+
+// static
+void AndroidController::onServiceErrorMessage(JNIEnv *env, jobject thiz, jstring message)
+{
+    Q_UNUSED(thiz);
+
+    // Xray.kt: no HTTP answer came through the server - to the user it is a server
+    // that did not answer, as on desktop, not "VPN connection error"
+    if (AndroidUtils::convertJString(env, message).startsWith(QLatin1String("No answer through the server"))) {
+        emit AndroidController::instance()->serviceErrorCode(ErrorCode::ServerConnectionTimeoutError);
+    }
+}
+
+// static
+void AndroidController::onVpnPermissionPending(JNIEnv *env, jobject thiz, jboolean pending)
+{
+    Q_UNUSED(env);
+    Q_UNUSED(thiz);
+
+    emit AndroidController::instance()->vpnPermissionPending(pending);
 }
 
 // static

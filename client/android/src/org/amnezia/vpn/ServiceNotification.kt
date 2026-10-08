@@ -65,8 +65,8 @@ class ServiceNotification(private val context: Context) {
         Log.v(TAG, "Build notification: $serverName, $state")
 
         return notificationBuilder
-            .setSmallIcon(R.drawable.ic_amnezia_round)
-            .setContentTitle((serverName ?: "FRKN") + (protocol?.let { " $it" } ?: ""))
+            .setSmallIcon(R.drawable.ic_lodestar)
+            .setContentTitle((serverName ?: "LodestarVPN") + (protocol?.let { " $it" } ?: ""))
             .setContentText(context.getString(state))
             .setSubText(speedString)
             .setWhen(System.currentTimeMillis())
@@ -158,7 +158,7 @@ class ServiceNotification(private val context: Context) {
                         .setSound(null, null)
                         .setVibrationEnabled(false)
                         .setLightsEnabled(false)
-                        .setName("FRKN")
+                        .setName("LodestarVPN")
                         .setDescription(context.resources.getString(R.string.notificationChannelDescription))
                         .build()
                 )

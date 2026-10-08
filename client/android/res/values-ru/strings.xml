@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <string name="app_name">LodestarVPN</string>
     <string name="disconnected">Не подключено</string>
     <string name="connected">Подключено</string>
     <string name="connecting">Подключение…</string>
@@ -14,11 +15,11 @@
 
     <string name="vpnGranted">VPN-подключение разрешено</string>
     <string name="vpnSetupFailed">Ошибка настройки VPN</string>
-    <string name="vpnSetupFailedMessage">Чтобы подключиться к FRKN необходимо:\n\n- Разрешить приложению подключаться к сети VPN\n- Отключить функцию \"Постоянная VPN\" для всех остальных VPN-приложений в системных настройках VPN</string>
+    <string name="vpnSetupFailedMessage">Чтобы подключиться к LodestarVPN необходимо:\n\n- Разрешить приложению подключаться к сети VPN\n- Отключить функцию \"Постоянная VPN\" для всех остальных VPN-приложений в системных настройках VPN</string>
     <string name="openVpnSettings">Открыть настройки VPN</string>
 
-    <string name="notificationChannelDescription">Уведомления сервиса FRKN</string>
-    <string name="notificationDialogTitle">Сервис FRKN</string>
+    <string name="notificationChannelDescription">Уведомления сервиса LodestarVPN</string>
+    <string name="notificationDialogTitle">Сервис LodestarVPN</string>
     <string name="notificationDialogMessage">Показывать статус VPN в строке состояния?</string>
     <string name="notificationSettingsDialogTitle">Настройки уведомлений</string>
     <string name="notificationSettingsDialogMessage">Для показа уведомлений необходимо включить уведомления в системных настройках</string>

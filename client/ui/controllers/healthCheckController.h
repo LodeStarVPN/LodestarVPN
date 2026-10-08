@@ -42,8 +42,8 @@ public:
     // Our subscription's rows: the server of a row the app has a config of is
     // probed as any server (its address is in this device's traffic whenever
     // it connects anyway); a row without one, or whose server does not answer,
-    // shows the ping from here to its landmarks — public hosts next to our
-    // servers of that country (landmarks: "ip:port" list) — so no other
+    // shows the ping from here to its landmarks - public hosts next to our
+    // servers of that country (landmarks: "ip:port" list) - so no other
     // address of ours shows in the traffic. When no landmark answers either:
     // the way to the gateway's relay (gatewayEndpoint) plus the gateway's own
     // time to the servers (serverLeg: ms, -1 none answers, -2 unknown).
