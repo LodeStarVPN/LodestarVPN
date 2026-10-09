@@ -92,20 +92,27 @@ namespace
 
 void HealthCheckController::setGatewayProbe(std::function<QString()> gatewayEndpoint,
                                             std::function<int(const QString &, const QString &)> serverLeg,
-                                            std::function<QStringList(const QString &, const QString &)> landmarks)
+                                            std::function<QStringList(const QString &, const QString &)> landmarks,
+                                            std::function<int(const QString &, const QString &)> entryLeg)
 {
     m_gatewayEndpoint = std::move(gatewayEndpoint);
     m_serverLeg = std::move(serverLeg);
     m_landmarks = std::move(landmarks);
+    m_entryLeg = std::move(entryLeg);
 }
 
 void HealthCheckController::applyGatewayRow(int row)
 {
     const QString key = m_gatewayKey.value(row);
+    const QString country = key.section(QLatin1Char('|'), 0, 0);
+    const QString protocol = key.section(QLatin1Char('|'), 1);
+    // behind an entry server: what was measured reached the entry only
+    const int entryLeg = m_entryLeg ? m_entryLeg(country, protocol) : -1;
+    const int onward = entryLeg >= 0 ? entryLeg : 0;
     // -3: no probe of that kind at all (no config of its own, no landmarks)
     const int own = m_ownResult.value(row, -3);
     if (own >= 0) {
-        m_serversModel->setHealthResult(row, own);
+        m_serversModel->setHealthResult(row, own + onward);
         return;
     }
     if (own == -2) {
@@ -113,7 +120,7 @@ void HealthCheckController::applyGatewayRow(int row)
     }
     const int landmark = m_landmarkResult.value(key, -3);
     if (landmark >= 0) {
-        m_serversModel->setHealthResult(row, landmark);
+        m_serversModel->setHealthResult(row, landmark + onward);
         return;
     }
     if (landmark == -2) {
@@ -122,7 +129,8 @@ void HealthCheckController::applyGatewayRow(int row)
     // nothing answered, or there was nothing to ask: the way to the relay
     // plus the gateway's own time to the servers
     if (m_relayMs >= 0 && m_serverLeg && QDateTime::currentMSecsSinceEpoch() - m_relayAt < 3 * 60 * 1000) {
-        const int leg = m_serverLeg(key.section(QLatin1Char('|'), 0, 0), key.section(QLatin1Char('|'), 1));
+        // behind an entry the relay is in the entry's country: the way on from it
+        const int leg = entryLeg >= 0 ? entryLeg : m_serverLeg(country, protocol);
         if (leg >= 0) {
             m_serversModel->setHealthResult(row, m_relayMs + leg);
             return;

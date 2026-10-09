@@ -66,8 +66,9 @@ class ServiceNotification(private val context: Context) {
 
         return notificationBuilder
             .setSmallIcon(R.drawable.ic_lodestar)
-            .setContentTitle((serverName ?: "LodestarVPN") + (protocol?.let { " $it" } ?: ""))
-            .setContentText(context.getString(state))
+            // "LodestarVPN · Германия", "Подключено · AmneziaWG"
+            .setContentTitle("LodestarVPN" + (serverName?.let { " · $it" } ?: ""))
+            .setContentText(context.getString(state) + (protocol?.let { " · $it" } ?: ""))
             .setSubText(speedString)
             .setWhen(System.currentTimeMillis())
             .clearActions()

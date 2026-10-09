@@ -628,7 +628,8 @@ open class AmneziaVpnService : VpnService() {
         }
 
     private fun saveServerData(config: JSONObject?) {
-        serverName = config?.opt("description") as String?
+        // the country the app connects to (its "description" is the protocol's, not for people)
+        serverName = config?.optString("countryName")?.ifBlank { null }
         serverIndex = config?.opt("serverIndex") as Int? ?: -1
         Log.d(TAG, "Save server data: ($serverIndex, $serverName)")
         Prefs.save(PREFS_SERVER_NAME, serverName)

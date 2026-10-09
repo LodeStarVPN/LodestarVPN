@@ -245,11 +245,12 @@ class AmneziaTileService : TileService() {
         vpnProto = vpnState.vpnProto
         val tile = qsTile ?: return
         tile.apply {
-            label = (vpnState.serverName ?: DEFAULT_TILE_LABEL) + (vpnProto?.let { " ${it.label}" } ?: "")
+            // the country; the protocol under it while connected
+            label = vpnState.serverName ?: DEFAULT_TILE_LABEL
             when (val protocolState = vpnState.protocolState) {
                 CONNECTED -> {
                     state = Tile.STATE_ACTIVE
-                    subtitleCompat = null
+                    subtitleCompat = vpnProto?.label
                 }
 
                 DISCONNECTED, UNKNOWN -> {

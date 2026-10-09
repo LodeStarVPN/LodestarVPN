@@ -96,6 +96,11 @@ Rectangle {
     Popup {
         id: popup
 
+        // a press on the header is the header's own (it closes the list): with
+        // the default CloseOnPressOutside the press closed it and the click
+        // that followed opened it again
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+
         y: root.height + 4
         width: root.width
         implicitHeight: Math.min(list.contentHeight + topPadding + bottomPadding, 320)

@@ -27,12 +27,24 @@ execute_process(
 add_definitions(-DGIT_COMMIT_HASH="${GIT_COMMIT_HASH}")
 
 # The gateway the app talks to is a build input, not part of the source:
-# its URL (LODESTAR_GATEWAY_URL, optionally a second one tried when the first
-# does not answer) and its RSA public key, client/agw_public.pem or the file
-# given in LODESTAR_GATEWAY_KEY. Both can come from the environment.
+# its URL (LODESTAR_GATEWAY_URL, optionally more tried when it does not answer:
+# LODESTAR_GATEWAY_FALLBACK_URL, one URL or several separated by commas) and its
+# RSA public key, client/agw_public.pem or the file given in LODESTAR_GATEWAY_KEY.
+# All can come from the environment.
 set(LODESTAR_GATEWAY_URL "$ENV{LODESTAR_GATEWAY_URL}" CACHE STRING "Gateway URL, e.g. https://gw.example.com/")
 set(LODESTAR_GATEWAY_FALLBACK_URL "$ENV{LODESTAR_GATEWAY_FALLBACK_URL}" CACHE STRING "Second gateway URL (optional)")
 set(LODESTAR_GATEWAY_KEY "$ENV{LODESTAR_GATEWAY_KEY}" CACHE FILEPATH "Gateway RSA public key (PEM)")
+set(LODESTAR_GATEWAY_CA "$ENV{LODESTAR_GATEWAY_CA}" CACHE FILEPATH "Gateway certificate authority (PEM, optional)")
+# what the environment gives wins over what a reused build directory remembers:
+# a cache variable is not set again otherwise, and a build for another relay
+# would silently carry the old one (the Android build passes these this way)
+foreach(var LODESTAR_GATEWAY_URL LODESTAR_GATEWAY_FALLBACK_URL LODESTAR_GATEWAY_KEY LODESTAR_GATEWAY_CA)
+    if(NOT "$ENV{${var}}" STREQUAL "" AND NOT "$ENV{${var}}" STREQUAL "${${var}}")
+        get_property(doc CACHE ${var} PROPERTY HELPSTRING)
+        get_property(type CACHE ${var} PROPERTY TYPE)
+        set(${var} "$ENV{${var}}" CACHE ${type} "${doc}" FORCE)
+    endif()
+endforeach()
 if(LODESTAR_GATEWAY_URL STREQUAL "")
     message(FATAL_ERROR "Set LODESTAR_GATEWAY_URL to the gateway URL")
 endif()
@@ -50,7 +62,6 @@ endif()
 # The gateway's own certificate authority (LODESTAR_GATEWAY_CA, PEM): HTTPS to
 # its relays is trusted by it alone. Without one the file is empty and an
 # https gateway URL is checked against the system's authorities.
-set(LODESTAR_GATEWAY_CA "$ENV{LODESTAR_GATEWAY_CA}" CACHE FILEPATH "Gateway certificate authority (PEM, optional)")
 if(NOT LODESTAR_GATEWAY_CA STREQUAL "")
     configure_file("${LODESTAR_GATEWAY_CA}" "${CMAKE_CURRENT_SOURCE_DIR}/gateway_ca.pem" COPYONLY)
 elseif(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gateway_ca.pem")

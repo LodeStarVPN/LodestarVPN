@@ -27,7 +27,7 @@ enum class VpnProto(
     },
 
     XRAY(
-        "XRay",
+        "VLESS",
         "org.amnezia.vpn:amneziaXrayService",
         XrayService::class.java
     ) {

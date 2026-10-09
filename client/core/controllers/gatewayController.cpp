@@ -5,6 +5,7 @@
 #include <random>
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -72,6 +73,10 @@ namespace
     constexpr int httpStatusCodeConflict = 409;
 
     constexpr int httpStatusCodeNotImplemented = 501;
+
+    // an address that gave no answer goes after the others for this long: a
+    // relay this network cannot reach does not cost every request its timeout
+    constexpr qint64 failedAddressPauseMs = 10 * 60 * 1000;
 
     // the gateway itself gave no answer there (no connection, a timeout, a
     // relay whose tunnel is down): worth the next address. Its own refusal is not
@@ -269,11 +274,27 @@ QStringList GatewayController::candidateEndpoints() const
     QMutexLocker lock(&s_endpointsMutex);
     add(s_currentEndpoint);
     add(m_gatewayEndpoint);
-    add(m_fallbackEndpoint);
+    // the built-in fallbacks: one address, or several separated by commas
+    // (the main relay's plain HTTP, then backup relays)
+    for (const QString &endpoint : m_fallbackEndpoint.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        add(normalizedEndpoint(endpoint));
+    }
     for (const QString &endpoint : std::as_const(s_knownEndpoints)) {
         add(endpoint);
     }
+    // the ones that gave no answer lately last, in the same order among themselves
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    std::stable_partition(list.begin(), list.end(), [now](const QString &endpoint) {
+        const auto failed = s_failedAt.constFind(endpoint);
+        return failed == s_failedAt.constEnd() || now - failed.value() > failedAddressPauseMs;
+    });
     return list;
+}
+
+void GatewayController::noteUnanswered(const QString &gatewayEndpoint)
+{
+    QMutexLocker lock(&s_endpointsMutex);
+    s_failedAt.insert(normalizedEndpoint(gatewayEndpoint), QDateTime::currentMSecsSinceEpoch());
 }
 
 // The gateway answered at this address: it becomes the one tried first, and the
@@ -298,6 +319,7 @@ void GatewayController::noteAnswered(const QString &gatewayEndpoint, const QByte
         const QString currentBefore = s_currentEndpoint;
         const QStringList knownBefore = s_knownEndpoints;
         s_currentEndpoint = normalizedEndpoint(gatewayEndpoint);
+        s_failedAt.remove(s_currentEndpoint);
         if (!named.isEmpty()) {
             s_knownEndpoints = named;
             if (!named.contains(s_currentEndpoint)) {
@@ -333,7 +355,9 @@ ErrorCode GatewayController::post(const QString &endpoint, const QJsonObject api
         m_gatewayEndpoint = tries.at(i);
         bool answered = false;
         errorCode = doPost(endpoint, apiPayload, responseBody, answered);
-        if (!unanswered(errorCode, answered)) {
+        if (unanswered(errorCode, answered)) {
+            noteUnanswered(tries.at(i));
+        } else {
             if (answered && !m_isDevEnvironment) {
                 noteAnswered(tries.at(i), errorCode == ErrorCode::NoError ? responseBody : QByteArray());
             }
@@ -439,6 +463,9 @@ void GatewayController::postAsyncFrom(const QString &endpoint, const QJsonObject
     auto answered = std::make_shared<bool>(false);
     postAsyncOnce(endpoint, apiPayload, answered)
             .then(this, [this, endpoint, apiPayload, tries, index, promise, answered](QPair<ErrorCode, QByteArray> result) {
+                if (unanswered(result.first, *answered)) {
+                    noteUnanswered(tries.at(index));
+                }
                 if (unanswered(result.first, *answered) && index + 1 < tries.size()) {
                     qWarning() << "[AGW] no answer from gateway address" << index + 1 << "of" << tries.size() << "("
                                << static_cast<int>(result.first) << "), trying the next";

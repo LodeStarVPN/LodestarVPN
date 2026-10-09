@@ -206,6 +206,9 @@ void CoreController::initControllers()
             },
             [api = m_apiConfigsController.get()](const QString &country, const QString &protocol) {
                 return api->countryLandmarks(country, protocol);
+            },
+            [api = m_apiConfigsController.get()](const QString &country, const QString &protocol) {
+                return api->countryLegMs(country, protocol);
             });
     connect(m_apiConfigsController.get(), &ApiConfigsController::countryLoadsUpdated, m_healthCheckController.get(),
             &HealthCheckController::onServerLegsUpdated);

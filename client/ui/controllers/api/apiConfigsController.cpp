@@ -2974,6 +2974,7 @@ void ApiConfigsController::refreshLoadIfStale()
         m_countryLoads.clear();
         m_countryServerMs.clear();
         m_countryLandmarks.clear();
+        m_countryLegMs.clear();
         for (const QJsonValue &value : data.value(QStringLiteral("countries")).toArray()) {
             const QJsonObject country = value.toObject();
             const QString key = country.value(QStringLiteral("country_code")).toString().toUpper() + "|"
@@ -2981,6 +2982,9 @@ void ApiConfigsController::refreshLoadIfStale()
             m_countryLoads.insert(key, country.value(QStringLiteral("load")).toDouble());
             if (country.contains(QStringLiteral("server_ms"))) {
                 m_countryServerMs.insert(key, country.value(QStringLiteral("server_ms")).toInt(-2));
+            }
+            if (country.value(QStringLiteral("leg_ms")).toInt(-1) >= 0) {
+                m_countryLegMs.insert(key, country.value(QStringLiteral("leg_ms")).toInt());
             }
             QStringList landmarks;
             for (const QJsonValue &landmark : country.value(QStringLiteral("landmarks")).toArray()) {
@@ -3013,6 +3017,14 @@ int ApiConfigsController::countryServerMs(const QString &countryCode, const QStr
         return -2;
     }
     return m_countryServerMs.value(countryCode.toUpper() + "|" + protocol.toLower(), -2);
+}
+
+int ApiConfigsController::countryLegMs(const QString &countryCode, const QString &protocol) const
+{
+    if (QDateTime::currentMSecsSinceEpoch() - m_loadFetchedAt > kLoadMaxAgeMs) {
+        return -1;
+    }
+    return m_countryLegMs.value(countryCode.toUpper() + "|" + protocol.toLower(), -1);
 }
 
 QStringList ApiConfigsController::countryLandmarks(const QString &countryCode, const QString &protocol) const

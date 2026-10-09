@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 
+#include <QHash>
 #include <QFuture>
 #include <QMutex>
 #include <QNetworkReply>
@@ -95,6 +96,9 @@ private:
     inline static QStringList s_knownEndpoints;
     inline static QString s_currentEndpoint;
     inline static std::function<void(const QStringList &, const QString &)> s_endpointsListener;
+    // an address that gave no answer -> when (ms): tried after the others for a while
+    inline static QHash<QString, qint64> s_failedAt;
+    static void noteUnanswered(const QString &gatewayEndpoint);
 };
 
 #endif // GATEWAYCONTROLLER_H

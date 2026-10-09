@@ -254,6 +254,11 @@ QJsonObject VpnConfigurationsController::createVpnConfiguration(const QPair<QStr
 
     vpnConfiguration[config_key::hostName] = serverConfig.value(config_key::hostName).toString();
     vpnConfiguration[config_key::description] = serverConfig.value(config_key::description).toString();
+    // what the system shows of the connection (Android's notification and tile): the country
+    const QString countryName = serverConfig.value(apiDefs::key::apiConfig).toObject().value(apiDefs::key::serverCountryName).toString();
+    if (!countryName.isEmpty()) {
+        vpnConfiguration[QStringLiteral("countryName")] = countryName;
+    }
 
     vpnConfiguration[config_key::configVersion] = serverConfig.value(config_key::configVersion).toInt();
     // TODO: try to get hostName, port, description for 3rd party configs

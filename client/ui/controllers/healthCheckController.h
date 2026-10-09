@@ -47,9 +47,13 @@ public:
     // address of ours shows in the traffic. When no landmark answers either:
     // the way to the gateway's relay (gatewayEndpoint) plus the gateway's own
     // time to the servers (serverLeg: ms, -1 none answers, -2 unknown).
+    // A country behind an entry server (entryLeg: ms from the entry on to the
+    // country, -1 none): whatever was measured reached only the entry, so its
+    // way on is added - the relay estimate takes it instead of serverLeg.
     void setGatewayProbe(std::function<QString()> gatewayEndpoint,
                          std::function<int(const QString &country, const QString &protocol)> serverLeg,
-                         std::function<QStringList(const QString &country, const QString &protocol)> landmarks);
+                         std::function<QStringList(const QString &country, const QString &protocol)> landmarks,
+                         std::function<int(const QString &country, const QString &protocol)> entryLeg);
 
 public slots:
     // the gateway's figures came (again): landmarks not probed yet are, and
@@ -123,6 +127,7 @@ private:
     std::function<QString()> m_gatewayEndpoint;
     std::function<int(const QString &, const QString &)> m_serverLeg;
     std::function<QStringList(const QString &, const QString &)> m_landmarks;
+    std::function<int(const QString &, const QString &)> m_entryLeg;
     int m_relayMs = -2;
     qint64 m_relayAt = 0;
 
