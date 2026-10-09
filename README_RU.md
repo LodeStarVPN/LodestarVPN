@@ -17,7 +17,7 @@
 5Compat и RemoteObjects, CMake 3.25+ и Ninja.
 
 ```
-git clone --recursive https://github.com/zZDraculaZz/LodestarVPN.git
+git clone --recursive https://github.com/LodeStarVPN/LodestarVPN.git
 cd LodestarVPN
 cmake -B build_local -G Ninja -DCMAKE_BUILD_TYPE=Release ^
       -DCMAKE_PREFIX_PATH=<папка Qt>\msvc2022_64 ^

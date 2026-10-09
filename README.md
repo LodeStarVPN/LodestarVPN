@@ -17,7 +17,7 @@ You need Visual Studio 2022, Qt 6.10 for MSVC 2022 x64 with the Shader Tools,
 5Compat and RemoteObjects modules, CMake 3.25+ and Ninja.
 
 ```
-git clone --recursive https://github.com/zZDraculaZz/LodestarVPN.git
+git clone --recursive https://github.com/LodeStarVPN/LodestarVPN.git
 cd LodestarVPN
 cmake -B build_local -G Ninja -DCMAKE_BUILD_TYPE=Release ^
       -DCMAKE_PREFIX_PATH=<Qt dir>\msvc2022_64 ^

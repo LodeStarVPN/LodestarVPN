@@ -665,6 +665,16 @@ Already installed containers were found on the server. All installed containers 
         <source>%1 ms</source>
         <translation>%1 мс</translation>
     </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="428"/>
+        <source>Update available</source>
+        <translation>Доступно обновление</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="440"/>
+        <source>Version %1</source>
+        <translation>Версия %1</translation>
+    </message>
 </context>
 <context>
     <name>PageProtocolAwgClientSettings</name>
@@ -1603,6 +1613,21 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="161"/>
         <source>Privacy Policy</source>
         <translation>Политика конфиденциальности</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="31"/>
+        <source>You have the latest version</source>
+        <translation>У вас последняя версия</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="40"/>
+        <source>Couldn&apos;t check for updates. Check your internet connection and try again.</source>
+        <translation>Не удалось проверить обновления. Проверьте интернет и попробуйте снова.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="172"/>
+        <source>Update to %1</source>
+        <translation>Обновить до %1</translation>
     </message>
 </context>
 <context>
@@ -3163,6 +3188,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Connections</source>
         <translation>Подключения</translation>
     </message>
+    <message>
+        <source>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</source>
+        <translation>Включён другой VPN: пинг через него будет неверным. Отключите его и проверьте снова.</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsSplitPresets</name>
@@ -4287,6 +4316,44 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <source>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</source>
         <translation>Логирование включено. Обратите внимание, что логирование будет автоматически отключено через 14 дней, а все файлы логов будут удалены.</translation>
+    </message>
+</context>
+<context>
+    <name>PlayProtectHint</name>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="99"/>
+        <source>Google Play Protect may block the installation because it doesn&apos;t know our app yet — this happens to apps installed outside Google Play. Tap «More details», then «Install anyway».</source>
+        <translation>Google Play Защита может заблокировать установку, потому что ещё не знает наше приложение, — так бывает с приложениями не из Google Play. Нажмите «Подробнее», затем «Всё равно установить».</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="142"/>
+        <source>Google Play Protect</source>
+        <translation>Google Play Защита</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="151"/>
+        <source>App blocked to protect your device</source>
+        <translation>Приложение заблокировано для защиты устройства</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="161"/>
+        <source>More details</source>
+        <translation>Подробнее</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="167"/>
+        <source>Install anyway</source>
+        <translation>Всё равно установить</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="184"/>
+        <source>OK</source>
+        <translation>ОК</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="200"/>
+        <source>«OK» cancels the update</source>
+        <translation>«ОК» отменяет обновление</translation>
     </message>
 </context>
 <context>
@@ -5644,6 +5711,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
         <source>%1 ms</source>
         <translation>%1 мс</translation>
     </message>
+    <message>
+        <source>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</source>
+        <translation>Включён другой VPN: пинг через него будет неверным. Отключите его и проверьте снова.</translation>
+    </message>
 </context>
 <context>
     <name>ServersModel</name>
@@ -5806,6 +5877,121 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     </message>
 </context>
 <context>
+    <name>UpdateDrawer</name>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="42"/>
+        <source>Before you install</source>
+        <translation>Перед установкой</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="45"/>
+        <source>Allow updates</source>
+        <translation>Разрешите обновления</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="48"/>
+        <source>Google Play Protect stopped the update</source>
+        <translation>Google Play Защита остановила обновление</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="50"/>
+        <source>Update available</source>
+        <translation>Доступно обновление</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="57"/>
+        <source>Version %1 is ready. The download is about %2 MB.</source>
+        <translation>Версия %1 готова. Загрузка — около %2 МБ.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="61"/>
+        <source>Downloading the update…</source>
+        <translation>Загрузка обновления…</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="63"/>
+        <source>To install updates, allow LodestarVPN to install apps: turn on «Allow from this source» and come back.</source>
+        <translation>Чтобы устанавливать обновления, разрешите LodestarVPN установку приложений: включите «Разрешить установку из этого источника» и вернитесь.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="65"/>
+        <source>Confirm the installation in the system window.</source>
+        <translation>Подтвердите установку в системном окне.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="69"/>
+        <source>The update was cancelled.</source>
+        <translation>Обновление отменено.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="71"/>
+        <source>Couldn&apos;t download the update. Check your internet connection and try again.</source>
+        <translation>Не удалось скачать обновление. Проверьте интернет и попробуйте снова.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="73"/>
+        <source>The update file was damaged. Try again.</source>
+        <translation>Файл обновления повреждён. Попробуйте ещё раз.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="75"/>
+        <source>Android didn&apos;t allow the installation. Try again later or contact support.</source>
+        <translation>Android не разрешил установку. Попробуйте позже или напишите в поддержку.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="77"/>
+        <source>Couldn&apos;t install the update. Try again.</source>
+        <translation>Не удалось установить обновление. Попробуйте снова.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="87"/>
+        <source>Update</source>
+        <translation>Обновить</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="89"/>
+        <source>Install</source>
+        <translation>Установить</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="91"/>
+        <source>Open settings</source>
+        <translation>Открыть настройки</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="94"/>
+        <source>Try again</source>
+        <translation>Попробовать снова</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="283"/>
+        <source>If Google Play is locked with App lock, open Google Play and unlock it first — otherwise the lock screen hides this window and the update is cancelled.</source>
+        <translation>Если Google Play закрыт блокировкой приложений, сначала откройте Google Play и разблокируйте его — иначе экран блокировки скроет это окно и обновление отменится.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="295"/>
+        <source>The VPN will reconnect after the update.</source>
+        <translation>После обновления VPN переподключится сам.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="328"/>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
+    <message>
+        <source>The VPN turns off for the install, and the app closes and opens again by itself. Windows will ask to allow changes — choose «Yes».</source>
+        <translation>На время установки VPN отключится, а приложение закроется и откроется само. Windows спросит разрешение на изменения — выберите «Да».</translation>
+    </message>
+    <message>
+        <source>Installing the update — the app will close and open again.</source>
+        <translation>Устанавливаем обновление — приложение закроется и откроется снова.</translation>
+    </message>
+    <message>
+        <source>The update was not installed. When Windows asks to allow changes, choose «Yes».</source>
+        <translation>Обновление не установилось. Когда Windows спросит разрешение на изменения, выберите «Да».</translation>
+    </message>
+</context>
+<context>
     <name>VpnConnection</name>
     <message>
         <location filename="../vpnconnection.cpp" line="785"/>
@@ -5917,6 +6103,10 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <source>Cancel</source>
         <translation>Отмена</translation>
+    </message>
+    <message>
+        <source>LodestarVPN is updated to %1</source>
+        <translation>LodestarVPN обновлён до %1</translation>
     </message>
 </context>
 <context>

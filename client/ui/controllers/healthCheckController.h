@@ -34,6 +34,12 @@ public:
     // no run starts then, and the figures from before the connect stay.
     void setVpnActive(bool active);
 
+    // Another app's VPN carries this device's traffic while ours is off: its
+    // tunnel answers for every server (a tun2socks one answers TCP handshakes
+    // itself), so nothing measured would be ours - no run starts then either,
+    // and the pages tell the user who asked for a check.
+    Q_INVOKABLE bool isOtherVpnUp() const;
+
     // true while a probe run has unfinished targets; probingFinished fires once
     // when the last target of the run resolves (also on an external stopProbe)
     bool isProbing() const { return m_probeActive; }

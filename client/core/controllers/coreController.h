@@ -22,6 +22,7 @@
 #include "ui/controllers/settingsController.h"
 #include "ui/controllers/sitesController.h"
 #include "ui/controllers/systemController.h"
+#include "ui/controllers/updateController.h"
 
 #include "ui/models/allowed_dns_model.h"
 #include "ui/models/containers_model.h"
@@ -99,6 +100,7 @@ private:
     QScopedPointer<SystemController> m_systemController;
     QScopedPointer<AppSplitTunnelingController> m_appSplitTunnelingController;
     QScopedPointer<AllowedDnsController> m_allowedDnsController;
+    QScopedPointer<UpdateController> m_updateController;
 
     QScopedPointer<ApiSettingsController> m_apiSettingsController;
     QScopedPointer<ApiConfigsController> m_apiConfigsController;

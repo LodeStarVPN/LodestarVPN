@@ -303,7 +303,8 @@ PageType {
                 objectName: "splitTunnelingButton"
 
                 Layout.alignment: Qt.AlignHCenter | Qt.AlignBottom
-                Layout.bottomMargin: 80
+                // the update card takes this room when it is shown: the ring above keeps its size
+                Layout.bottomMargin: updateCard.visible ? 8 : 80
                 leftPadding: 16
                 rightPadding: 16
 
@@ -341,6 +342,120 @@ PageType {
                     objectName: "homeSplitTunnelingDrawer"
 
                     parent: root
+                }
+            }
+
+            // a published update (Android): its sheet on a tap, gone for this version on ×
+            Rectangle {
+                id: updateCard
+                objectName: "updateCard"
+
+                property bool isFocusable: true
+
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                // edge to edge (Android 14+): clear of the system navigation bar
+                Layout.bottomMargin: Math.max(12, SettingsController.safeAreaBottomMargin)
+
+                implicitHeight: updateCardContent.implicitHeight + 16
+
+                visible: UpdateController.homeCardVisible
+
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: DopamineStyle.color.translucentSlateGray }
+                    GradientStop { position: 1.0; color: DopamineStyle.color.translucentOnyxBlack }
+                }
+                border.width: updateCard.activeFocus ? 2 : 1
+                border.color: updateCard.activeFocus ? DopamineStyle.color.paleGray : DopamineStyle.color.onyxBlack
+                radius: 13
+
+                Keys.onTabPressed: FocusController.nextKeyTabItem()
+                Keys.onBacktabPressed: FocusController.previousKeyTabItem()
+                Keys.onUpPressed: FocusController.nextKeyUpItem()
+                Keys.onDownPressed: FocusController.nextKeyDownItem()
+                Keys.onLeftPressed: FocusController.nextKeyLeftItem()
+                Keys.onRightPressed: FocusController.nextKeyRightItem()
+                Keys.onEnterPressed: showUpdateDrawer()
+                Keys.onReturnPressed: showUpdateDrawer()
+
+                // under the row: the × button on it takes its own taps
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+
+                    onClicked: showUpdateDrawer()
+                }
+
+                RowLayout {
+                    id: updateCardContent
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 4
+
+                    spacing: 12
+
+                    Image {
+                        Layout.alignment: Qt.AlignVCenter
+
+                        source: "qrc:/images/controls/download.svg"
+                        sourceSize: Qt.size(22, 22)
+
+                        layer.enabled: true
+                        layer.effect: ColorOverlay {
+                            color: DopamineStyle.color.goldenApricot
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+
+                        spacing: 2
+
+                        CaptionTextType {
+                            Layout.fillWidth: true
+
+                            color: DopamineStyle.color.paleGray
+                            font.pixelSize: 14
+                            font.weight: 700
+                            maximumLineCount: 1
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
+
+                            text: qsTr("Update available")
+                        }
+
+                        CaptionTextType {
+                            Layout.fillWidth: true
+
+                            color: DopamineStyle.color.mutedGray
+                            font.pixelSize: 14
+                            maximumLineCount: 1
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
+
+                            text: qsTr("Version %1").arg(UpdateController.availableVersion)
+                        }
+                    }
+
+                    ImageButtonType {
+                        id: updateCardCloseButton
+                        objectName: "updateCardCloseButton"
+
+                        Layout.alignment: Qt.AlignVCenter
+
+                        implicitWidth: 40
+                        implicitHeight: 40
+
+                        image: "qrc:/images/controls/close.svg"
+                        imageColor: DopamineStyle.color.mutedGray
+
+                        onClicked: UpdateController.dismissHomeCard()
+                    }
                 }
             }
 

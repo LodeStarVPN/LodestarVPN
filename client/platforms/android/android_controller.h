@@ -3,6 +3,7 @@
 
 #include <QJniObject>
 #include <QPixmap>
+#include <QStringList>
 
 #include "protocols/vpnprotocol.h"
 
@@ -56,6 +57,18 @@ public:
     bool requestAuthentication();
     void sendTouch(float x, float y);
 
+    // the in-app update (update/SelfUpdater.kt): the result of an install comes
+    // back through updateInstallResult
+    QStringList updateAbis();
+    qint64 appVersionCode();
+    qint64 verifyUpdateApk(const QString &path);
+    bool canInstallUpdates();
+    void openUpdateInstallSettings();
+    void installUpdate(const QString &path);
+    bool isXiaomiFamily();
+    // the default network is a VPN (another app's, or ours not yet known to the app)
+    bool isVpnNetworkActive();
+
     static bool initLogging();
     static void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &message);
 
@@ -79,6 +92,8 @@ signals:
     void imeInsetsChanged(int heightDp);
     void systemBarsInsetsChanged(int navBarHeightDp, int statusBarHeightDp);
     void shakeDetected();
+    // keep the codes synchronized with SelfUpdater.kt (0 success ... 6 blocked by the system)
+    void updateInstallResult(int code);
 
 private:
     bool isWaitingStatus = true;
@@ -112,6 +127,7 @@ private:
     static void onImeInsetsChanged(JNIEnv *env, jobject thiz, jint heightDp);
     static void onSystemBarsInsetsChanged(JNIEnv *env, jobject thiz, jint navBarHeightDp, jint statusBarHeightDp);
     static void onShakeDetected(JNIEnv *env, jobject thiz);
+    static void onUpdateInstallResult(JNIEnv *env, jobject thiz, jint code);
 
     template <typename Ret, typename ...Args>
     static auto callActivityMethod(const char *methodName, const char *signature, Args &&...args);

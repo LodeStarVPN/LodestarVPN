@@ -17,6 +17,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
@@ -64,6 +66,7 @@ import kotlinx.coroutines.withContext
 import org.amnezia.vpn.protocol.getStatistics
 import org.amnezia.vpn.protocol.getStatus
 import org.amnezia.vpn.qt.QtAndroidController
+import org.amnezia.vpn.update.SelfUpdater
 import org.amnezia.vpn.util.LibraryLoader.loadSharedLibrary
 import org.amnezia.vpn.util.Log
 import org.amnezia.vpn.util.Prefs
@@ -81,6 +84,8 @@ private const val CHECK_NOTIFICATION_PERMISSION_ACTION_CODE = 4
 
 private const val PREFS_NOTIFICATION_PERMISSION_ASKED = "NOTIFICATION_PERMISSION_ASKED"
 private const val OPEN_FILE_AFTER_RESUME_DELAY_MS = 400L
+// lets a result that is already on its way (the user answered the dialog) arrive first
+private const val UPDATE_CONFIRM_AFTER_RESUME_DELAY_MS = 400L
 private const val KEY_PENDING_OPEN_FILE_URI = "pending_open_file_uri"
 
 class AmneziaActivity : QtActivity() {
@@ -339,6 +344,7 @@ class AmneziaActivity : QtActivity() {
         resumeHandler.removeCallbacksAndMessages(null)
         openFileDeliveryScheduled = false
         Log.d(TAG, "Stop Amnezia activity")
+        SelfUpdater.onActivityStopped(this)
         rebindServiceOnStart = isInBoundState
         doUnbindService()
         mainScope.launch {
@@ -396,6 +402,7 @@ class AmneziaActivity : QtActivity() {
     override fun onPause() {
         super.onPause()
         isActivityResumed = false
+        SelfUpdater.activityResumed = false
         // Cancel all pending operations when activity pauses
         resumeHandler.removeCallbacksAndMessages(null)
         openFileDeliveryScheduled = false
@@ -420,6 +427,15 @@ class AmneziaActivity : QtActivity() {
                     }
                 }
             }, OPEN_FILE_AFTER_RESUME_DELAY_MS)
+        }
+
+        // the in-app update's system confirmation, if it still waits for the user
+        if (SelfUpdater.onActivityResumed()) {
+            resumeHandler.postDelayed({
+                if (isActivityResumed && !isFinishing && !isDestroyed) {
+                    SelfUpdater.resumeConfirm(this)
+                }
+            }, UPDATE_CONFIRM_AFTER_RESUME_DELAY_MS)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -514,6 +530,8 @@ class AmneziaActivity : QtActivity() {
         // Cancel all pending operations when activity is destroyed
         resumeHandler.removeCallbacksAndMessages(null)
         Log.d(TAG, "Destroy Amnezia activity")
+        // Qt ends with the activity (QtActivityBase), unless it is only being recreated
+        if (!isChangingConfigurations) SelfUpdater.qtAlive = false
         unregisterBroadcastReceiver(notificationStateReceiver)
         notificationStateReceiver = null
         mainScope.cancel()
@@ -728,6 +746,7 @@ class AmneziaActivity : QtActivity() {
     fun qtAndroidControllerInitialized() {
         Log.v(TAG, "Qt Android controller initialized")
         qtInitialized.complete(Unit)
+        SelfUpdater.qtAlive = true
     }
 
     @Suppress("unused")
@@ -1100,6 +1119,55 @@ class AmneziaActivity : QtActivity() {
                 startActivity(it)
             }
         }
+    }
+
+    /**
+     * In-app update (UpdateController): Qt downloads and checks the APK, SelfUpdater installs it
+     */
+    @Suppress("unused")
+    fun updateAbis(): String = SelfUpdater.supportedAbis()
+
+    @Suppress("unused")
+    fun appVersionCode(): Long = SelfUpdater.installedVersionCode(this)
+
+    // blocks for up to a second or two (hashes the whole APK): call it from a worker thread,
+    // not Qt's GUI thread
+    @Suppress("unused")
+    fun verifyUpdateApk(path: String): Long {
+        Log.v(TAG, "Verify update APK")
+        return SelfUpdater.verifyApk(this, path)
+    }
+
+    @Suppress("unused")
+    fun canInstallUpdates(): Boolean = SelfUpdater.canInstall(this)
+
+    @Suppress("unused")
+    fun openUpdateInstallSettings() {
+        Log.v(TAG, "Open update install settings")
+        mainScope.launch {
+            SelfUpdater.openInstallPermissionSettings(this@AmneziaActivity)
+        }
+    }
+
+    // returns at once: the copy into the install session runs on SelfUpdater's own thread
+    @Suppress("unused")
+    fun installUpdate(path: String) {
+        Log.v(TAG, "Install update")
+        SelfUpdater.install(this, path)
+    }
+
+    @Suppress("unused")
+    fun isXiaomiFamily(): Boolean = SelfUpdater.isXiaomiFamily()
+
+    // the device's way out is a VPN (another app's, or ours before Qt learns it is up): the
+    // server pings would measure its tunnel. An app excluded from that VPN gets the real network
+    @Suppress("unused")
+    fun isVpnNetworkActive(): Boolean = try {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to check the network for a VPN: $e")
+        false
     }
 
     // method to workaround Qt's problem with calling the keyboard on TVs

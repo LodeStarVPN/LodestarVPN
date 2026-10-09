@@ -204,6 +204,29 @@ Window  {
         }
     }
 
+    // one sheet for the in-app update: the home card and the About page open it
+    // (showUpdateDrawer), and it reopens itself after the system's install windows
+    Item {
+        objectName: "updateDrawerItem"
+
+        anchors.fill: parent
+
+        UpdateDrawer {
+            id: updateDrawer
+
+            anchors.fill: parent
+        }
+
+        // Windows: the start after an install this app closed for says it came through
+        Timer {
+            interval: 1500
+            running: UpdateController.updatedVersion !== ""
+            repeat: false
+
+            onTriggered: PageController.showNotificationMessage(qsTr("LodestarVPN is updated to %1").arg(UpdateController.updatedVersion))
+        }
+    }
+
     Item {
         objectName: "questionDrawerItem"
 
@@ -247,6 +270,10 @@ Window  {
             }
         }
         questionDrawer.openTriggered()
+    }
+
+    function showUpdateDrawer() {
+        updateDrawer.openTriggered()
     }
 
     FileDialog {

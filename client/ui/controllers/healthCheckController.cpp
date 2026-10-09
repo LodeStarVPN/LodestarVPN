@@ -28,6 +28,7 @@ extern "C" char *LibXrayPing(const char *datDir, const char *configPath, int tim
 #include <QJniEnvironment>
 #include <QJniObject>
 
+#include "platforms/android/android_controller.h"
 #include "platforms/android/android_utils.h"
 
 // same Go API as LibXrayPing on Apple platforms, via the Java binding packaged
@@ -55,6 +56,9 @@ static QString libXrayPingAndroid(const QString &configPath, int timeoutSec, con
     }
     return reply.toString();
 }
+#elif defined(Q_OS_WIN)
+#include <WS2tcpip.h>
+#include <iphlpapi.h>
 #endif
 
 // OpenSSL Noise_IK probe where libwg-go is unavailable (Android, Windows)
@@ -136,8 +140,9 @@ void HealthCheckController::applyGatewayRow(int row)
             return;
         }
     }
-    if (own == -1) {
-        // its own server did not answer and nothing says otherwise
+    if (own == -1 && !m_vpnActive) {
+        // its own server did not answer and nothing says otherwise (with the VPN
+        // on, legs re-applied later must not bring back an «offline» the connect cleared)
         m_serversModel->setHealthResult(row, -1);
     }
 }
@@ -211,16 +216,18 @@ void HealthCheckController::queueLandmarks()
 
 void HealthCheckController::onServerLegsUpdated()
 {
-    // with the VPN on, probes would go through the tunnel: only for a run that is open
-    if (!m_runOpen) {
-        return;
+    // with the VPN on, probes would go through the tunnel: new ones only for a run that is open
+    if (m_runOpen) {
+        // landmarks that came after the run started are probed now
+        const int before = m_queue.size();
+        queueLandmarks();
+        if (m_queue.size() > before) {
+            startNext();
+        }
     }
-    // landmarks that came after the run started are probed now
-    const int before = m_queue.size();
-    queueLandmarks();
-    if (m_queue.size() > before) {
-        startNext();
-    }
+    // the figures already measured take the new legs whenever they come: a run
+    // stopped by a connect before the gateway answered would otherwise keep a
+    // country behind an entry at the way to the entry alone
     applyGatewayRows();
 }
 
@@ -232,6 +239,39 @@ void HealthCheckController::setVpnActive(bool active)
     m_vpnActive = active;
 }
 
+bool HealthCheckController::isOtherVpnUp() const
+{
+    if (m_vpnActive) {
+        return false; // ours: the pages say nothing, the figures from before the connect stay
+    }
+#if defined(Q_OS_ANDROID)
+    return AndroidController::instance()->isVpnNetworkActive();
+#elif defined(Q_OS_WIN)
+    // the adapter the way out takes: a tunnel or a virtual one (Wintun, WireGuard,
+    // AmneziaWG) or OpenVPN's TAP means another VPN carries the traffic
+    sockaddr_in to {};
+    to.sin_family = AF_INET;
+    to.sin_addr.S_un.S_addr = 0x01010101; // 1.1.1.1, the same in any byte order
+    DWORD index = 0;
+    if (GetBestInterfaceEx(reinterpret_cast<sockaddr *>(&to), &index) != NO_ERROR) {
+        return false;
+    }
+    MIB_IF_ROW2 row {};
+    row.InterfaceIndex = index;
+    if (GetIfEntry2(&row) != NO_ERROR) {
+        return false;
+    }
+    if (row.Type == IF_TYPE_PROP_VIRTUAL || row.Type == IF_TYPE_TUNNEL) {
+        return true;
+    }
+    const QString description = QString::fromWCharArray(row.Description);
+    return description.contains(QLatin1String("TAP-Windows"), Qt::CaseInsensitive)
+            || description.contains(QLatin1String("Wintun"), Qt::CaseInsensitive);
+#else
+    return false;
+#endif
+}
+
 void HealthCheckController::startProbe(bool force)
 {
     if (m_serversModel.isNull()) {
@@ -241,6 +281,11 @@ void HealthCheckController::startProbe(bool force)
         // the figures from before the connect stay; a waiter (auto selection)
         // sees no run and decides on them
         qDebug() << "[HEALTH] the VPN is on: no probes through the tunnel";
+        return;
+    }
+    if (isOtherVpnUp()) {
+        // as with ours: the figures from before stay, a waiter decides on them
+        qDebug() << "[HEALTH] another VPN carries the traffic: no probes through its tunnel";
         return;
     }
 

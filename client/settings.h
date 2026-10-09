@@ -337,6 +337,28 @@ public:
     bool frknDarkMode() const { return m_settings.value("FRKN/darkMode", true).toBool(); }
     void setFrknDarkMode(bool enabled) { m_settings.setValue("FRKN/darkMode", enabled); }
 
+    // the in-app update: the version whose card on the home screen was closed
+    QString updateDismissedVersion() const { return m_settings.value("update/dismissedVersion").toString(); }
+    void setUpdateDismissedVersion(const QString &version) { m_settings.setValue("update/dismissedVersion", version); }
+
+    // Windows: the install this app closed for, until its next start sees what came of it
+    qint64 updatePendingCode() const { return m_settings.value("update/pendingCode", 0).toLongLong(); }
+    QString updatePendingVersion() const { return m_settings.value("update/pendingVersion").toString(); }
+    void setUpdatePending(qint64 code, const QString &version)
+    {
+        m_settings.setValue("update/pendingCode", code);
+        m_settings.setValue("update/pendingVersion", version);
+    }
+    void clearUpdatePending()
+    {
+        m_settings.remove("update/pendingCode");
+        m_settings.remove("update/pendingVersion");
+        m_settings.remove("update/reconnect");
+    }
+    // the VPN was on when the app turned it off for the install: on again after it
+    bool updateReconnect() const { return m_settings.value("update/reconnect", false).toBool(); }
+    void setUpdateReconnect(bool on) { m_settings.setValue("update/reconnect", on); }
+
 signals:
     void saveLogsChanged(bool enabled);
     void screenshotsEnabledChanged(bool enabled);

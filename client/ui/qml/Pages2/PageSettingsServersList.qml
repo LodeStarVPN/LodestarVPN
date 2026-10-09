@@ -26,6 +26,9 @@ PageType {
         // through the tunnel every figure would be the way via the connected server)
         function onReloadSubscriptionConfigsFinished(success) {
             PageController.showBusyIndicator(false)
+            if (HealthCheckController.isOtherVpnUp()) {
+                PageController.showNotificationMessage(qsTr("Another VPN is on: the ping through it would be wrong. Turn it off and check again."))
+            }
             HealthCheckController.startProbe(true)
         }
     }

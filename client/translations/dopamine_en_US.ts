@@ -618,6 +618,16 @@ Already installed containers were found on the server. All installed containers 
         <source>%1 ms</source>
         <translation>%1 ms</translation>
     </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="428"/>
+        <source>Update available</source>
+        <translation>Update available</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="440"/>
+        <source>Version %1</source>
+        <translation>Version %1</translation>
+    </message>
 </context>
 <context>
     <name>PageProtocolAwgClientSettings</name>
@@ -1485,6 +1495,21 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="161"/>
         <source>Privacy Policy</source>
         <translation>Privacy Policy</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="31"/>
+        <source>You have the latest version</source>
+        <translation>You have the latest version</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="40"/>
+        <source>Couldn&apos;t check for updates. Check your internet connection and try again.</source>
+        <translation>Couldn&apos;t check for updates. Check your internet connection and try again.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAbout.qml" line="172"/>
+        <source>Update to %1</source>
+        <translation>Update to %1</translation>
     </message>
 </context>
 <context>
@@ -3013,6 +3038,10 @@ Already installed containers were found on the server. All installed containers 
         <source>Connections</source>
         <translation>Connections</translation>
     </message>
+    <message>
+        <source>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</source>
+        <translation>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsSplitPresets</name>
@@ -4073,6 +4102,44 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <source>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</source>
         <translation>Logging is enabled. Note that logs will be automatically disabled after 14 days, and all log files will be deleted.</translation>
+    </message>
+</context>
+<context>
+    <name>PlayProtectHint</name>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="99"/>
+        <source>Google Play Protect may block the installation because it doesn&apos;t know our app yet — this happens to apps installed outside Google Play. Tap «More details», then «Install anyway».</source>
+        <translation>Google Play Protect may block the installation because it doesn&apos;t know our app yet — this happens to apps installed outside Google Play. Tap «More details», then «Install anyway».</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="142"/>
+        <source>Google Play Protect</source>
+        <translation>Google Play Protect</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="151"/>
+        <source>App blocked to protect your device</source>
+        <translation>App blocked to protect your device</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="161"/>
+        <source>More details</source>
+        <translation>More details</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="167"/>
+        <source>Install anyway</source>
+        <translation>Install anyway</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="184"/>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/PlayProtectHint.qml" line="200"/>
+        <source>«OK» cancels the update</source>
+        <translation>«OK» cancels the update</translation>
     </message>
 </context>
 <context>
@@ -5389,6 +5456,10 @@ For more detailed information, you can
         <source>%1 ms</source>
         <translation>%1 ms</translation>
     </message>
+    <message>
+        <source>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</source>
+        <translation>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</translation>
+    </message>
 </context>
 <context>
     <name>ServersModel</name>
@@ -5531,6 +5602,121 @@ For more detailed information, you can
     </message>
 </context>
 <context>
+    <name>UpdateDrawer</name>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="42"/>
+        <source>Before you install</source>
+        <translation>Before you install</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="45"/>
+        <source>Allow updates</source>
+        <translation>Allow updates</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="48"/>
+        <source>Google Play Protect stopped the update</source>
+        <translation>Google Play Protect stopped the update</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="50"/>
+        <source>Update available</source>
+        <translation>Update available</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="57"/>
+        <source>Version %1 is ready. The download is about %2 MB.</source>
+        <translation>Version %1 is ready. The download is about %2 MB.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="61"/>
+        <source>Downloading the update…</source>
+        <translation>Downloading the update…</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="63"/>
+        <source>To install updates, allow LodestarVPN to install apps: turn on «Allow from this source» and come back.</source>
+        <translation>To install updates, allow LodestarVPN to install apps: turn on «Allow from this source» and come back.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="65"/>
+        <source>Confirm the installation in the system window.</source>
+        <translation>Confirm the installation in the system window.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="69"/>
+        <source>The update was cancelled.</source>
+        <translation>The update was cancelled.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="71"/>
+        <source>Couldn&apos;t download the update. Check your internet connection and try again.</source>
+        <translation>Couldn&apos;t download the update. Check your internet connection and try again.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="73"/>
+        <source>The update file was damaged. Try again.</source>
+        <translation>The update file was damaged. Try again.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="75"/>
+        <source>Android didn&apos;t allow the installation. Try again later or contact support.</source>
+        <translation>Android didn&apos;t allow the installation. Try again later or contact support.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="77"/>
+        <source>Couldn&apos;t install the update. Try again.</source>
+        <translation>Couldn&apos;t install the update. Try again.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="87"/>
+        <source>Update</source>
+        <translation>Update</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="89"/>
+        <source>Install</source>
+        <translation>Install</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="91"/>
+        <source>Open settings</source>
+        <translation>Open settings</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="94"/>
+        <source>Try again</source>
+        <translation>Try again</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="283"/>
+        <source>If Google Play is locked with App lock, open Google Play and unlock it first — otherwise the lock screen hides this window and the update is cancelled.</source>
+        <translation>If Google Play is locked with App lock, open Google Play and unlock it first — otherwise the lock screen hides this window and the update is cancelled.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="295"/>
+        <source>The VPN will reconnect after the update.</source>
+        <translation>The VPN will reconnect after the update.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="328"/>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>The VPN turns off for the install, and the app closes and opens again by itself. Windows will ask to allow changes — choose «Yes».</source>
+        <translation>The VPN turns off for the install, and the app closes and opens again by itself. Windows will ask to allow changes — choose «Yes».</translation>
+    </message>
+    <message>
+        <source>Installing the update — the app will close and open again.</source>
+        <translation>Installing the update — the app will close and open again.</translation>
+    </message>
+    <message>
+        <source>The update was not installed. When Windows asks to allow changes, choose «Yes».</source>
+        <translation>The update was not installed. When Windows asks to allow changes, choose «Yes».</translation>
+    </message>
+</context>
+<context>
     <name>VpnConnection</name>
     <message>
         <location filename="../vpnconnection.cpp" line="785"/>
@@ -5619,6 +5805,10 @@ For more detailed information, you can
     <message>
         <source>Cancel</source>
         <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>LodestarVPN is updated to %1</source>
+        <translation>LodestarVPN is updated to %1</translation>
     </message>
 </context>
 <context>

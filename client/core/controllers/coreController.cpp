@@ -141,6 +141,11 @@ void CoreController::initControllers()
     m_systemController.reset(new SystemController(m_settings));
     m_engine->rootContext()->setContextProperty("SystemController", m_systemController.get());
 
+    // the in-app update (Android); elsewhere UpdateController.supported is false
+    UpdateController::declareQmlEnums();
+    m_updateController.reset(new UpdateController(m_settings));
+    m_engine->rootContext()->setContextProperty("UpdateController", m_updateController.get());
+
     m_apiSettingsController.reset(
             new ApiSettingsController(m_serversModel, m_apiAccountInfoModel, m_apiCountryModel, m_apiDevicesModel, m_settings));
     m_engine->rootContext()->setContextProperty("ApiSettingsController", m_apiSettingsController.get());
@@ -224,7 +229,15 @@ void CoreController::initControllers()
         if (state == Vpn::ConnectionState::Connected) {
             m_serversModel->clearOfflineHealthResults();
         }
+        if (state == Vpn::ConnectionState::Disconnected) {
+            m_updateController->onVpnDisconnected();
+        }
     });
+
+    // Windows' in-app update turns the VPN off for the package and on again after it
+    m_updateController->setVpnControl(
+            [this]() { return m_connectionController->isConnected() || m_connectionController->isConnectionInProgress(); },
+            [this]() { m_connectionController->openConnection(); }, [this]() { m_connectionController->closeConnection(); });
 }
 
 void CoreController::initAndroidController()

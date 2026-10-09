@@ -109,7 +109,8 @@ bool AndroidController::initialize()
         {"decodeQrCode", "(Ljava/lang/String;)Z", reinterpret_cast<bool *>(decodeQrCode)},
         {"onImeInsetsChanged", "(I)V", reinterpret_cast<void *>(onImeInsetsChanged)},
         {"onSystemBarsInsetsChanged", "(II)V", reinterpret_cast<void *>(onSystemBarsInsetsChanged)},
-        {"onShakeDetected", "()V", reinterpret_cast<void *>(onShakeDetected)}
+        {"onShakeDetected", "()V", reinterpret_cast<void *>(onShakeDetected)},
+        {"onUpdateInstallResult", "(I)V", reinterpret_cast<void *>(onUpdateInstallResult)}
     };
 
     QJniEnvironment env;
@@ -332,6 +333,53 @@ bool AndroidController::requestAuthentication()
 void AndroidController::sendTouch(float x, float y)
 {
     callActivityMethod("sendTouch", "(FF)V", x, y);
+}
+
+QStringList AndroidController::updateAbis()
+{
+    // the device's ABIs, preferred first
+    QJniObject abis = callActivityMethod<jstring>("updateAbis", "()Ljava/lang/String;");
+    return abis.toString().split(',', Qt::SkipEmptyParts);
+}
+
+qint64 AndroidController::appVersionCode()
+{
+    return callActivityMethod<jlong>("appVersionCode", "()J");
+}
+
+// the archive's versionCode when it is our package, newer and signed by our key;
+// a negative code otherwise. Reads the whole file: not on the UI thread
+qint64 AndroidController::verifyUpdateApk(const QString &path)
+{
+    return callActivityMethod<jlong>("verifyUpdateApk", "(Ljava/lang/String;)J",
+                                     QJniObject::fromString(path).object<jstring>());
+}
+
+bool AndroidController::canInstallUpdates()
+{
+    return callActivityMethod<jboolean>("canInstallUpdates", "()Z");
+}
+
+void AndroidController::openUpdateInstallSettings()
+{
+    callActivityMethod("openUpdateInstallSettings", "()V");
+}
+
+// returns at once: the copy into the installer session runs on the Android side
+void AndroidController::installUpdate(const QString &path)
+{
+    callActivityMethod("installUpdate", "(Ljava/lang/String;)V",
+                       QJniObject::fromString(path).object<jstring>());
+}
+
+bool AndroidController::isXiaomiFamily()
+{
+    return callActivityMethod<jboolean>("isXiaomiFamily", "()Z");
+}
+
+bool AndroidController::isVpnNetworkActive()
+{
+    return callActivityMethod<jboolean>("isVpnNetworkActive", "()Z");
 }
 
 // Moving log processing to the Android side
@@ -595,5 +643,15 @@ void AndroidController::onShakeDetected(JNIEnv *env, jobject thiz)
 
     qDebug() << "Android shake detected";
     emit AndroidController::instance()->shakeDetected();
+}
+
+// static
+void AndroidController::onUpdateInstallResult(JNIEnv *env, jobject thiz, jint code)
+{
+    Q_UNUSED(env);
+    Q_UNUSED(thiz);
+
+    // called on the Android main thread: receivers take it queued
+    emit AndroidController::instance()->updateInstallResult(code);
 }
 

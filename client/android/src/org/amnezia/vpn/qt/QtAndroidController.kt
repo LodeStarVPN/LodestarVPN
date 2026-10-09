@@ -37,4 +37,7 @@ object QtAndroidController {
     external fun onSystemBarsInsetsChanged(navBarHeightDp: Int, statusBarHeightDp: Int)
 
     external fun onShakeDetected()
+
+    // the in-app update's install result: SelfUpdater's codes (0 success .. 6 blocked by the system)
+    external fun onUpdateInstallResult(code: Int)
 }

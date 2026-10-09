@@ -221,6 +221,9 @@ ListViewType {
                     text: iconOnly ? "" : qsTr("Check servers")
 
                     clickedFunc: function() {
+                        if (HealthCheckController.isOtherVpnUp()) {
+                            PageController.showNotificationMessage(qsTr("Another VPN is on: the ping through it would be wrong. Turn it off and check again."))
+                        }
                         HealthCheckController.startProbe(true)
                     }
                 }
