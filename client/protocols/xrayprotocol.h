@@ -34,15 +34,14 @@ private:
     // inbound; only a real HTTP answer counts, reported as received bytes —
     // the proof ConnectionController's traffic checks wait for.
     void startTrafficProbe();
-    // every probe connection reports here: its first answer (from either proof
-    // connection) proves the tunnel, later ones on the kept one are the ping
+    // every proof connection reports here: the first answer from either proves the tunnel
     void onProbeAnswer(TunnelHttpProbe *probe, qint64 elapsedMs, qint64 bytes, bool first);
     void onTrafficProven(TunnelHttpProbe *probe, qint64 answerBytes);
     // Once proven: the tun adapter's byte counters (Windows) feed the speed
-    // meter - safe now, before the proof they'd fool the traffic check - and
-    // a request every few seconds over the kept-alive probe connection
-    // measures the ping (latencyChanged): a TCP-connect ping through the
-    // tunnel would time tun2socks' local handshake, ~1 ms.
+    // meter - safe now, before the proof they'd fool the traffic check. (The
+    // ping is measured by LivePingProbe through the same SOCKS inbound: a
+    // TCP-connect ping through the tunnel would time tun2socks' local
+    // handshake, ~1 ms.)
     void onLiveStatsTick();
     void stopLiveStats();
     bool readTunCounters(quint64 &received, quint64 &sent) const;
@@ -50,9 +49,7 @@ private:
     int m_localProxyPort = 0;
     int m_vpnAdapterIndex = -1;
     std::vector<std::unique_ptr<TunnelHttpProbe>> m_proofProbes;
-    std::unique_ptr<TunnelHttpProbe> m_latencyProbe;
     QTimer *m_liveStatsTimer = nullptr;
-    int m_liveStatsTicks = 0;
     bool m_trafficProven = false;
     quint64 m_tunBaseReceived = 0;
     quint64 m_tunBaseSent = 0;

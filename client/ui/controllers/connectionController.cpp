@@ -32,6 +32,7 @@
 #include "core/controllers/vpnConfigurationController.h"
 #include "ui/controllers/api/apiConfigsController.h"
 #include "healthCheckController.h"
+#include "livePingProbe.h"
 #include "version.h"
 
 namespace {
@@ -181,7 +182,12 @@ void patchServerConfigAddress(QJsonObject &serverConfig, const QString &ip)
 
 } // namespace
 
-ConnectionController::~ConnectionController() = default;
+ConnectionController::~ConnectionController()
+{
+    // the probe is deleted in its own thread as that thread ends
+    m_pingThread.quit();
+    m_pingThread.wait();
+}
 
 ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &serversModel,
                                            const QSharedPointer<ContainersModel> &containersModel,
@@ -193,6 +199,13 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
       m_vpnConnection(vpnConnection),
       m_settings(settings)
 {
+    m_pingProbe = new LivePingProbe;
+    m_pingProbe->moveToThread(&m_pingThread);
+    connect(&m_pingThread, &QThread::finished, m_pingProbe, &QObject::deleteLater);
+    connect(m_pingProbe, &LivePingProbe::measured, this, &ConnectionController::onLivePing);
+    m_pingThread.setObjectName(QStringLiteral("live-ping"));
+    m_pingThread.start();
+
     connect(m_vpnConnection.get(), &VpnConnection::connectionStateChanged, this, &ConnectionController::onConnectionStateChanged);
     connect(this, &ConnectionController::connectToVpn, m_vpnConnection.get(), &VpnConnection::connectToVpn, Qt::QueuedConnection);
     connect(this, &ConnectionController::disconnectFromVpn, m_vpnConnection.get(), &VpnConnection::disconnectFromVpn, Qt::QueuedConnection);
@@ -323,22 +336,21 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
             startStallWatch();
         }
 #endif
-        if (state != Qt::ApplicationActive || !m_isConnected) {
+        if (!m_isConnected) {
+            return;
+        }
+        // off the screen nobody reads the figure (and the system cuts the app's own
+        // network there): the probe rests, and starts afresh with the app back
+        if (state != Qt::ApplicationActive) {
+            if (m_pingRunning) {
+                QMetaObject::invokeMethod(m_pingProbe, &LivePingProbe::stop, Qt::QueuedConnection);
+            }
             return;
         }
         m_speedTimer.invalidate();
-        if (m_pingSocket) {
-            QTcpSocket *socket = m_pingSocket;
-            m_pingSocket = nullptr;
-            socket->disconnect(this);
-            socket->abort();
-            socket->deleteLater();
-        }
-        if (m_pingTimer) {
-            if (!m_pingTimer->isActive()) {
-                m_pingTimer->start();
-            }
-            probeLivePing();
+        if (m_pingRunning) {
+            m_pingRunning = false;
+            startLivePing();
         }
     });
 #endif
@@ -390,17 +402,6 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
         }
     });
 
-    connect(m_vpnConnection.get(), &VpnConnection::latencyChanged, this, [this](int ms) {
-        if (!m_isConnected) {
-            return;
-        }
-        const QString text = ms < 0 ? QString() : QString::number(qMax(ms, 1));
-        if (text != m_ping) {
-            m_ping = text;
-            emit pingChanged();
-        }
-    });
-
     m_state = Vpn::ConnectionState::Disconnected;
 }
 
@@ -421,29 +422,40 @@ QString ConnectionController::formatSpeed(qint64 bytesPerSec)
 
 void ConnectionController::startLivePing()
 {
-    if (!m_pingTimer) {
-        m_pingTimer = new QTimer(this);
-        m_pingTimer->setInterval(kLivePingIntervalMs);
-        connect(m_pingTimer, &QTimer::timeout, this, &ConnectionController::probeLivePing);
-    }
-    if (m_pingTimer->isActive()) {
+    if (m_pingRunning) {
         return;
     }
-    m_pingTimer->start();
-    probeLivePing();
+    // Pre-connect health probes are stopped once the tunnel is up (their packets
+    // would be captured by it). This measures the latency the session actually has.
+    int socksPort = m_pingSocksPort;
+#ifdef Q_OS_ANDROID
+    if (m_tunnelRow < 0) {
+        // the tunnel was not started by this run of the app (reopened over a working
+        // VPN): it is the default server's, and an xray one is reached through the
+        // port its SOCKS inbound was given then. Without that port there is no ping
+        // to show: a handshake would time tun2socks, not the tunnel
+        const DockerContainer container = qvariant_cast<DockerContainer>(
+                m_serversModel->data(m_serversModel->getDefaultServerIndex(), ServersModel::Roles::DefaultContainerRole));
+        if (container == DockerContainer::Xray || container == DockerContainer::SSXray) {
+            socksPort = m_settings->lastXrayLocalPort();
+            if (socksPort <= 0) {
+                return;
+            }
+        }
+    }
+#endif
+    m_pingRunning = true;
+    m_pingMisses = 0;
+    const quint64 run = ++m_pingRun;
+    QMetaObject::invokeMethod(m_pingProbe, [probe = m_pingProbe, socksPort, run]() { probe->start(socksPort, run); }, Qt::QueuedConnection);
 }
 
 void ConnectionController::stopLivePing()
 {
-    if (m_pingTimer) {
-        m_pingTimer->stop();
-    }
-    if (m_pingSocket) {
-        QTcpSocket *socket = m_pingSocket;
-        m_pingSocket = nullptr;
-        socket->disconnect(this);
-        socket->abort();
-        socket->deleteLater();
+    if (m_pingRunning) {
+        m_pingRunning = false;
+        ++m_pingRun; // a result on its way belongs to nobody now
+        QMetaObject::invokeMethod(m_pingProbe, &LivePingProbe::stop, Qt::QueuedConnection);
     }
     if (!m_ping.isEmpty()) {
         m_ping.clear();
@@ -451,59 +463,21 @@ void ConnectionController::stopLivePing()
     }
 }
 
-void ConnectionController::probeLivePing()
+void ConnectionController::onLivePing(int ms, quint64 run)
 {
-    if (!m_isConnected || m_pingSocket || m_pingFromProtocol) {
+    if (run != m_pingRun || !m_pingRunning || !m_isConnected) {
         return;
     }
-
-    // Pre-connect health probes are stopped once the tunnel is up (their packets
-    // would be captured by it). This measures the latency the session actually
-    // has: a TCP handshake through the tunnel to a public anycast.
-    static const QHostAddress hosts[] = {
-        QHostAddress(QStringLiteral("1.1.1.1")),
-        QHostAddress(QStringLiteral("8.8.8.8")),
-        QHostAddress(QStringLiteral("1.0.0.1")),
-        QHostAddress(QStringLiteral("9.9.9.9")),
-    };
-    static constexpr int hostCount = int(sizeof(hosts) / sizeof(hosts[0]));
-
-    auto *socket = new QTcpSocket(this);
-    m_pingSocket = socket;
-    m_pingElapsed.start();
-
-    connect(socket, &QTcpSocket::connected, this, [this, socket]() { finishLivePing(socket, true); });
-    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QTcpSocket::SocketError) {
-        finishLivePing(socket, false);
-    });
-    QTimer::singleShot(kLivePingTimeoutMs, socket, [this, socket]() {
-        if (m_pingSocket == socket && socket->state() != QAbstractSocket::ConnectedState) {
-            finishLivePing(socket, false);
-        }
-    });
-
-    socket->connectToHost(hosts[m_pingHostIndex % hostCount], 443);
-}
-
-void ConnectionController::finishLivePing(QTcpSocket *socket, bool ok)
-{
-    if (m_pingSocket != socket) {
-        return;
-    }
-
-    const int ms = static_cast<int>(m_pingElapsed.elapsed());
-    m_pingSocket = nullptr;
-    socket->disconnect(this);
-    socket->abort();
-    socket->deleteLater();
-
-    if (!ok || !m_isConnected) {
-        if (m_isConnected) {
-            m_pingHostIndex = (m_pingHostIndex + 1) % 4;
+    if (ms < 0) {
+        // nothing came back in time: a lost packet is not a ping. Only when
+        // rounds in a row bring nothing is the last figure no longer true
+        if (++m_pingMisses >= kLivePingMissesToClear && !m_ping.isEmpty()) {
+            m_ping.clear();
+            emit pingChanged();
         }
         return;
     }
-
+    m_pingMisses = 0;
     const QString text = QString::number(qMax(ms, 1));
     if (text != m_ping) {
         m_ping = text;
@@ -811,9 +785,6 @@ void ConnectionController::connectToServerIndexWithIp(int serverIndex, const QSt
     // teardown states of a previous tunnel are neither a failure nor a user cancel
     m_connectionSwitching = true;
 
-#if defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)
-    m_pingFromProtocol = container == DockerContainer::Xray || container == DockerContainer::SSXray;
-#endif
 
     if (!ip.isEmpty()) {
         patchServerConfigAddress(serverConfig, ip);
@@ -856,6 +827,19 @@ void ConnectionController::connectToServerIndexWithIp(int serverIndex, const QSt
     auto dns = m_serversModel->getDnsPair(serverIndex);
 
     auto vpnConfiguration = vpnConfigurationController.createVpnConfiguration(dns, serverConfig, containerConfig, container);
+
+    // where the live ping goes (LivePingProbe): xray's own SOCKS inbound, the
+    // port the config gives it (XrayProtocol and Xray.kt read the same field)
+    m_pingSocksPort = 0;
+#if (defined(AMNEZIA_DESKTOP) && !defined(MACOS_NE)) || defined(Q_OS_ANDROID)
+    if (container == DockerContainer::Xray || container == DockerContainer::SSXray) {
+        const QJsonObject xrayConfig =
+                vpnConfiguration.value(ProtocolProps::key_proto_config_data(ContainerProps::defaultProtocol(container))).toObject();
+        const int port = xrayConfig.value(QStringLiteral("inbounds")).toArray().first().toObject().value(QStringLiteral("port")).toInt();
+        m_pingSocksPort = port > 0 && port <= 65535 ? port : QString(amnezia::protocols::xray::defaultLocalProxyPort).toInt();
+        m_settings->setLastXrayLocalPort(m_pingSocksPort);
+    }
+#endif
     if (m_autoPhase == AutoPhase::None) {
         // manual connect: fail loudly instead of spinning forever on a dead
         // server - and move on sooner while the pool has addresses left

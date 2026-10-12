@@ -2012,6 +2012,18 @@ Already installed containers were found on the server. All installed containers 
         <translation>Как подключиться на другом устройстве</translation>
     </message>
     <message>
+        <source>Subscription key</source>
+        <translation>Ключ подписки</translation>
+    </message>
+    <message>
+        <source>Subscription key copied</source>
+        <translation>Ключ подписки скопирован</translation>
+    </message>
+    <message>
+        <source>To add a new device, enter this key in the app on it</source>
+        <translation>Чтобы добавить новое устройство, введите этот ключ в приложении на нём</translation>
+    </message>
+    <message>
         <source>Show raw config</source>
         <translation type="vanished">Показать исходную конфигурацию</translation>
     </message>

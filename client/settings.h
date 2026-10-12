@@ -198,6 +198,18 @@ public:
         m_settings.setValue("Conf/failedEndpoints", endpoints);
     }
 
+    // the port xray's local SOCKS inbound was given at the last connect: the
+    // live ping of a tunnel found already running (Android: the app reopened
+    // over a working VPN) goes through it
+    int lastXrayLocalPort() const
+    {
+        return m_settings.value("Conf/lastXrayLocalPort", 0).toInt();
+    }
+    void setLastXrayLocalPort(int port)
+    {
+        m_settings.setValue("Conf/lastXrayLocalPort", port);
+    }
+
     // "Auto-select" entry in the server list: on connect the best server is
     // picked by protocol priority + health probe latency (see ConnectionController)
     bool isAutoServerSelection() const

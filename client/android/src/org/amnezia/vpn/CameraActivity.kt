@@ -37,6 +37,7 @@ class CameraActivity : ComponentActivity() {
     @ExperimentalGetImage
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        keepUprightOnPhone()
         viewBinding = CameraPreviewBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
 

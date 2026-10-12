@@ -539,7 +539,6 @@ void VpnConnection::createProtocolConnections()
     connect(m_vpnProtocol.data(), &VpnProtocol::protocolError, this, &VpnConnection::vpnProtocolError);
     connect(m_vpnProtocol.data(), &VpnProtocol::connectionStateChanged, this, &VpnConnection::setConnectionState);
     connect(m_vpnProtocol.data(), SIGNAL(bytesChanged(quint64, quint64)), this, SLOT(onBytesChanged(quint64, quint64)));
-    connect(m_vpnProtocol.data(), &VpnProtocol::latencyChanged, this, &VpnConnection::latencyChanged);
 
 #ifdef AMNEZIA_DESKTOP
     // UniqueConnection: this runs on every connect; without it each connect

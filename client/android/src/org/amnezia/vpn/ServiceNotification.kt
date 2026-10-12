@@ -42,6 +42,7 @@ class ServiceNotification(private val context: Context) {
     private val notificationBuilder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
         .setShowWhen(false)
         .setOngoing(true)
+        .setOnlyAlertOnce(true)
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -59,6 +60,9 @@ class ServiceNotification(private val context: Context) {
         formatSpeedString(rxString, txString)
     }
 
+    // the speed line as it stands in the shade: the same line is not posted again
+    private var shownSpeed: String? = null
+
     fun buildNotification(serverName: String?, protocol: String?, state: ProtocolState): Notification {
         val speedString = if (state == CONNECTED) zeroSpeed else null
 
@@ -70,6 +74,10 @@ class ServiceNotification(private val context: Context) {
             .setContentTitle("LodestarVPN" + (serverName?.let { " · $it" } ?: ""))
             .setContentText(context.getString(state) + (protocol?.let { " · $it" } ?: ""))
             .setSubText(speedString)
+            // The notification's place in the shade goes by this time. It is set when the
+            // state changes and left alone by the speed's updates: stamped anew every
+            // second, the notification kept jumping above another app's that is updated
+            // as often (a download in Google Play), and the two swapped places for ever.
             .setWhen(System.currentTimeMillis())
             .clearActions()
             .apply {
@@ -78,12 +86,13 @@ class ServiceNotification(private val context: Context) {
                 }
             }
             .build()
+            .also { shownSpeed = speedString }
     }
 
-    private fun buildNotification(speed: TrafficData): Notification =
+    // the builder keeps the time of the last change of state (see above)
+    private fun buildNotification(speedString: String): Notification =
         notificationBuilder
-            .setWhen(System.currentTimeMillis())
-            .setSubText(getSpeedString(speed))
+            .setSubText(speedString)
             .build()
 
     fun isNotificationEnabled(): Boolean {
@@ -104,8 +113,11 @@ class ServiceNotification(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun updateSpeed(speed: TrafficData) {
+        val speedString = getSpeedString(speed)
+        if (speedString == shownSpeed) return
         if (context.isNotificationPermissionGranted()) {
-            notificationManager.notify(NOTIFICATION_ID, buildNotification(speed))
+            notificationManager.notify(NOTIFICATION_ID, buildNotification(speedString))
+            shownSpeed = speedString
         }
     }
 

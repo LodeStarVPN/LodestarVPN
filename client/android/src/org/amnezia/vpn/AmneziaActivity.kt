@@ -2,6 +2,7 @@ package org.amnezia.vpn
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlertDialog
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
@@ -11,6 +12,7 @@ import android.content.Intent
 import android.content.Intent.EXTRA_MIME_TYPES
 import android.content.Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY
 import android.content.ServiceConnection
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.hardware.Sensor
@@ -219,6 +221,7 @@ class AmneziaActivity : QtActivity() {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        keepUprightOnPhone()
         Log.d(TAG, "Create Amnezia activity")
         loadLibs()
 
@@ -1308,3 +1311,15 @@ private class PermissionRequestHandler(
     val onFail: () -> Unit = {},
     val onAny: () -> Unit = {}
 )
+
+/**
+ * On a phone the app stays upright whichever way the phone is turned: its screens are drawn
+ * for a tall window. A tablet or a TV (the short side from 600 dp) turns as the system says.
+ */
+@SuppressLint("SourceLockedOrientationActivity")
+internal fun Activity.keepUprightOnPhone() {
+    val tv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    if (!tv && resources.configuration.smallestScreenWidthDp < 600) {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
+}

@@ -1935,6 +1935,18 @@ Already installed containers were found on the server. All installed containers 
         <translation>Як підключитися на іншому пристрої</translation>
     </message>
     <message>
+        <source>Subscription key</source>
+        <translation>Ключ підписки</translation>
+    </message>
+    <message>
+        <source>Subscription key copied</source>
+        <translation>Ключ підписки скопійовано</translation>
+    </message>
+    <message>
+        <source>To add a new device, enter this key in the app on it</source>
+        <translation>Щоб додати новий пристрій, введіть цей ключ у застосунку на ньому</translation>
+    </message>
+    <message>
         <source>Show raw config</source>
         <translation type="vanished">Показати вихідну конфігурацію</translation>
     </message>

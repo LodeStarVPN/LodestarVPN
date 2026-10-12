@@ -604,6 +604,17 @@ QString ApiConfigsController::resolveSubscriptionId() const
     return QString();
 }
 
+QString ApiConfigsController::processedSubscriptionKey() const
+{
+    const QJsonObject serverConfig = m_serversModel->getServerConfig(m_serversModel->getProcessedServerIndex());
+    const QJsonObject apiConfig = serverConfig.value(configKey::apiConfig).toObject();
+    if (apiConfig.value(QStringLiteral("connection_uuid")).toString().isEmpty() || apiConfig.value(QStringLiteral("shared")).toBool()) {
+        return QString();
+    }
+    const QString key = apiConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString();
+    return key.isEmpty() ? serverConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString() : key;
+}
+
 void ApiConfigsController::setSubscriptionId(const QString &subscriptionId)
 {
     if (m_subscriptionId != subscriptionId) {

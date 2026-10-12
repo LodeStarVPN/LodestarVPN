@@ -1868,6 +1868,18 @@ Already installed containers were found on the server. All installed containers 
         <translation>How to connect on another device</translation>
     </message>
     <message>
+        <source>Subscription key</source>
+        <translation>Subscription key</translation>
+    </message>
+    <message>
+        <source>Subscription key copied</source>
+        <translation>Subscription key copied</translation>
+    </message>
+    <message>
+        <source>To add a new device, enter this key in the app on it</source>
+        <translation>To add a new device, enter this key in the app on it</translation>
+    </message>
+    <message>
         <source>Show raw config</source>
         <translation type="vanished">Show raw config</translation>
     </message>

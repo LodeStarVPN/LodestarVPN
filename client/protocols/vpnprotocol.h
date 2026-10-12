@@ -69,10 +69,6 @@ public:
 
 signals:
     void bytesChanged(quint64 receivedBytes, quint64 sentBytes);
-    // round trip through the tunnel, from protocols that measure it themselves
-    // (desktop xray) - the UI's own TCP-connect ping can't see through tun2socks;
-    // negative = no answer (clear the shown ping)
-    void latencyChanged(int ms);
     void connectionStateChanged(Vpn::ConnectionState state);
     void timeoutTimerEvent();
     void protocolError(amnezia::ErrorCode e);

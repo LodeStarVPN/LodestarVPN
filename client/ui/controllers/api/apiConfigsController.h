@@ -77,6 +77,10 @@ public slots:
     QString getSubscriptionId() const;
     void setSubscriptionId(const QString &subscriptionId);
     Q_INVOKABLE void copySubscriptionIdToClipboard();
+    // the key the subscription whose page is open was added with: a new device
+    // is added by entering it. Empty for anything that is not a subscription of
+    // our gateway (a shared connection has no key of its own)
+    Q_INVOKABLE QString processedSubscriptionKey() const;
 
     QString getSelectedServerCountryCode() const;
     void setSelectedServerCountryCode(const QString &countryCode);

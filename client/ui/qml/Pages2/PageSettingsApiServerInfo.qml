@@ -42,8 +42,11 @@ PageType {
     }
 
     property var processedServer
+    // what a new device is added by; shown as dots until asked for
+    property string subscriptionKey: ""
 
     Component.onCompleted: {
+        root.subscriptionKey = ApiConfigsController.processedSubscriptionKey()
         // shared connections (lodestar://conn) have no subscription account behind
         // them - asking the API for account info errors out, so skip both the
         // refresh and the status row for them
@@ -65,6 +68,7 @@ PageType {
 
         function onProcessedServerChanged() {
             root.processedServer = proxyServersModel.get(0)
+            root.subscriptionKey = ApiConfigsController.processedSubscriptionKey()
         }
     }
 
@@ -275,6 +279,46 @@ PageType {
             }
 
             DividerType {}
+
+            // The subscription's key: the only thing a new device needs. It is the
+            // whole access to the subscription, so it stays behind dots until the
+            // eye is pressed (screens get photographed and shown); a tap on the
+            // row copies it either way.
+            LabelWithButtonType {
+                id: subscriptionKeyRow
+
+                Layout.fillWidth: true
+
+                visible: root.subscriptionKey !== ""
+
+                text: qsTr("Subscription key")
+                descriptionText: root.subscriptionKey
+                descriptionOnTop: true
+
+                buttonImageSource: hideDescription ? "qrc:/images/controls/eye.svg" : "qrc:/images/controls/eye-off.svg"
+                rightImageSource: "qrc:/images/controls/copy.svg"
+
+                clickedFunction: function() {
+                    GC.copyToClipBoard(root.subscriptionKey)
+                    PageController.showNotificationMessage(qsTr("Subscription key copied"))
+                }
+            }
+
+            CaptionTextType {
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 16
+
+                visible: subscriptionKeyRow.visible
+
+                color: DopamineStyle.color.mutedGray
+                text: qsTr("To add a new device, enter this key in the app on it")
+            }
+
+            DividerType {
+                visible: subscriptionKeyRow.visible
+            }
 
             LabelWithButtonType {
                 Layout.fillWidth: true

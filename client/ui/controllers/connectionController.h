@@ -3,6 +3,7 @@
 
 #include <QList>
 #include <QStringList>
+#include <QThread>
 #include <QTimer>
 #include <QElapsedTimer>
 
@@ -13,6 +14,7 @@
 
 class HealthCheckController;
 class ApiConfigsController;
+class LivePingProbe;
 class QTcpSocket;
 class QSslSocket;
 
@@ -150,22 +152,24 @@ private:
     QElapsedTimer m_speedTimer;
     static QString formatSpeed(qint64 bytesPerSec);
 
-    // live ping (server card), TCP handshake RTT through the tunnel
+    // live ping (server card): LivePingProbe measures it in a thread of its
+    // own, a round of probes every few seconds, the quickest answer shown. A
+    // round with no answer is a lost packet and leaves the figure as it is;
+    // kLivePingMissesToClear such rounds in a row take it off the screen.
     void startLivePing();
     void stopLivePing();
-    void probeLivePing();
-    void finishLivePing(QTcpSocket *socket, bool ok);
+    void onLivePing(int ms, quint64 run);
 
     QString m_ping;
-    // desktop xray measures its own ping (VpnConnection::latencyChanged): our
-    // TCP-connect probe would be answered locally by tun2socks (~1 ms)
-    bool m_pingFromProtocol = false;
-    QTimer *m_pingTimer = nullptr;
-    QTcpSocket *m_pingSocket = nullptr;
-    QElapsedTimer m_pingElapsed;
-    int m_pingHostIndex = 0;
-    static constexpr int kLivePingIntervalMs = 3000;
-    static constexpr int kLivePingTimeoutMs = 4000;
+    QThread m_pingThread;
+    LivePingProbe *m_pingProbe = nullptr;
+    bool m_pingRunning = false;
+    quint64 m_pingRun = 0;   // results of an earlier connection carry an older number
+    int m_pingMisses = 0;
+    // xray's tunnel device answers TCP handshakes by itself (tun2socks, ~1 ms):
+    // there the probe goes through xray's local SOCKS inbound, on this port
+    int m_pingSocksPort = 0;
+    static constexpr int kLivePingMissesToClear = 3;
     static constexpr int kIpTrafficTimeoutMs = 8000;
     // ---
 
