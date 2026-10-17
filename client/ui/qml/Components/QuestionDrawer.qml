@@ -17,9 +17,12 @@ DrawerType2 {
     property string headerText
     property string descriptionText
     property string yesButtonText
+    // a third choice between the two, when a question has one; none when empty
+    property string middleButtonText
     property string noButtonText
 
     property var yesButtonFunction
+    property var middleButtonFunction
     property var noButtonFunction
 
     expandedStateContent: ColumnLayout {
@@ -72,6 +75,29 @@ DrawerType2 {
             clickedFunc: function() {
                 if (root.yesButtonFunction && typeof root.yesButtonFunction === "function") {
                     root.yesButtonFunction()
+                }
+            }
+        }
+
+        BasicButtonType {
+            id: middleButton
+            Layout.fillWidth: true
+            Layout.rightMargin: 16
+            Layout.leftMargin: 16
+
+            defaultColor: DopamineStyle.color.glassButton
+            hoveredColor: DopamineStyle.color.glassButtonHovered
+            pressedColor: DopamineStyle.color.glassButtonPressed
+            disabledColor: DopamineStyle.color.mutedGray
+            textColor: DopamineStyle.color.glassButtonText
+
+            visible: root.middleButtonText !== ""
+
+            text: root.middleButtonText
+
+            clickedFunc: function() {
+                if (root.middleButtonFunction && typeof root.middleButtonFunction === "function") {
+                    root.middleButtonFunction()
                 }
             }
         }

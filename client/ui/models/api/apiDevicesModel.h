@@ -30,6 +30,9 @@ public:
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
+    // the subscription's devices without our app of this name ("iPhone"): [{ id, needsNewFile }]
+    Q_INVOKABLE QVariantList otherDevices(const QString &name) const;
+
 public slots:
     void updateModel(const QJsonArray &issuedConfigs);
 

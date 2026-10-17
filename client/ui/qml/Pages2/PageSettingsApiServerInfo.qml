@@ -89,27 +89,34 @@ PageType {
         }
     }
 
-    ListViewType {
-        id: listView
+    // A plain column that scrolls, not a list. An empty ListView with all of it in its footer went
+    // back to its top at every change of the footer's height - with the VPN on the ping and speed
+    // rows change it every few seconds, and the page jumped up while it was read (the owner,
+    // 2026-10-17); a one-item ListView in its place lost the app's own objects in its item (the
+    // country, the protocol, Active Devices and How to connect came out empty in 1.0.22). A
+    // Flickable keeps its place when its content changes height
+    FlickableType {
+        id: fl
 
         anchors.fill: parent
+        // the column starts under the status bar and ends over the navigation bar
+        contentHeight: content.anchors.topMargin + content.implicitHeight + SettingsController.safeAreaBottomMargin
 
-        // the account's rows stand in the one item's first glass card (a Repeater there). One item,
-        // not an empty view with all of it in its footer: an empty ListView goes back to its top at
-        // every change of its footer's height, and with the VPN on the ping and speed rows change it
-        // every few seconds - the page jumped up while it was being read (the owner, 2026-10-17)
-        model: 1
+        ColumnLayout {
+            id: content
 
-        header: ColumnLayout {
-            width: listView.width
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.topMargin: 20 + SettingsController.safeAreaTopMargin
 
-            spacing: 4
+            spacing: 0
+
+            readonly property bool isVisibleForAmneziaFree: ApiAccountInfoModel.data("isComponentVisible")
 
             BackButtonType {
                 id: backButton
                 objectName: "backButton"
-
-                Layout.topMargin: 20 + SettingsController.safeAreaTopMargin
             }
 
             HeaderTypeWithButton {
@@ -117,6 +124,7 @@ PageType {
                 objectName: "headerContent"
 
                 Layout.fillWidth: true
+                Layout.topMargin: 4
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
                 Layout.bottomMargin: 10
@@ -130,15 +138,6 @@ PageType {
                     serverNameEditDrawer.openTriggered()
                 }
             }
-        }
-
-        delegate: ColumnLayout {
-            id: footer
-
-            width: listView.width
-            spacing: 0
-
-            readonly property bool isVisibleForAmneziaFree: ApiAccountInfoModel.data("isComponentVisible")
 
             WarningType {
                 id: warning
@@ -254,7 +253,7 @@ PageType {
                 LabelWithButtonType {
                     Layout.fillWidth: true
 
-                    visible: footer.isVisibleForAmneziaFree
+                    visible: content.isVisibleForAmneziaFree
 
                     text: qsTr("Active Devices")
 
@@ -268,7 +267,7 @@ PageType {
                 }
 
                 DividerType {
-                    visible: footer.isVisibleForAmneziaFree
+                    visible: content.isVisibleForAmneziaFree
                 }
 
                 LabelWithButtonType {
@@ -326,7 +325,7 @@ PageType {
             LabelWithButtonType {
                 Layout.fillWidth: true
 
-                visible: footer.isVisibleForAmneziaFree
+                visible: content.isVisibleForAmneziaFree
                 glass: "single"
 
                 // told here, not on a site (the owner's word, 2026-10-17)

@@ -106,6 +106,7 @@ PageType {
                     // its files are had again here, or it is unlinked like any other
                     if (otherApp === "amneziawg") {
                         otherDeviceDrawer.deviceId = supportTag
+                        otherDeviceDrawer.needsNewFile = needsNewFile
                         otherDeviceDrawer.headerText = osVersion !== "" ? osVersion : qsTr("Device")
                         otherDeviceDrawer.openTriggered()
                         return
@@ -139,6 +140,16 @@ PageType {
         }
     }
 
+    // its files again, the key it has: what is on the device goes on working
+    function sameFiles(deviceId) {
+        PageController.showBusyIndicator(true)
+        var done = ApiConfigsController.otherDeviceFilesAgain(deviceId)
+        PageController.showBusyIndicator(false)
+        if (done) {
+            PageController.goToPage(PageEnum.PageSettingsApiOtherDevice)
+        }
+    }
+
     Connections {
         target: ApiConfigsController
         // only while this page is on top: the device's own page says it itself
@@ -149,18 +160,29 @@ PageType {
         }
     }
 
+    // a device without our app: its files again (the owner, 2026-10-17: a second iPhone went in to
+    // see the first one's code again), a new file, or unlinking it. A key burned on a copy has no
+    // files to show again: a new file then
     QuestionDrawer {
         id: otherDeviceDrawer
 
         property string deviceId
+        property bool needsNewFile: false
 
         anchors.fill: parent
 
-        descriptionText: qsTr("It connects through AmneziaWG. A new file replaces the old one: the old files and codes stop working.")
-        yesButtonText: qsTr("New file")
+        descriptionText: needsNewFile
+                         ? qsTr("It connects through AmneziaWG. Its key does not work any more: it needs a new file.")
+                         : qsTr("It connects through AmneziaWG. «Show file» gives the file and the code it already has. A new file replaces the old one: the old files and codes stop working.")
+        yesButtonText: needsNewFile ? qsTr("New file") : qsTr("Show file")
+        middleButtonText: needsNewFile ? "" : qsTr("New file")
         noButtonText: qsTr("Unlink")
 
         yesButtonFunction: function() {
+            otherDeviceDrawer.closeTriggered()
+            Qt.callLater(otherDeviceDrawer.needsNewFile ? root.newFiles : root.sameFiles, otherDeviceDrawer.deviceId)
+        }
+        middleButtonFunction: function() {
             otherDeviceDrawer.closeTriggered()
             Qt.callLater(root.newFiles, otherDeviceDrawer.deviceId)
         }

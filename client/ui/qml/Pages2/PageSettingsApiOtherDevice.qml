@@ -47,6 +47,28 @@ PageType {
         ApiConfigsController.clearOtherDeviceFiles()
     }
 
+    // A second device of a kind the subscription has already is asked about first: each one takes
+    // a place, and going back from the code and adding again had made a second iPhone instead of
+    // showing the first one's code (the owner, 2026-10-17). The one there is can give its files
+    // again from here
+    function chooseKind(kind, name) {
+        const there = ApiDevicesModel.otherDevices(name)
+        if (there.length === 0) {
+            root.addDevice(kind)
+            return
+        }
+        existingDrawer.kind = kind
+        existingDrawer.name = name
+        existingDrawer.deviceId = there.length === 1 && !there[0].needsNewFile ? there[0].id : ""
+        existingDrawer.openTriggered()
+    }
+
+    function showFilesAgain(deviceId) {
+        PageController.showBusyIndicator(true)
+        ApiConfigsController.otherDeviceFilesAgain(deviceId)
+        PageController.showBusyIndicator(false)
+    }
+
     function addDevice(kind) {
         PageController.showBusyIndicator(true)
         const done = ApiConfigsController.addOtherDevice(kind)
@@ -131,7 +153,7 @@ PageType {
                     rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
                     clickedFunction: function() {
-                        root.addDevice("iphone")
+                        root.chooseKind("iphone", "iPhone")
                     }
                 }
 
@@ -142,7 +164,7 @@ PageType {
                     rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
                     clickedFunction: function() {
-                        root.addDevice("ipad")
+                        root.chooseKind("ipad", "iPad")
                     }
                 }
 
@@ -153,7 +175,7 @@ PageType {
                     rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
                     clickedFunction: function() {
-                        root.addDevice("mac")
+                        root.chooseKind("mac", "Mac")
                     }
                 }
             }
@@ -281,6 +303,38 @@ PageType {
                 color: DopamineStyle.color.mutedGray
                 text: qsTr("On such a device Russian sites go through the VPN too: AmneziaWG does not send them directly as our app does.")
             }
+        }
+    }
+
+    // a device of this kind is on the subscription already: another one, its files again, or neither
+    QuestionDrawer {
+        id: existingDrawer
+
+        property string kind
+        property string name
+        // the one there is when it is the only one and its key works; else none to show again
+        property string deviceId
+
+        anchors.fill: parent
+
+        headerText: qsTr("%1 is on the subscription already").arg(name)
+        descriptionText: deviceId !== ""
+                         ? qsTr("Another one takes another place on the subscription. For the same device, show its file and code again.")
+                         : qsTr("Another one takes another place on the subscription. The files of one there is are in Active devices: tap it.")
+        yesButtonText: qsTr("Add another one")
+        middleButtonText: deviceId !== "" ? qsTr("Show its file") : ""
+        noButtonText: qsTr("Cancel")
+
+        yesButtonFunction: function() {
+            existingDrawer.closeTriggered()
+            Qt.callLater(root.addDevice, existingDrawer.kind)
+        }
+        middleButtonFunction: function() {
+            existingDrawer.closeTriggered()
+            Qt.callLater(root.showFilesAgain, existingDrawer.deviceId)
+        }
+        noButtonFunction: function() {
+            existingDrawer.closeTriggered()
         }
     }
 }

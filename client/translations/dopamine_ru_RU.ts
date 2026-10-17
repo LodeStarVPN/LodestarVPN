@@ -117,6 +117,11 @@
         <source>The subscription has no free place. Unlink a device you no longer use in Active devices, then try again.</source>
         <translation>На подписке нет свободного места. Отвяжите ненужное устройство в «Активных устройствах» и попробуйте снова.</translation>
     </message>
+    <message>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="2086"/>
+        <source>This device&apos;s key does not work any more: it needs a new file.</source>
+        <translation>Ключ этого устройства больше не работает: нужен новый файл.</translation>
+    </message>
 </context>
 <context>
     <name>ApiServicesModel</name>
@@ -1816,6 +1821,21 @@ Already installed containers were found on the server. All installed containers 
         <source>Needs a new file: tap it</source>
         <translation>Нужен новый файл — нажмите</translation>
     </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="175"/>
+        <source>It connects through AmneziaWG. Its key does not work any more: it needs a new file.</source>
+        <translation>Подключается через AmneziaWG. Его ключ больше не работает: нужен новый файл.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="176"/>
+        <source>It connects through AmneziaWG. «Show file» gives the file and the code it already has. A new file replaces the old one: the old files and codes stop working.</source>
+        <translation>Подключается через AmneziaWG. «Показать файл» — тот же файл и код, что уже на нём. Новый файл заменяет старый: старые файлы и коды перестают работать.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="177"/>
+        <source>Show file</source>
+        <translation>Показать файл</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsApiInstructions</name>
@@ -2129,6 +2149,36 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="280"/>
         <source>On such a device Russian sites go through the VPN too: AmneziaWG does not send them directly as our app does.</source>
         <translation>На таком устройстве российские сайты тоже идут через VPN: AmneziaWG не пускает их напрямую, как наше приложение.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="320"/>
+        <source>%1 is on the subscription already</source>
+        <translation>У подписки уже есть %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="322"/>
+        <source>Another one takes another place on the subscription. For the same device, show its file and code again.</source>
+        <translation>Ещё одно займёт ещё одно место на подписке. Если это то же устройство — покажите его файл и код ещё раз.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="323"/>
+        <source>Another one takes another place on the subscription. The files of one there is are in Active devices: tap it.</source>
+        <translation>Ещё одно займёт ещё одно место на подписке. Файлы уже добавленного — в «Активных устройствах»: нажмите на него.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="324"/>
+        <source>Add another one</source>
+        <translation>Добавить ещё одно</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="325"/>
+        <source>Show its file</source>
+        <translation>Показать его файл</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="326"/>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
     </message>
 </context>
 <context>

@@ -126,10 +126,12 @@ public slots:
 
     // A device without our app on the processed subscription (v1/other_device): addOtherDevice
     // takes a place for it (kind: iphone, ipad, mac), newOtherDeviceFiles gives one of them a new
-    // key (its old files stop working). Both fill otherDeviceFiles, or emit otherDeviceFailed.
+    // key (its old files stop working), otherDeviceFilesAgain its files again with the key it has
+    // (the old files go on working). They fill otherDeviceFiles, or emit otherDeviceFailed.
     // The files hold the device's key: cleared when their page closes (clearOtherDeviceFiles)
     Q_INVOKABLE bool addOtherDevice(const QString &kind);
     Q_INVOKABLE bool newOtherDeviceFiles(const QString &deviceId);
+    Q_INVOKABLE bool otherDeviceFilesAgain(const QString &deviceId);
     Q_INVOKABLE void clearOtherDeviceFiles();
     // Android: the system's share sheet; elsewhere saved to fileName
     Q_INVOKABLE void sendOtherDeviceFile(int index, const QString &fileName = QString());

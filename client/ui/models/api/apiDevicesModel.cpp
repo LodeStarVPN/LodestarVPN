@@ -22,6 +22,18 @@ int ApiDevicesModel::rowCount(const QModelIndex &parent) const
     return m_issuedConfigs.size();
 }
 
+QVariantList ApiDevicesModel::otherDevices(const QString &name) const
+{
+    QVariantList devices;
+    for (const auto &info : m_issuedConfigs) {
+        if (info.otherApp == QLatin1String("amneziawg") && info.osVersion == name) {
+            devices.append(QVariantMap { { QStringLiteral("id"), info.installationUuid },
+                                         { QStringLiteral("needsNewFile"), info.needsNewFile } });
+        }
+    }
+    return devices;
+}
+
 QVariant ApiDevicesModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(rowCount()))

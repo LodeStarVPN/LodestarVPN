@@ -2024,6 +2024,14 @@ bool ApiConfigsController::newOtherDeviceFiles(const QString &deviceId)
     return requestOtherDevice(extra);
 }
 
+bool ApiConfigsController::otherDeviceFilesAgain(const QString &deviceId)
+{
+    QJsonObject extra;
+    extra[QStringLiteral("device_id")] = deviceId;
+    extra[QStringLiteral("same_key")] = true;
+    return requestOtherDevice(extra);
+}
+
 bool ApiConfigsController::requestOtherDevice(const QJsonObject &extra)
 {
     clearOtherDeviceFiles();
@@ -2072,6 +2080,12 @@ bool ApiConfigsController::requestOtherDevice(const QJsonObject &extra)
     }
 
     const QJsonObject answer = QJsonDocument::fromJson(responseBody).object();
+    // the same files asked for, but the key is not there any more (burned on a copy, or made
+    // before the gateway could give it again): only a new file helps
+    if (answer.value(QStringLiteral("needs_new_file")).toBool()) {
+        emit otherDeviceFailed(tr("This device's key does not work any more: it needs a new file."));
+        return false;
+    }
     static const QRegularExpression countryCodeRe(QStringLiteral("^[A-Z]{2}$"));
     for (const QJsonValue &value : answer.value(QStringLiteral("files")).toArray()) {
         const QJsonObject f = value.toObject();
