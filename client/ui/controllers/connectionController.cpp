@@ -367,7 +367,11 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
             if (!m_speedTimer.isValid()) {
                 m_speedTimer.start();
             }
-            if (elapsedMs > 0 && elapsedMs <= 5000) {
+            // counters come about once a second: two within a moment are a backlog let through at
+            // once (Android holds the app's events while it is away, the shade pulled down too) -
+            // a second's bytes over a few milliseconds put thousands of MB/s on the card
+            constexpr qint64 kMinIntervalMs = 300;
+            if (elapsedMs >= kMinIntervalMs && elapsedMs <= 5000) {
                 const quint64 downBps = receivedBytes * 1000 / static_cast<quint64>(elapsedMs);
                 const quint64 upBps = sentBytes * 1000 / static_cast<quint64>(elapsedMs);
                 constexpr quint64 kMaxBps = 10ull * 1024 * 1024 * 1024;
@@ -1738,4 +1742,9 @@ bool ConnectionController::isConnectionInProgress() const
 bool ConnectionController::isConnected() const
 {
     return m_isConnected;
+}
+
+bool ConnectionController::isDisconnecting() const
+{
+    return m_state == Vpn::ConnectionState::Disconnecting && !m_connectionSwitching;
 }

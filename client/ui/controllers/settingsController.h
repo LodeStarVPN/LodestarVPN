@@ -27,6 +27,7 @@ public:
     Q_PROPERTY(bool isNotificationPermissionGranted READ isNotificationPermissionGranted NOTIFY onNotificationStateChanged)
     Q_PROPERTY(bool isKillSwitchEnabled READ isKillSwitchEnabled WRITE toggleKillSwitch NOTIFY killSwitchEnabledChanged)
     Q_PROPERTY(bool isRouteLanThroughVpn READ isRouteLanThroughVpn WRITE toggleRouteLanThroughVpn NOTIFY routeLanThroughVpnChanged)
+    Q_PROPERTY(bool isRuDirectEnabled READ isRuDirectEnabled WRITE toggleRuDirect NOTIFY ruDirectEnabledChanged)
     Q_PROPERTY(bool strictKillSwitchEnabled READ isStrictKillSwitchEnabled WRITE toggleStrictKillSwitch NOTIFY strictKillSwitchEnabledChanged)
 
     Q_PROPERTY(bool isDevModeEnabled READ isDevModeEnabled NOTIFY devModeEnabled)
@@ -95,6 +96,10 @@ public slots:
     bool isRouteLanThroughVpn();
     void toggleRouteLanThroughVpn(bool enable);
 
+    // Russian sites directly (DirectNetworks): applied at the next connection
+    bool isRuDirectEnabled();
+    void toggleRuDirect(bool enable);
+
     bool isStrictKillSwitchEnabled();
     void toggleStrictKillSwitch(bool enable);
 
@@ -123,9 +128,6 @@ public slots:
     bool isHomeAdLabelVisible();
     void disableHomeAdLabel();
 
-    bool frknDarkMode();
-    void toggleFrknDarkMode(bool enable);
-
     QString getServersProtocolFilter();
     void setServersProtocolFilter(const QString &filter);
 
@@ -139,6 +141,7 @@ signals:
     void serverPingTextVisibleChanged();
     void killSwitchEnabledChanged();
     void routeLanThroughVpnChanged();
+    void ruDirectEnabledChanged();
     void strictKillSwitchEnabledChanged(bool enabled);
 
     void restoreBackupFinished();

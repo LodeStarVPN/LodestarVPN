@@ -19,3 +19,13 @@ void AndroidVpnProtocol::stop()
     setConnectionState(Vpn::ConnectionState::Disconnecting);
     AndroidController::instance()->stop();
 }
+
+void AndroidVpnProtocol::onStatistics(quint64 receivedBytes, quint64 sentBytes)
+{
+    if (m_baselinePending) {
+        m_baselinePending = false;
+        setBytesBaseline(receivedBytes, sentBytes);
+        return;
+    }
+    setBytesChanged(receivedBytes, sentBytes);
+}

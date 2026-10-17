@@ -86,10 +86,10 @@ PageType {
         delegate: ColumnLayout {
             width: listView.width
 
+            // the services: one glass card down the list
             SwitcherType {
                 Layout.fillWidth: true
-                // the same 16 px around a switch as on the other settings pages
-                Layout.margins: 16
+                glass: listView.count === 1 ? "single" : index === 0 ? "first" : index === listView.count - 1 ? "last" : "middle"
 
                 enabled: root.pageEnabled
 
@@ -104,8 +104,6 @@ PageType {
                     }
                 }
             }
-
-            DividerType {}
         }
     }
 

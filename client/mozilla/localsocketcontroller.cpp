@@ -132,6 +132,13 @@ void LocalSocketController::activate(const QJsonObject &rawConfig) {
 
   int splitTunnelType = rawConfig.value("splitTunnelType").toInt();
   QJsonArray splitTunnelSites = rawConfig.value("splitTunnelSites").toArray();
+  // the lists as the app flattened them: the user's sites, the services' and the
+  // Russian networks it sends past the VPN (VpnConnection::appendSplitTunnelingConfig);
+  // only the user's sites from an app that did not
+  const QJsonArray includeSites = rawConfig.contains(amnezia::config_key::splitTunnelIncludeSites)
+      ? rawConfig.value(amnezia::config_key::splitTunnelIncludeSites).toArray() : splitTunnelSites;
+  const QJsonArray excludeSites = rawConfig.contains(amnezia::config_key::splitTunnelExcludeSites)
+      ? rawConfig.value(amnezia::config_key::splitTunnelExcludeSites).toArray() : splitTunnelSites;
 
   int appSplitTunnelType = rawConfig.value(amnezia::config_key::appSplitTunnelType).toInt();
   QJsonArray splitTunnelApps = rawConfig.value(amnezia::config_key::splitTunnelApps).toArray();
@@ -177,8 +184,11 @@ void LocalSocketController::activate(const QJsonObject &rawConfig) {
 
   QJsonArray plainAllowedIP = wgConfig.value(amnezia::config_key::allowed_ips).toArray();
   QJsonArray defaultAllowedIP = { "0.0.0.0/0", "::/0" };
+  // our configs carry IPv4 only, as one network: "only the listed through the
+  // VPN" takes the lists instead of it (IPv6 stays as it was, out of the tunnel)
+  const bool wholeIpv4 = plainAllowedIP == QJsonArray { "0.0.0.0/0" };
 
-  if (plainAllowedIP != defaultAllowedIP && !plainAllowedIP.isEmpty()) {
+  if (plainAllowedIP != defaultAllowedIP && !plainAllowedIP.isEmpty() && !(wholeIpv4 && splitTunnelType == 1)) {
     // Use AllowedIP list from WG config because of higher priority
     for (auto v : plainAllowedIP) {
       QString ipRange = v.toString();
@@ -214,7 +224,7 @@ void LocalSocketController::activate(const QJsonObject &rawConfig) {
       }
 
       if (splitTunnelType == 1) {
-          for (auto v : splitTunnelSites) {
+          for (auto v : includeSites) {
               QString ipRange = v.toString();
               if (ipRange.split('/').size() > 1){
                   QJsonObject range;
@@ -238,13 +248,15 @@ void LocalSocketController::activate(const QJsonObject &rawConfig) {
   QJsonArray jsExcludedAddresses;
   jsExcludedAddresses.append(wgConfig.value(amnezia::config_key::hostName));
   if (splitTunnelType == 2) {
-    for (auto v : splitTunnelSites) {
+    for (auto v : excludeSites) {
           QString ipRange = v.toString();
           jsExcludedAddresses.append(ipRange);
       }
   }
 
   json.insert("excludedAddresses", jsExcludedAddresses);
+  // the Russian networks the tunnel opens directly itself (VpnConnection::appendSplitTunnelingConfig)
+  json.insert("directNetworks", rawConfig.value(amnezia::config_key::directNetworks));
 
   // Desktop daemons (Windows WFP split-tunnel driver) support app EXCLUSIONS
   // only: "apps from the list bypass the VPN" (Settings::VpnAllExceptApps).

@@ -1,0 +1,166 @@
+diff --git a/tunnel/tools/libwg-go/api-android.go b/tunnel/tools/libwg-go/api-android.go
+index 3af343d..7d7cb39 100644
+--- a/tunnel/tools/libwg-go/api-android.go
++++ b/tunnel/tools/libwg-go/api-android.go
+@@ -7,9 +7,11 @@ package main
+ 
+ // #cgo LDFLAGS: -llog
+ // #include <android/log.h>
++// extern int lodestarProtect(int fd);
+ import "C"
+ 
+ import (
++	"errors"
+ 	"fmt"
+ 	"math"
+ 	"net"
+@@ -18,15 +20,32 @@ import (
+ 	"runtime"
+ 	"runtime/debug"
+ 	"strings"
++	"syscall"
+ 	"unsafe"
+ 
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/ipc"
++	"github.com/amnezia-vpn/amneziawg-go/v3/sorter"
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
+ 	"golang.org/x/sys/unix"
+ )
+ 
++// LodestarVPN: the sorter's direct sockets go past the VPN - the service protects each one
++// (jni.c, GoBackend.awgSetProtector); a socket it could not protect is not used.
++func init() {
++	sorter.SetDialControl(func(network, address string, c syscall.RawConn) error {
++		var ok C.int
++		if err := c.Control(func(fd uintptr) { ok = C.lodestarProtect(C.int(fd)) }); err != nil {
++			return err
++		}
++		if ok == 0 {
++			return errors.New("the socket could not be kept out of the VPN")
++		}
++		return nil
++	})
++}
++
+ type AndroidLogger struct {
+ 	level C.int
+ 	tag   *C.char
+diff --git a/tunnel/tools/libwg-go/go.mod b/tunnel/tools/libwg-go/go.mod
+index 2767d53..218687b 100644
+--- a/tunnel/tools/libwg-go/go.mod
++++ b/tunnel/tools/libwg-go/go.mod
+@@ -4,9 +4,18 @@ go 1.25.0
+ 
+ require golang.org/x/sys v0.36.0
+ 
++require (
++	github.com/google/btree v1.1.3 // indirect
++	golang.org/x/time v0.9.0 // indirect
++	gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 // indirect
++)
++
+ require (
+ 	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260814
+ 	golang.org/x/crypto v0.42.0 // indirect
+ 	golang.org/x/net v0.44.0 // indirect
+ 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
+ )
++
++// LodestarVPN: amneziawg-go with the sorter (networks opened directly)
++replace github.com/amnezia-vpn/amneziawg-go/v3 => ../../../../amneziawg-go
+diff --git a/tunnel/tools/libwg-go/go.sum b/tunnel/tools/libwg-go/go.sum
+index 001f135..5ec7a8c 100644
+--- a/tunnel/tools/libwg-go/go.sum
++++ b/tunnel/tools/libwg-go/go.sum
+@@ -1,5 +1,3 @@
+-github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260814 h1:l2AhBD+sFycU8Im81n/bZORMxW7fWtlZJEuJ4Hh0+z0=
+-github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260814/go.mod h1:YoPc6qcOZqD7TXZ1xpedD8Sx3aSKsxN05ZqEFmXDNHk=
+ github.com/google/btree v1.1.3 h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+ github.com/google/btree v1.1.3/go.mod h1:qOPhT0dTNdNzV6Z/lhRX0YXUafgPLFUh+gZMl761Gm4=
+ go.uber.org/atomic v1.11.0 h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE=
+diff --git a/tunnel/tools/libwg-go/jni.c b/tunnel/tools/libwg-go/jni.c
+index 237043e..3d9f7a2 100644
+--- a/tunnel/tools/libwg-go/jni.c
++++ b/tunnel/tools/libwg-go/jni.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <jni.h>
++#include <pthread.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -15,6 +16,71 @@ extern int awgGetSocketV6(int handle);
+ extern char *awgGetConfig(int handle);
+ extern char *awgVersion();
+ 
++/* LodestarVPN: the sorter's direct sockets (amneziawg-go/sorter: connections the app sends past
++ * the VPN) are kept out of the VPN by the service that runs the tunnel - an object with
++ * "boolean protect(int)", given before the tunnel starts. The lock is held through each call,
++ * so a protector replaced meanwhile is never used after it is released. */
++static JavaVM *java_vm;
++static jobject protector;
++static jmethodID protect_method;
++static pthread_mutex_t protector_lock = PTHREAD_MUTEX_INITIALIZER;
++
++JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
++{
++	java_vm = vm;
++	return JNI_VERSION_1_6;
++}
++
++JNIEXPORT void JNICALL Java_org_amnezia_awg_GoBackend_awgSetProtector(JNIEnv *env, jclass c, jobject p)
++{
++	jobject ref = NULL, old;
++	jmethodID method = NULL;
++	if (p) {
++		jclass cls = (*env)->GetObjectClass(env, p);
++		method = (*env)->GetMethodID(env, cls, "protect", "(I)Z");
++		(*env)->DeleteLocalRef(env, cls);
++		if (!method) {
++			(*env)->ExceptionClear(env);
++			return;
++		}
++		ref = (*env)->NewGlobalRef(env, p);
++	}
++	pthread_mutex_lock(&protector_lock);
++	old = protector;
++	protector = ref;
++	protect_method = method;
++	pthread_mutex_unlock(&protector_lock);
++	if (old)
++		(*env)->DeleteGlobalRef(env, old);
++}
++
++/* Called by Go for each direct socket: 1 when it is kept out of the VPN. */
++int lodestarProtect(int fd)
++{
++	JNIEnv *env = NULL;
++	int attached = 0, ok = 0;
++	if (!java_vm)
++		return 0;
++	pthread_mutex_lock(&protector_lock);
++	if (!protector)
++		goto out;
++	if ((*java_vm)->GetEnv(java_vm, (void **)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
++		if ((*java_vm)->AttachCurrentThread(java_vm, &env, NULL) != JNI_OK)
++			goto out;
++		attached = 1;
++	}
++	ok = (*env)->CallBooleanMethod(env, protector, protect_method, (jint)fd) ? 1 : 0;
++	if ((*env)->ExceptionCheck(env)) {
++		(*env)->ExceptionClear(env);
++		ok = 0;
++	}
++	if (attached)
++		(*java_vm)->DetachCurrentThread(java_vm);
++out:
++	pthread_mutex_unlock(&protector_lock);
++	return ok;
++}
++
+ JNIEXPORT jint JNICALL Java_org_amnezia_awg_GoBackend_awgTurnOn(JNIEnv *env, jclass c, jstring ifname, jint tun_fd, jstring settings)
+ {
+ 	const char *ifname_str = (*env)->GetStringUTFChars(env, ifname, 0);

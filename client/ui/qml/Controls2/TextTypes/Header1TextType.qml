@@ -6,7 +6,7 @@ Text {
     lineHeight: 38 + LanguageModel.getLineHeightAppend()
     lineHeightMode: Text.FixedHeight
 
-    color: DopamineStyle.color.paleGray
+    color: DopamineStyle.color.pearlGray
     font.pixelSize: 32
     font.weight: 700
     font.family: "IBM Plex Mono"

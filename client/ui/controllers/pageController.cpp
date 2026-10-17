@@ -22,10 +22,7 @@ PageController::PageController(const QSharedPointer<ServersModel> &serversModel,
                                const std::shared_ptr<Settings> &settings, QObject *parent)
     : QObject(parent), m_serversModel(serversModel), m_settings(settings)
 {
-#ifdef Q_OS_ANDROID
-    auto initialPageNavigationBarColor = getInitialPageNavigationBarColor();
-    AndroidController::instance()->setNavigationBarColor(initialPageNavigationBarColor);
-#endif
+    updateNavigationBarColor(getInitialPageNavigationBarColor());
 
 #if defined Q_OS_MACX
     connect(this, &PageController::raiseMainWindow, []() {
@@ -95,20 +92,28 @@ void PageController::keyPressEvent(Qt::Key key)
     }
 }
 
+// the bottom edge of the first page: the home's land, or the night of the start page
+// (shaders/homeland.frag, shaders/pagesky.frag); each page then sets its own (PageType)
 unsigned int PageController::getInitialPageNavigationBarColor()
 {
     if (m_serversModel->getServersCount()) {
-        return 0xFF1C1D21;
+        return 0xFF02040B;
     } else {
-        return 0xFF0E0E11;
+        return 0xFF10173A;
     }
 }
 
 void PageController::updateNavigationBarColor(const int color)
 {
+    m_navigationBarColor = static_cast<unsigned int>(color);
 #ifdef Q_OS_ANDROID
     AndroidController::instance()->setNavigationBarColor(color);
 #endif
+}
+
+unsigned int PageController::navigationBarColor() const
+{
+    return m_navigationBarColor;
 }
 
 void PageController::showOnStartup()

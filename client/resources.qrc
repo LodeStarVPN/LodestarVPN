@@ -2,6 +2,8 @@
     <qresource prefix="/">
         <file>agw_public.pem</file>
         <file>gateway_ca.pem</file>
+        <file>ru_direct.txt</file>
+        <file>ru_networks.txt</file>
         <file>fonts/IBMPlexMono-Regular.ttf</file>
         <file>fonts/IBMPlexMono-Medium.ttf</file>
         <file>fonts/IBMPlexMono-SemiBold.ttf</file>
@@ -9,6 +11,12 @@
         <file>images/dopamineBigLogo.png</file>
         <file>images/Dopamine.png</file>
         <file>images/star.png</file>
+        <file>images/home/card_light.png</file>
+        <file>images/telescope/arm.svg</file>
+        <file>images/telescope/hub_lit.svg</file>
+        <file>images/telescope/tripod.svg</file>
+        <file>images/telescope/tube.svg</file>
+        <file>images/telescope/tube_lit.svg</file>
         <file>images/controls/alert-circle.svg</file>
         <file>images/controls/app.svg</file>
         <file>images/controls/lodestar.svg</file>
@@ -61,6 +69,7 @@
         <file>images/controls/settings-news.svg</file>
         <file>images/controls/share-2.svg</file>
         <file>images/controls/split-tunneling.svg</file>
+        <file>images/controls/split.svg</file>
         <file>images/controls/tag.svg</file>
         <file>images/controls/telegram.svg</file>
         <file>images/controls/text-cursor.svg</file>
@@ -115,7 +124,6 @@
         <file>ui/qml/Components/ConnectButton.qml</file>
         <file>ui/qml/Components/FilterDropDown.qml</file>
         <file>ui/qml/Components/GamepadLoader.qml</file>
-        <file>ui/qml/Components/HomeSplitTunnelingDrawer.qml</file>
         <file>ui/qml/Components/InstalledAppsDrawer.qml</file>
         <file>ui/qml/Components/QuestionDrawer.qml</file>
         <file>ui/qml/Components/SelectLanguageDrawer.qml</file>
@@ -124,6 +132,8 @@
         <file>ui/qml/Components/AddSitePanel.qml</file>
         <file>ui/qml/Components/PlayProtectHint.qml</file>
         <file>ui/qml/Components/UpdateDrawer.qml</file>
+        <file>ui/qml/Components/UpdateSky.qml</file>
+        <file>ui/qml/Components/HomeScene.qml</file>
         <file>ui/qml/Config/GlobalConfig.qml</file>
         <file>ui/qml/Config/qmldir</file>
         <file>ui/qml/Controls2/BackButtonType.qml</file>
@@ -134,6 +144,9 @@
         <file>ui/qml/Controls2/CheckBoxType.qml</file>
         <file>ui/qml/Controls2/ContextMenuType.qml</file>
         <file>ui/qml/Controls2/DividerType.qml</file>
+        <file>ui/qml/Controls2/GlassColumn.qml</file>
+        <file>ui/qml/Controls2/GlassSegment.qml</file>
+        <file>ui/qml/Controls2/LodestarMark.qml</file>
         <file>ui/qml/Controls2/DrawerType2.qml</file>
         <file>ui/qml/Controls2/DropDownType.qml</file>
         <file>ui/qml/Controls2/FlickableType.qml</file>
@@ -191,6 +204,7 @@
         <file>ui/qml/Pages2/PageSettingsServerInfo.qml</file>
         <file>ui/qml/Pages2/PageSettingsServersList.qml</file>
         <file>ui/qml/Pages2/PageSettingsSplitTunneling.qml</file>
+        <file>ui/qml/Pages2/PageSettingsSplit.qml</file>
         <file>ui/qml/Pages2/PageSettingsRuAppsHelp.qml</file>
         <file>ui/qml/Pages2/PageSetupWizardApiServiceInfo.qml</file>
         <file>ui/qml/Pages2/PageSetupWizardApiServicesList.qml</file>
@@ -205,6 +219,7 @@
         <file>ui/qml/Pages2/PageSettingsApiInstructions.qml</file>
         <file>ui/qml/Pages2/PageSettingsApiNativeConfigs.qml</file>
         <file>ui/qml/Pages2/PageSettingsApiDevices.qml</file>
+        <file>ui/qml/Pages2/PageSettingsApiOtherDevice.qml</file>
         <file>images/controls/monitor.svg</file>
         <file>ui/qml/Components/AwgTextField.qml</file>
         <file>ui/qml/Pages2/PageSettingsApiSubscriptionKey.qml</file>

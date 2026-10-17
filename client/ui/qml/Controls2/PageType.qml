@@ -9,8 +9,13 @@ Item {
 
     property StackView stackView: StackView.view
     property bool enableTimer: true
+    // Android's navigation bar under the page: the night's bottom edge (shaders/pagesky.frag)
+    property real navigationBarColor: 0xFF10173A
 
     onVisibleChanged: {
+        if (visible) {
+            PageController.updateNavigationBarColor(navigationBarColor)
+        }
         if (visible && enableTimer) {
             timer.start()
         }

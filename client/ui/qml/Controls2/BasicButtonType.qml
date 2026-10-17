@@ -10,12 +10,14 @@ import "TextTypes"
 Button {
     id: root
 
-    property string hoveredColor: DopamineStyle.color.lightGray
-    property string defaultColor: DopamineStyle.color.paleGray
+    // by default the update sheet's starlight button (the night's main action); the soft glass
+    // one is glassButton* with glassButtonText
+    property string hoveredColor: DopamineStyle.color.starlightHovered
+    property string defaultColor: DopamineStyle.color.starlight
     property string disabledColor: DopamineStyle.color.charcoalGray
-    property string pressedColor: DopamineStyle.color.mutedGray
+    property string pressedColor: DopamineStyle.color.starlightPressed
 
-    property string textColor: DopamineStyle.color.midnightBlack
+    property string textColor: DopamineStyle.color.starlightText
 
     property string borderColor: DopamineStyle.color.paleGray
     property string borderFocusedColor: DopamineStyle.color.paleGray

@@ -9,6 +9,7 @@
 #include "core/api/apiDefs.h"
 #include "core/api/apiUtils.h"
 #include "core/controllers/gatewayController.h"
+#include "core/errorstrings.h"
 #include "core/qrCodeUtils.h"
 #include "protocols/protocols_defs.h"
 #include "ui/controllers/systemController.h"
@@ -25,6 +26,10 @@
 #include <QTimer>
 
 #include "platforms/ios/ios_controller.h"
+
+#ifdef Q_OS_ANDROID
+    #include "platforms/android/android_controller.h"
+#endif
 
 #include <zlib.h>
 
@@ -2003,6 +2008,146 @@ bool ApiConfigsController::deactivateExternalDevice(const QString &uuid, const Q
     }
 
     return true;
+}
+
+bool ApiConfigsController::addOtherDevice(const QString &kind)
+{
+    QJsonObject extra;
+    extra[QStringLiteral("kind")] = kind;
+    return requestOtherDevice(extra);
+}
+
+bool ApiConfigsController::newOtherDeviceFiles(const QString &deviceId)
+{
+    QJsonObject extra;
+    extra[QStringLiteral("device_id")] = deviceId;
+    return requestOtherDevice(extra);
+}
+
+bool ApiConfigsController::requestOtherDevice(const QJsonObject &extra)
+{
+    clearOtherDeviceFiles();
+    const QString tryLater = tr("Could not get the file now. Try again a little later.");
+
+    auto serverIndex = m_serversModel->getProcessedServerIndex();
+    auto serverConfigObject = m_serversModel->getServerConfig(serverIndex);
+    auto apiConfigObject = serverConfigObject.value(configKey::apiConfig).toObject();
+    if (!apiUtils::isPremiumServer(serverConfigObject)) {
+        emit otherDeviceFailed(tryLater);
+        return false;
+    }
+
+    GatewayRequestData gatewayRequestData { QSysInfo::productType(),
+                                            QString(APP_VERSION),
+                                            m_settings->getAppLanguage().name().split("_").first(),
+                                            m_settings->getInstallationUuid(true),
+                                            apiConfigObject.value(configKey::userCountryCode).toString(),
+                                            apiConfigObject.value(configKey::serverCountryCode).toString(),
+                                            apiConfigObject.value(configKey::serviceType).toString(),
+                                            "",
+                                            serverConfigObject.value(configKey::authData).toObject() };
+
+    QJsonObject apiPayload = gatewayRequestData.toJsonObject();
+    for (auto it = extra.constBegin(); it != extra.constEnd(); ++it) {
+        apiPayload.insert(it.key(), it.value());
+    }
+    bool isTestPurchase = apiConfigObject.value(apiDefs::key::isTestPurchase).toBool(false);
+    QByteArray responseBody;
+    ErrorCode errorCode = executeRequest(QString("%1v1/other_device"), apiPayload, responseBody, isTestPurchase);
+    if (errorCode != ErrorCode::NoError) {
+        qWarning() << "[OTHER DEVICE] no files:" << static_cast<int>(errorCode);
+        switch (errorCode) {
+        // not the "this device has no place" of a refused config: the place is for the other one
+        case ErrorCode::ApiConfigLimitError:
+            emit otherDeviceFailed(tr("The subscription has no free place. Unlink a device you no longer use in Active devices, then try again."));
+            break;
+        case ErrorCode::ApiSubscriptionExpiredError:
+        case ErrorCode::ApiDeviceUnlinkedError:
+        case ErrorCode::ApiSubscriptionNotFoundError:
+        case ErrorCode::ApiConfigTimeoutError:
+        case ErrorCode::ApiConfigSslError: emit otherDeviceFailed(errorString(errorCode)); break;
+        default: emit otherDeviceFailed(tryLater);
+        }
+        return false;
+    }
+
+    const QJsonObject answer = QJsonDocument::fromJson(responseBody).object();
+    static const QRegularExpression countryCodeRe(QStringLiteral("^[A-Z]{2}$"));
+    for (const QJsonValue &value : answer.value(QStringLiteral("files")).toArray()) {
+        const QJsonObject f = value.toObject();
+        OtherDeviceFile file;
+        file.countryCode = f.value(QStringLiteral("country_code")).toString();
+        file.countryName = f.value(QStringLiteral("country_name")).toString();
+        file.config = f.value(QStringLiteral("config")).toString();
+        const QString qr = f.value(QStringLiteral("qr")).toString();
+        if (!countryCodeRe.match(file.countryCode).hasMatch() || file.config.isEmpty() || qr.isEmpty()) {
+            continue;
+        }
+        if (file.countryName.isEmpty()) {
+            file.countryName = file.countryCode;
+        }
+        // a name of our own making: nothing of the answer goes into a path
+        file.fileName = QStringLiteral("LodestarVPN-%1.conf").arg(file.countryCode);
+        try {
+            // the short config (the server's own first packet): the long one does not fit in a code
+            const auto code = qrcodegen::QrCode::encodeText(qr.toUtf8().constData(), qrcodegen::QrCode::Ecc::MEDIUM);
+            file.qrImage = qrCodeUtils::svgToBase64(QString::fromStdString(qrcodegen::toSvgString(code, 4)));
+        } catch (const std::exception &e) {
+            qWarning() << "[OTHER DEVICE] no QR code:" << e.what();
+        }
+        m_otherDeviceFiles.append(file);
+    }
+    m_otherDeviceName = answer.value(QStringLiteral("device")).toObject().value(QStringLiteral("name")).toString();
+    if (m_otherDeviceFiles.isEmpty()) {
+        emit otherDeviceFailed(tryLater);
+        return false;
+    }
+    qDebug() << "[OTHER DEVICE] files:" << m_otherDeviceFiles.size();
+    emit otherDeviceFilesChanged();
+    return true;
+}
+
+void ApiConfigsController::clearOtherDeviceFiles()
+{
+    const bool had = !m_otherDeviceFiles.isEmpty() || !m_otherDeviceName.isEmpty();
+    m_otherDeviceFiles.clear();
+    m_otherDeviceName.clear();
+#ifdef Q_OS_ANDROID
+    // the copy the share sheet was given carries the key too
+    AndroidController::instance()->clearSharedFiles();
+#endif
+    if (had) {
+        emit otherDeviceFilesChanged();
+    }
+}
+
+void ApiConfigsController::sendOtherDeviceFile(int index, const QString &fileName)
+{
+    if (index < 0 || index >= m_otherDeviceFiles.size()) {
+        return;
+    }
+    const OtherDeviceFile &file = m_otherDeviceFiles.at(index);
+#ifdef Q_OS_ANDROID
+    Q_UNUSED(fileName)
+    AndroidController::instance()->shareFile(file.fileName, file.config);
+#else
+    if (fileName.isEmpty()) {
+        return;
+    }
+    SystemController::saveFile(fileName, file.config);
+#endif
+}
+
+QVariantList ApiConfigsController::otherDeviceFiles() const
+{
+    QVariantList out;
+    for (const OtherDeviceFile &f : m_otherDeviceFiles) {
+        out.append(QVariantMap { { QStringLiteral("countryCode"), f.countryCode },
+                                 { QStringLiteral("countryName"), f.countryName },
+                                 { QStringLiteral("fileName"), f.fileName },
+                                 { QStringLiteral("qrImage"), f.qrImage } });
+    }
+    return out;
 }
 
 bool ApiConfigsController::isConfigValid()

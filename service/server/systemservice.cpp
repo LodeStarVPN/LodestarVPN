@@ -53,5 +53,13 @@ void SystemService::stop()
         Router::StartRoutingIpv6();
         Xray::getInstance().stopXray();
     }
+#ifdef Q_OS_WIN
+    // and an AmneziaWG tunnel goes down here, while the daemon is alive (it dies with the
+    // local server): left up, its own service (this program as "tunneldaemon") kept the old
+    // files in use and the tunnel up through an upgrade
+    if (m_localServer) {
+        Daemon::instance()->deactivate();
+    }
+#endif
     delete m_localServer;
 }

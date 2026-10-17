@@ -69,6 +69,12 @@ void VpnProtocol::setBytesChanged(quint64 receivedBytes, quint64 sentBytes)
     m_sentBytes = sentBytes;
 }
 
+void VpnProtocol::setBytesBaseline(quint64 receivedBytes, quint64 sentBytes)
+{
+    m_receivedBytes = receivedBytes;
+    m_sentBytes = sentBytes;
+}
+
 void VpnProtocol::setConnectionState(Vpn::ConnectionState state)
 {
     qDebug() << "VpnProtocol::setConnectionState" << textConnectionState(state);

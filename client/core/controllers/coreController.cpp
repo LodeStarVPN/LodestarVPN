@@ -198,6 +198,8 @@ void CoreController::initControllers()
 
     m_splitPresetsModel.reset(new SplitPresetsModel(m_settings, m_serversModel, this));
     m_engine->rootContext()->setContextProperty("SplitPresetsModel", m_splitPresetsModel.get());
+    // the Russian networks the app sends past the VPN itself, the gateway's order (directNetworks.h)
+    m_directNetworks.reset(new DirectNetworks(m_settings, this));
 
     m_healthCheckController.reset(new HealthCheckController(m_serversModel, this));
     m_engine->rootContext()->setContextProperty("HealthCheckController", m_healthCheckController.get());
@@ -409,6 +411,7 @@ void CoreController::updateTranslator(const QLocale &locale)
         m_settings->setAppLanguage(QLocale::English);
     }
 
+    m_splitPresetsModel->retranslate();
     m_engine->retranslate();
 
     emit translationsUpdated();
@@ -463,6 +466,9 @@ void CoreController::initContainerModelUpdateHandler()
     m_serversModel->resetModel();
     // the presets catalog is public - fetch on every app start
     m_splitPresetsModel->fetchPresets();
+    // and so is the order of the Russian networks sent past the VPN (the gateway answers an
+    // empty list while the app has the current one)
+    m_directNetworks->fetch(true);
     // pick up backend-side config changes (e.g. node IP updates) - throttled inside
     m_apiConfigsController->refreshSubscriptionConfigs();
     // and while the app stays open (in the tray for days): an hourly look, the
@@ -474,6 +480,8 @@ void CoreController::initContainerModelUpdateHandler()
         if (!m_connectionController->isConnected() && !m_connectionController->isConnectionInProgress()) {
             m_apiConfigsController->refreshSubscriptionConfigs();
         }
+        // at most twice a day (inside); taken at the next connect
+        m_directNetworks->fetch();
     });
     refreshTimer->start();
 }

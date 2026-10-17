@@ -404,6 +404,20 @@ void SettingsController::toggleRouteLanThroughVpn(bool enable)
     emit routeLanThroughVpnChanged();
 }
 
+bool SettingsController::isRuDirectEnabled()
+{
+    return m_settings->isRuDirectEnabled();
+}
+
+void SettingsController::toggleRuDirect(bool enable)
+{
+    if (m_settings->isRuDirectEnabled() == enable) {
+        return;
+    }
+    m_settings->setRuDirectEnabled(enable);
+    emit ruDirectEnabledChanged();
+}
+
 void SettingsController::toggleKillSwitch(bool enable)
 {
     m_settings->setKillSwitchEnabled(enable);
@@ -582,7 +596,3 @@ void SettingsController::disableHomeAdLabel()
     emit isHomeAdLabelVisibleChanged(false);
 }
 
-bool SettingsController::frknDarkMode() { return m_settings->frknDarkMode(); }
-void SettingsController::toggleFrknDarkMode(bool enable) {
-    m_settings->setFrknDarkMode(enable);
-}

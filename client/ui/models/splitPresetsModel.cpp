@@ -66,6 +66,16 @@ void SplitPresetsModel::setRouteMode(int routeMode)
     emit routeModeChanged();
 }
 
+void SplitPresetsModel::retranslate()
+{
+    // the built-in services are named by tr() when the list is merged: the model is made before
+    // the translator is installed (they came out in English in a Russian app), and a change of
+    // language comes later still
+    beginResetModel();
+    rebuildMergedPresets();
+    endResetModel();
+}
+
 void SplitPresetsModel::fetchPresets()
 {
     qDebug() << "[PRESETS] fetching, cached version:" << m_version;

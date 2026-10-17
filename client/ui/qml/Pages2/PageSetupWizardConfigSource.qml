@@ -270,24 +270,24 @@ PageType {
         delegate: ColumnLayout {
             width: listView.width
 
-            CardWithIconsType {
+            spacing: 0
+
+            // the options in one glass card, whichever of them this system has
+            LabelWithButtonType {
                 Layout.fillWidth: true
-                Layout.rightMargin: 16
-                Layout.leftMargin: 16
-                Layout.bottomMargin: 16
 
                 visible: isVisible
+                glass: root.glassPosition(index)
 
-                headerText: title
-                bodyText: description
+                text: title
+                descriptionText: description
 
                 rightImageSource: "qrc:/images/controls/chevron-right.svg"
                 leftImageSource: imageSource
 
-                onClicked: { handler() }
-
-                Keys.onEnterPressed: this.clicked()
-                Keys.onReturnPressed: this.clicked()
+                clickedFunction: function() {
+                    handler()
+                }
             }
         }
 
@@ -309,7 +309,7 @@ PageType {
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
                 disabledColor: DopamineStyle.color.mutedGray
-                textColor: DopamineStyle.color.goldenApricot
+                textColor: DopamineStyle.color.link
 
                 text: qsTr("LodestarVPN website")
 
@@ -320,6 +320,21 @@ PageType {
                 }
             }
         }
+    }
+
+    // a row's place in the options' card, counting only the options this system shows
+    function glassPosition(i) {
+        const shown = []
+        for (let k = 0; k < variants.length; k++) {
+            if (variants[k].isVisible) {
+                shown.push(k)
+            }
+        }
+        const j = shown.indexOf(i)
+        if (j < 0 || shown.length === 1) {
+            return "single"
+        }
+        return j === 0 ? "first" : j === shown.length - 1 ? "last" : "middle"
     }
 
     property list<QtObject> variants: [
@@ -503,10 +518,10 @@ PageType {
                 Layout.rightMargin: 16
                 Layout.leftMargin: 16
 
-                defaultColor: DopamineStyle.color.transparent
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                textColor: DopamineStyle.color.paleGray
+                defaultColor: DopamineStyle.color.glassButton
+                hoveredColor: DopamineStyle.color.glassButtonHovered
+                pressedColor: DopamineStyle.color.glassButtonPressed
+                textColor: DopamineStyle.color.glassButtonText
 
                 text: qsTr("Cancel")
 

@@ -141,6 +141,12 @@ namespace amnezia
 
         constexpr char allowedDnsServers[] = "allowedDnsServers";
 
+        // the Russian networks the AmneziaWG tunnel opens directly itself (its sorter,
+        // tunnel/awg): the list itself (Windows, for the service) or a file with it (Android,
+        // whose VPN service gets the config in one system message, too small for the list)
+        constexpr char directNetworks[] = "directNetworks";
+        constexpr char directNetworksFile[] = "directNetworksFile";
+
         constexpr char killSwitchOption[] = "killSwitchOption";
 
         constexpr char routeLanThroughVpn[] = "routeLanThroughVpn";

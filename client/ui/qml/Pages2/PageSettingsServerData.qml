@@ -32,13 +32,18 @@ PageType {
 
         model: serverActions
 
+        // each action a glass card of its own: there is seldom more than one
         delegate: ColumnLayout {
             width: listView.width
 
+            spacing: 0
+
             LabelWithButtonType {
                 Layout.fillWidth: true
+                Layout.topMargin: 8
 
                 visible: isVisible
+                glass: "single"
 
                 text: title
                 descriptionText: description
@@ -47,10 +52,6 @@ PageType {
                 clickedFunction: function() {
                     clickedHandler()
                 }
-            }
-
-            DividerType {
-                visible: isVisible
             }
         }
     }

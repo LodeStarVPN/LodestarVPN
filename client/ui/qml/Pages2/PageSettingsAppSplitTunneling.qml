@@ -18,19 +18,10 @@ import "../Controls2/TextTypes"
 import "../Config"
 import "../Components"
 
+// open while connected as the site list is: the apps go to the tunnel on the next connect (the
+// sheet's switch over this list never waited for a disconnect either)
 PageType {
     id: root
-
-    property bool pageEnabled
-
-    Component.onCompleted: {
-        if (ConnectionController.isConnected) {
-            PageController.showNotificationMessage(qsTr("Cannot change split tunneling settings during active connection"))
-            root.pageEnabled = false
-        } else {
-            root.pageEnabled = true
-        }
-    }
 
     QtObject {
         id: routeMode
@@ -87,16 +78,25 @@ PageType {
 
             headerText: qsTr("App split tunneling")
 
-            enabled: root.pageEnabled
             showSwitcher: true
             switcher {
                 checked: AppSplitTunnelingModel.isTunnelingEnabled
-                enabled: root.pageEnabled
             }
             switcherFunction: function(checked) {
                 AppSplitTunnelingModel.toggleSplitTunneling(checked)
                 selector.text = root.routeModesModel[getRouteModesModelIndex()].name
             }
+        }
+
+        CaptionTextType {
+            Layout.fillWidth: true
+            Layout.topMargin: 8
+            Layout.leftMargin: 16
+            Layout.rightMargin: 16
+
+            visible: ConnectionController.isConnected
+            color: DopamineStyle.color.mutedGray
+            text: qsTr("VPN is connected — changes will apply on the next connection")
         }
 
         DropDownType {
@@ -115,7 +115,7 @@ PageType {
             // only Android can switch modes: elsewhere the warning below says
             // which one works, and a locked drop-down only took list space
             visible: Qt.platform.os === "android"
-            enabled: (Qt.platform.os === "android") && root.pageEnabled
+            enabled: Qt.platform.os === "android"
 
             listView: ListViewWithRadioButtonType {
                 rootWidth: root.width
@@ -158,7 +158,7 @@ PageType {
             textString: qsTr("Only \"Apps from the list should not have access via VPN\" mode is available on Windows")
             iconPath: "qrc:/images/controls/alert-circle.svg"
 
-            visible: (Qt.platform.os === "windows") && root.pageEnabled
+            visible: Qt.platform.os === "windows"
         }
     }
 
@@ -190,9 +190,10 @@ PageType {
         delegate: ColumnLayout {
             width: listView.width
 
-            // the row has its own 16 px inside, in line with the dividers
+            // the apps: one glass card down the list
             LabelWithButtonType {
                 Layout.fillWidth: true
+                glass: listView.count === 1 ? "single" : index === 0 ? "first" : index === listView.count - 1 ? "last" : "middle"
 
                 text: appPath
                 rightImageSource: "qrc:/images/controls/trash.svg"
@@ -212,8 +213,6 @@ PageType {
                     showQuestionDrawer(headerText, "", yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
                 }
             }
-
-            DividerType {}
         }
     }
 
@@ -224,12 +223,16 @@ PageType {
         
         height: addAppButton.implicitHeight + 48 + SettingsController.safeAreaBottomMargin
         
-        color: DopamineStyle.color.midnightBlack
+        // the night at the page's bottom edge, fading in over the list's last rows: a flat band stood
+        // out of the sky's gradient as a step
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0010173A" }
+            GradientStop { position: 0.45; color: DopamineStyle.color.nightBottom }
+            GradientStop { position: 1.0; color: DopamineStyle.color.nightBottom }
+        }
         
         RowLayout {
             id: addAppButton
-
-            enabled: root.pageEnabled
 
             anchors.bottom: parent.bottom
             anchors.left: parent.left

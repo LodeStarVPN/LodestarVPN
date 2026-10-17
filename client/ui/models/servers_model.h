@@ -146,6 +146,7 @@ public slots:
     // health probe result for a server (key = row index): >=0 latency ms,
     // -1 offline, missing = unknown
     void setHealthResult(int serverIndex, int latencyMs);
+    void replaceHealthResult(int serverIndex, int latencyMs);
     void clearHealthResults();
     // drops the "offline" verdicts only (the figures stay)
     void clearOfflineHealthResults();

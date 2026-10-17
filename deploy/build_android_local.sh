@@ -55,6 +55,18 @@ fi
 # only what this run builds may be left in deploy/build
 rm -f deploy/build/LodestarVPN-*.apk
 ./deploy/build_android.sh --apk "$ABIS" --move
+# gradle packs into the universal APK every ABI folder it finds: after a run that built only
+# some ABIs the others come from an older build (the old app and the old tunnel) - it stays out
+for apk in deploy/build/LodestarVPN-*-release.apk; do
+    for abi in $(unzip -Z1 "$apk" 'lib/*' 2>/dev/null | cut -d/ -f2 | sort -u); do
+        case ";$ABIS;" in
+            *";$abi;"*) ;;
+            *) echo "Left out $apk: it carries $abi, which this run did not build" >&2
+               rm -f "$apk"
+               break;;
+        esac
+    done
+done
 
 # what goes out is checked, not assumed: the manifest is filled in, the key is ours
 BT="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
@@ -72,6 +84,14 @@ for apk in deploy/build/LodestarVPN-*-release.apk; do
     for abi in $(printf '%s\n' "$libs" | cut -d/ -f2 | sort -u); do
         if ! printf '%s\n' "$libs" | grep -qx "lib/$abi/libDopamine_$abi.so"; then
             echo "FAIL $apk: lib/$abi has no libDopamine_$abi.so" >&2
+            status=1
+        fi
+        # the AmneziaWG tunnel is ours (client/3rd-lodestar): the prebuilt one has neither the
+        # sorter nor the awgSetProtector the service calls, so AmneziaWG would not start
+        tunnel="$(unzip -p "$apk" "lib/$abi/libwg-go.so" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+        ref="client/3rd-lodestar/amneziawg/android/$abi/libwg-go.so.sha256"
+        if [ ! -f "$ref" ] || [ "$tunnel" != "$(tr -d '\r' < "$ref" | cut -d' ' -f1)" ]; then
+            echo "FAIL $apk: lib/$abi/libwg-go.so is not the tunnel of client/3rd-lodestar" >&2
             status=1
         fi
     done

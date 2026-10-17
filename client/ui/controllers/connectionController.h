@@ -25,6 +25,9 @@ class ConnectionController : public QObject
 public:
     Q_PROPERTY(bool isConnected READ isConnected NOTIFY connectionStateChanged)
     Q_PROPERTY(bool isConnectionInProgress READ isConnectionInProgress NOTIFY connectionStateChanged)
+    // a disconnect on its way, not the teardown of a switch to another server: the home
+    // screen's telescope goes down with it (HomeScene.qml)
+    Q_PROPERTY(bool isDisconnecting READ isDisconnecting NOTIFY connectionStateChanged)
     Q_PROPERTY(QString connectionStateText READ connectionStateText NOTIFY connectionStateChanged)
     Q_PROPERTY(QString currentEndpoint READ currentEndpoint NOTIFY connectionStateChanged)
     Q_PROPERTY(QString downloadSpeed READ downloadSpeed NOTIFY speedChanged)
@@ -45,6 +48,7 @@ public:
 
     bool isConnected() const;
     bool isConnectionInProgress() const;
+    bool isDisconnecting() const;
     QString connectionStateText() const;
     QString currentEndpoint() const { return m_currentEndpoint; }
     QString downloadSpeed() const { return m_downloadSpeed; }

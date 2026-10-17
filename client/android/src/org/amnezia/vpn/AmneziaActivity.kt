@@ -45,11 +45,13 @@ import android.widget.Toast
 import androidx.annotation.MainThread
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.graphics.Insets
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.io.File
 import java.io.IOException
 import kotlin.LazyThreadSafetyMode.NONE
 import kotlin.coroutines.CoroutineContext
@@ -89,6 +91,8 @@ private const val OPEN_FILE_AFTER_RESUME_DELAY_MS = 400L
 // lets a result that is already on its way (the user answered the dialog) arrive first
 private const val UPDATE_CONFIRM_AFTER_RESUME_DELAY_MS = 400L
 private const val KEY_PENDING_OPEN_FILE_URI = "pending_open_file_uri"
+// under the app's own files (the FileProvider's qtprovider_paths): what shareFile hands out
+private const val SHARE_DIR = "share"
 
 class AmneziaActivity : QtActivity() {
 
@@ -244,12 +248,19 @@ class AmneziaActivity : QtActivity() {
         registerBroadcastReceivers()
         intent?.let(::processIntent)
         runBlocking { vpnProto = proto.await() }
+    }
 
-        // pterodactyl easter egg trigger
-        getSystemService(SensorManager::class.java)?.let { sensorManager ->
+    // pterodactyl easter egg trigger, listened for only while the window is on screen: the
+    // accelerometer at the game rate, left on from onCreate, kept the main thread busy all day,
+    // the screen off too (some 10 % of a core on a phone)
+    private fun listenForShake(on: Boolean) {
+        val sensorManager = getSystemService(SensorManager::class.java) ?: return
+        if (on) {
             sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { accelerometer ->
                 sensorManager.registerListener(shakeSensorListener, accelerometer, SensorManager.SENSOR_DELAY_GAME)
             }
+        } else {
+            sensorManager.unregisterListener(shakeSensorListener)
         }
     }
 
@@ -405,6 +416,7 @@ class AmneziaActivity : QtActivity() {
     override fun onPause() {
         super.onPause()
         isActivityResumed = false
+        listenForShake(false)
         SelfUpdater.activityResumed = false
         // Cancel all pending operations when activity pauses
         resumeHandler.removeCallbacksAndMessages(null)
@@ -415,6 +427,7 @@ class AmneziaActivity : QtActivity() {
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
+        listenForShake(true)
         Log.d(TAG, "Resume Amnezia activity")
 
         if (pendingOpenFileUri != null && !openFileDeliveryScheduled) {
@@ -826,6 +839,38 @@ class AmneziaActivity : QtActivity() {
         }
     }
 
+    // A file for another app (an iPhone's AmneziaWG config, to a messenger) by the system's
+    // share sheet. It carries a device's key: only the last one shared is kept, and
+    // clearSharedFiles takes it away when its page closes
+    @Suppress("unused")
+    fun shareFile(fileName: String, data: String) {
+        Log.d(TAG, "Share file $fileName")
+        mainScope.launch {
+            try {
+                val dir = File(filesDir, SHARE_DIR).apply { mkdirs() }
+                dir.listFiles()?.forEach { it.delete() }
+                val file = File(dir, File(fileName).name).apply { writeText(data) }
+                val uri = FileProvider.getUriForFile(this@AmneziaActivity, "$packageName.qtprovider", file)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/octet-stream"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(send, null))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to share file $fileName: $e")
+                Toast.makeText(this@AmneziaActivity, "Unsupported", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    @Suppress("unused")
+    fun clearSharedFiles() {
+        mainScope.launch {
+            File(filesDir, SHARE_DIR).listFiles()?.forEach { it.delete() }
+        }
+    }
+
     @Suppress("unused")
     fun openFile(filter: String?) {
         Log.v(TAG, "Open file with filter: $filter")
@@ -1154,9 +1199,9 @@ class AmneziaActivity : QtActivity() {
 
     // returns at once: the copy into the install session runs on SelfUpdater's own thread
     @Suppress("unused")
-    fun installUpdate(path: String) {
+    fun installUpdate(path: String, reconnect: Boolean) {
         Log.v(TAG, "Install update")
-        SelfUpdater.install(this, path)
+        SelfUpdater.install(this, path, reconnect)
     }
 
     @Suppress("unused")

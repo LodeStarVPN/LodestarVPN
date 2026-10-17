@@ -336,6 +336,31 @@ bool WireguardUtilsWindows::deleteExclusionRoute(const IPAddress& prefix) {
   return m_routeMonitor->deleteExclusionRoute(prefix);
 }
 
+bool WireguardUtilsWindows::addExclusionRoutes(const QList<IPAddress>& prefixes) {
+  return m_routeMonitor->addExclusionRoutes(prefixes);
+}
+
+void WireguardUtilsWindows::deleteExclusionRoutes(const QList<IPAddress>& prefixes) {
+  m_routeMonitor->deleteExclusionRoutes(prefixes);
+}
+
+bool WireguardUtilsWindows::setDirectNetworks(const QStringList& networks) {
+  // The tunnel's sorter (tunnel/awg): a connection to one of these networks never reaches the
+  // peer - the tunnel opens it by the computer's own network itself, from this service's own
+  // process (which the kill switch lets out). One set operation gives the whole list.
+  QString message = QStringLiteral("set=1\nreplace_direct_networks=true\n");
+  for (const QString& network : networks) {
+    message += QStringLiteral("direct_network=") + network + QLatin1Char('\n');
+  }
+  const QString reply = m_tunnel.uapiCommand(message);
+  if (!reply.contains(QStringLiteral("errno=0"))) {
+    logger.error() << "The tunnel did not take the networks it opens directly";
+    return false;
+  }
+  logger.debug() << "The tunnel opens" << networks.size() << "networks directly";
+  return true;
+}
+
 bool WireguardUtilsWindows::excludeLocalNetworks(
     const QList<IPAddress>& addresses) {
   // If the interface isn't up then something went horribly wrong.

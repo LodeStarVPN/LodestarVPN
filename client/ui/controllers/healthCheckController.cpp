@@ -114,9 +114,11 @@ void HealthCheckController::applyGatewayRow(int row)
     const int entryLeg = m_entryLeg ? m_entryLeg(country, protocol) : -1;
     const int onward = entryLeg >= 0 ? entryLeg : 0;
     // -3: no probe of that kind at all (no config of its own, no landmarks)
+    // the figures are computed whole here, from the best of what answered: each one replaces the
+    // last (a way on that comes later raises it)
     const int own = m_ownResult.value(row, -3);
     if (own >= 0) {
-        m_serversModel->setHealthResult(row, own + onward);
+        m_serversModel->replaceHealthResult(row, own + onward);
         return;
     }
     if (own == -2) {
@@ -124,7 +126,7 @@ void HealthCheckController::applyGatewayRow(int row)
     }
     const int landmark = m_landmarkResult.value(key, -3);
     if (landmark >= 0) {
-        m_serversModel->setHealthResult(row, landmark + onward);
+        m_serversModel->replaceHealthResult(row, landmark + onward);
         return;
     }
     if (landmark == -2) {
@@ -136,7 +138,7 @@ void HealthCheckController::applyGatewayRow(int row)
         // behind an entry the relay is in the entry's country: the way on from it
         const int leg = entryLeg >= 0 ? entryLeg : m_serverLeg(country, protocol);
         if (leg >= 0) {
-            m_serversModel->setHealthResult(row, m_relayMs + leg);
+            m_serversModel->replaceHealthResult(row, m_relayMs + leg);
             return;
         }
     }

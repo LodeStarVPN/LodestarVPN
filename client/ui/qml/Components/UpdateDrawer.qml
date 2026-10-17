@@ -13,7 +13,10 @@ import "../Controls2/TextTypes"
 // open sheet (DrawerType2): coming back from one of them with something to
 // explain (Play Protect, a cancel, the permission), the sheet opens again. On
 // Windows the app closes for the installer and opens again after it: an
-// install that did not happen opens the sheet at that start
+// install that did not happen opens the sheet at that start.
+// The whole sheet is the connect button's night sky (UpdateSky): the light runs
+// along the route of the app icon into the lodestar at the end of the title as
+// the update comes down. Its colours do not follow the theme, as the button's do not
 DrawerType2 {
     id: root
     objectName: "updateDrawer"
@@ -36,50 +39,79 @@ DrawerType2 {
 
     expandedHeight: Math.min(sheetContentHeight, height * 0.9)
 
-    readonly property string headerText: {
-        if (updateState === UpdateEnum.ReadyToInstall) {
-            return qsTr("Before you install")
-        }
-        if (updateState === UpdateEnum.WaitingPermission) {
-            return qsTr("Allow updates")
-        }
-        if (failed && updateFailure === UpdateEnum.PlayProtect) {
-            return qsTr("Google Play Protect stopped the update")
-        }
-        return qsTr("Update available")
+    // the sky's own edge and the sky under the content's end
+    defaultColor: "#04071A"
+    borderColor: "#3896AFFF"
+    handle: true
+    handleColor: "#47C9D1EA"
+
+    // decimal megabytes, as Android shows sizes
+    function megabytes(bytes) {
+        return Math.round(bytes / 1000000)
     }
 
-    readonly property string bodyText: {
+    readonly property string titleText: qsTr("Update %1").arg("<font color=\"#A9C1FF\">" + UpdateController.availableVersion + "</font>")
+
+    readonly property string statusText: {
         switch (updateState) {
         case UpdateEnum.Available:
-            // decimal megabytes, as Android shows sizes
-            return qsTr("Version %1 is ready. The download is about %2 MB.")
-                    .arg(UpdateController.availableVersion)
-                    .arg(Math.max(1, Math.round(UpdateController.downloadSize / 1000000)))
+            return qsTr("A new version is available")
         case UpdateEnum.Downloading:
-            return qsTr("Downloading the update…")
+            // the whole file is here: its size and hash are being checked
+            return UpdateController.progress >= 1 ? qsTr("Checking the file") : qsTr("Downloading")
         case UpdateEnum.ReadyToInstall:
-            // Android: the Play Protect hint below says it all
-            return windows ? qsTr("The VPN turns off for the install, and the app closes and opens again by itself. Windows will ask to allow changes — choose «Yes».")
-                           : ""
+            return qsTr("Ready to install")
+        case UpdateEnum.WaitingPermission:
+            return qsTr("Allow updates")
+        case UpdateEnum.Installing:
+            return qsTr("Installing")
+        case UpdateEnum.Failed:
+            switch (updateFailure) {
+            case UpdateEnum.Network:
+                return qsTr("Couldn't download")
+            case UpdateEnum.Corrupt:
+                return qsTr("The file was damaged")
+            case UpdateEnum.PlayProtect:
+                return qsTr("Google Play Protect stopped the update")
+            case UpdateEnum.Cancelled:
+                return windows ? qsTr("The update was not installed") : qsTr("The update was cancelled")
+            case UpdateEnum.BlockedBySystem:
+                return qsTr("Android didn't allow the installation")
+            }
+            return qsTr("Couldn't install the update")
+        }
+        return ""
+    }
+
+    readonly property string subText: {
+        switch (updateState) {
+        case UpdateEnum.Available:
+            return qsTr("The download is about %1 MB").arg(Math.max(1, megabytes(UpdateController.downloadSize)))
+        case UpdateEnum.Downloading:
+            return qsTr("%1 of %2 MB").arg(megabytes(UpdateController.downloadSize * UpdateController.progress))
+                                     .arg(Math.max(1, megabytes(UpdateController.downloadSize)))
+        case UpdateEnum.ReadyToInstall:
+            // Android: the Play Protect hint below shows the rest
+            if (windows) {
+                return qsTr("The VPN turns off for the install, and the app closes and opens again by itself. Windows will ask to allow changes — choose «Yes».")
+            }
+            return ConnectionController.isConnected ? qsTr("The VPN turns off for the install and comes back by itself.") : ""
         case UpdateEnum.WaitingPermission:
             return qsTr("To install updates, allow LodestarVPN to install apps: turn on «Allow from this source» and come back.")
         case UpdateEnum.Installing:
-            return windows ? qsTr("Installing the update — the app will close and open again.")
-                           : qsTr("Confirm the installation in the system window.")
+            return windows ? qsTr("The app will close and open again.") : qsTr("Confirm the installation in the system window.")
         case UpdateEnum.Failed:
             switch (updateFailure) {
-            case UpdateEnum.Cancelled:
-                return windows ? qsTr("The update was not installed. When Windows asks to allow changes, choose «Yes».")
-                               : qsTr("The update was cancelled.")
             case UpdateEnum.Network:
-                return qsTr("Couldn't download the update. Check your internet connection and try again.")
+                return qsTr("Check your internet connection and try again.")
             case UpdateEnum.Corrupt:
-                return qsTr("The update file was damaged. Try again.")
+                return qsTr("Download it again.")
+            case UpdateEnum.Cancelled:
+                return windows ? qsTr("When Windows asks to allow changes, choose «Yes».") : ""
             case UpdateEnum.BlockedBySystem:
-                return qsTr("Android didn't allow the installation. Try again later or contact support.")
+                return qsTr("Try again later or contact support.")
             case UpdateEnum.Other:
-                return qsTr("Couldn't install the update. Try again.")
+                return qsTr("Try again.")
             }
             return ""
         }
@@ -200,7 +232,7 @@ DrawerType2 {
         id: scroller
 
         implicitHeight: root.expandedHeight
-        contentHeight: content.implicitHeight + 32 + SettingsController.safeAreaBottomMargin
+        contentHeight: content.implicitHeight + 22 + SettingsController.safeAreaBottomMargin
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         interactive: contentHeight > height
@@ -214,82 +246,126 @@ DrawerType2 {
         }
         Component.onCompleted: root.sheetContentHeight = contentHeight
 
+        UpdateSky {
+            id: sky
+
+            width: scroller.width
+            height: Math.max(scroller.height, scroller.contentHeight)
+
+            running: root.isOpened && Qt.application.state === Qt.ApplicationActive
+        }
+
         ColumnLayout {
             id: content
 
             width: scroller.width
             spacing: 0
 
-            Header2TextType {
+            // the handle's room (DrawerType2 draws it)
+            Item {
                 Layout.fillWidth: true
-                Layout.topMargin: 24
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-
-                wrapMode: Text.Wrap
-
-                text: root.headerText
+                Layout.preferredHeight: 12
             }
 
-            ParagraphTextType {
+            // the lodestar stands at the end of this row (UpdateSky)
+            Text {
                 Layout.fillWidth: true
-                Layout.topMargin: 12
+                Layout.topMargin: 18
                 Layout.leftMargin: 16
-                Layout.rightMargin: 16
+                Layout.rightMargin: 84
 
-                visible: text !== ""
+                font.family: "IBM Plex Mono"
+                font.pixelSize: 20
+                font.weight: Font.Medium
+                lineHeight: 28
+                lineHeightMode: Text.FixedHeight
+                color: "#E9EDFB"
+                textFormat: Text.StyledText
+                elide: Text.ElideRight
 
-                text: root.bodyText
+                text: root.titleText
+            }
+
+            // the route's room: the sky above the status is the route's to 212 px from the top
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 154
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.topMargin: 16
+                Layout.topMargin: 14
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
-                spacing: 12
+                spacing: 16
 
-                visible: root.updateState === UpdateEnum.Downloading
-
-                Rectangle {
+                ColumnLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
 
-                    implicitHeight: 6
-                    radius: 3
-                    color: DopamineStyle.color.sheerWhite
+                    spacing: 3
 
-                    Rectangle {
-                        width: parent.width * Math.min(1, Math.max(0, UpdateController.progress))
-                        height: parent.height
-                        radius: parent.radius
-                        color: DopamineStyle.color.goldenApricot
+                    Text {
+                        Layout.fillWidth: true
+
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: 15
+                        font.weight: Font.Medium
+                        lineHeight: 20
+                        lineHeightMode: Text.FixedHeight
+                        color: "#D5DBF0"
+                        wrapMode: Text.Wrap
+
+                        text: root.statusText
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+
+                        visible: text !== ""
+
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: 13
+                        lineHeight: 19
+                        lineHeightMode: Text.FixedHeight
+                        color: "#8A93B2"
+                        wrapMode: Text.Wrap
+
+                        text: root.subText
                     }
                 }
 
-                CaptionTextType {
+                // how much has come; where it stopped, greyed, when the download broke off
+                Text {
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.minimumWidth: 40
 
-                    horizontalAlignment: Text.AlignRight
-                    color: DopamineStyle.color.mutedGray
-                    font.pixelSize: 14
+                    readonly property bool broken: root.failed && root.updateFailure === UpdateEnum.Network && sky.lastProgress > 0
 
-                    text: Math.floor(UpdateController.progress * 100) + "%"
+                    visible: text !== ""
+
+                    font.family: "IBM Plex Mono"
+                    font.pixelSize: 28
+                    font.weight: Font.Medium
+                    font.features: { "tnum": 1 }
+                    color: broken ? "#5F6888" : "#A9C1FF"
+
+                    text: root.updateState === UpdateEnum.Downloading ? Math.floor(UpdateController.progress * 100) + "%"
+                        : broken ? Math.floor(sky.lastProgress * 100) + "%" : ""
                 }
             }
 
             PlayProtectHint {
                 Layout.fillWidth: true
-                Layout.topMargin: 12
+                Layout.topMargin: 16
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
                 visible: root.playProtectHintVisible
+                captionColor: "#8A93B2"
             }
 
-            SmallTextType {
+            Text {
                 Layout.fillWidth: true
                 Layout.topMargin: 16
                 Layout.leftMargin: 16
@@ -297,21 +373,17 @@ DrawerType2 {
 
                 visible: root.appLockHintVisible
 
+                font.family: "IBM Plex Mono"
+                font.pixelSize: 13
+                lineHeight: 19
+                lineHeightMode: Text.FixedHeight
+                color: "#8A93B2"
+                wrapMode: Text.Wrap
+
                 text: qsTr("If Google Play is locked with App lock, open Google Play and unlock it first — otherwise the lock screen hides this window and the update is cancelled.")
             }
 
-            SmallTextType {
-                Layout.fillWidth: true
-                Layout.topMargin: 16
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-
-                visible: root.updateState === UpdateEnum.ReadyToInstall && ConnectionController.isConnected
-                color: DopamineStyle.color.mutedGray
-
-                text: qsTr("The VPN will reconnect after the update.")
-            }
-
+            // the main step: in starlight
             BasicButtonType {
                 Layout.fillWidth: true
                 Layout.topMargin: 24
@@ -319,6 +391,12 @@ DrawerType2 {
                 Layout.rightMargin: 16
 
                 visible: root.buttonText !== ""
+
+                defaultColor: "#E6ECFF"
+                hoveredColor: "#F1F4FF"
+                pressedColor: "#D2DCFA"
+                disabledColor: "#8A93B2"
+                textColor: "#0C1433"
 
                 text: root.buttonText
 
@@ -333,12 +411,11 @@ DrawerType2 {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
-                defaultColor: DopamineStyle.color.transparent
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                disabledColor: DopamineStyle.color.mutedGray
-                textColor: DopamineStyle.color.paleGray
-                borderWidth: 1
+                defaultColor: "#14C9D1EA"
+                hoveredColor: "#1FC9D1EA"
+                pressedColor: "#29C9D1EA"
+                disabledColor: "#14C9D1EA"
+                textColor: "#C9D1EA"
 
                 visible: root.updateState === UpdateEnum.Downloading
 

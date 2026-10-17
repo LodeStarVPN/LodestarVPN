@@ -40,6 +40,9 @@ class InterfaceConfig {
   QStringList m_excludedAddresses;
   QStringList m_vpnDisabledApps;
   QStringList m_allowedDnsServers;
+  // networks whose connections the tunnel opens by the device's own network itself
+  // (AmneziaWG's sorter, tunnel/awg): the Russian sites the app sends past the VPN
+  QStringList m_directNetworks;
   bool m_killSwitchEnabled;
   bool m_routeLanThroughVpn = false;
 #if defined(MZ_ANDROID) || defined(MZ_IOS)

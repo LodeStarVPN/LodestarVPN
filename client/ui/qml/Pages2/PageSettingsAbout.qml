@@ -108,22 +108,24 @@ PageType {
 
         model: contacts
 
+        // the contacts in one glass card
         delegate: ColumnLayout {
             width: listView.width
 
+            spacing: 0
+
             LabelWithButtonType {
                 Layout.fillWidth: true
-                Layout.topMargin: 6
+                Layout.topMargin: index === 0 ? 6 : 0
 
                 text: title
                 descriptionText: description
                 leftImageSource: imageSource
+                glass: root.contacts.length === 1 ? "single" : index === 0 ? "first"
+                     : index === root.contacts.length - 1 ? "last" : "middle"
 
                 clickedFunction: handler
             }
-
-            DividerType {}
-
         }
 
         footer: ColumnLayout {
@@ -163,7 +165,7 @@ PageType {
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
                 disabledColor: DopamineStyle.color.mutedGray
-                textColor: DopamineStyle.color.goldenApricot
+                textColor: DopamineStyle.color.link
 
                 // dim while the gateway is being asked
                 opacity: UpdateController.supported && UpdateController.state === UpdateEnum.Checking ? 0.5 : 1
@@ -199,7 +201,7 @@ PageType {
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
                 disabledColor: DopamineStyle.color.mutedGray
-                textColor: DopamineStyle.color.goldenApricot
+                textColor: DopamineStyle.color.link
 
                 text: qsTr("Privacy Policy")
 

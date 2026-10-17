@@ -63,8 +63,6 @@ DrawerType2 {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.topMargin: 16
-                Layout.rightMargin: 16
-                Layout.leftMargin: 16
 
                 model: SortFilterProxyModel {
                     id: proxyInstalledAppsModel
@@ -80,10 +78,25 @@ DrawerType2 {
                     id: buttonGroup
                 }
 
-                delegate: ColumnLayout {
+                // the apps: one glass card down the list
+                delegate: Item {
                     width: listView.width
+                    implicitHeight: appRow.implicitHeight
+
+                    GlassSegment {
+                        anchors.fill: parent
+
+                        position: listView.count === 1 ? "single" : index === 0 ? "first" : index === listView.count - 1 ? "last" : "middle"
+                    }
 
                     RowLayout {
+                        id: appRow
+
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 32
+
                         CheckBoxType {
                             Layout.fillWidth: true
 
@@ -99,12 +112,8 @@ DrawerType2 {
 
                             sourceSize.width: 24
                             sourceSize.height: 24
-
-                            Layout.rightMargin: 48
                         }
                     }
-
-                    DividerType {}
                 }
             }
         }

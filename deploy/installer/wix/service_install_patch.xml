@@ -30,6 +30,16 @@
                 Stop="both"
                 Remove="uninstall"
                 Wait="yes" />
+        <!-- Our own AmneziaWG tunnel's service (this program as "tunneldaemon", there while
+             the VPN is on): a package put over a connected VPN stops and removes it first,
+             or it keeps the old lodestar-service.exe in use and the tunnel up through it.
+             The app connects anew after the install. -->
+        <ServiceControl
+                Id="LodestarTunnelControl"
+                Name="AmneziaWGTunnel$Lodestar"
+                Stop="both"
+                Remove="both"
+                Wait="yes" />
         <!-- No cleanup of other clients' services here: Dopamine by FRKN and
              AmneziaVPN may be installed side by side and must keep working. -->
     </CPackWiXFragment>

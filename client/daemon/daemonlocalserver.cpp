@@ -13,6 +13,10 @@
 #include "logger.h"
 #include "peercheck.h"
 
+#ifdef MZ_WINDOWS
+#  include <windows.h>
+#endif
+
 #if defined(MZ_MACOS) || defined(MZ_LINUX)
 #  include <sys/stat.h>
 #  include <sys/types.h>
@@ -71,6 +75,18 @@ bool DaemonLocalServer::initialize() {
 
   return true;
 }
+
+#ifdef MZ_WINDOWS
+bool DaemonLocalServer::pipeLeftOver() const {
+  // a pipe of no instance at all is "not found" at once; one with instances
+  // answers, or times out when none of them listens
+  const QString path = daemonPath();
+  if (WaitNamedPipeW(reinterpret_cast<LPCWSTR>(path.utf16()), 1)) {
+    return true;
+  }
+  return GetLastError() != ERROR_FILE_NOT_FOUND;
+}
+#endif
 
 QString DaemonLocalServer::daemonPath() const {
 #if defined(MZ_WINDOWS)

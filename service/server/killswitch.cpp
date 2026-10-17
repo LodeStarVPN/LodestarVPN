@@ -210,6 +210,12 @@ bool KillSwitch::enablePeerTraffic(const QJsonObject &configStr) {
 
     int splitTunnelType = configStr.value("splitTunnelType").toInt();
     QJsonArray splitTunnelSites = configStr.value("splitTunnelSites").toArray();
+    // the lists as the app flattened them: the user's sites, the services' and the
+    // Russian networks it sends past the VPN; only the user's sites from an app that did not
+    const QJsonArray includeSites = configStr.contains(amnezia::config_key::splitTunnelIncludeSites)
+        ? configStr.value(amnezia::config_key::splitTunnelIncludeSites).toArray() : splitTunnelSites;
+    const QJsonArray excludeSites = configStr.contains(amnezia::config_key::splitTunnelExcludeSites)
+        ? configStr.value(amnezia::config_key::splitTunnelExcludeSites).toArray() : splitTunnelSites;
 
     // Use APP split tunnel
     if (splitTunnelType == 0 || splitTunnelType == 2) {
@@ -218,7 +224,7 @@ bool KillSwitch::enablePeerTraffic(const QJsonObject &configStr) {
     }
 
     if (splitTunnelType == 1) {
-        for (auto v : splitTunnelSites) {
+        for (auto v : includeSites) {
             QString ipRange = v.toString();
             if (ipRange.split('/').size() > 1) {
                 config.m_allowedIPAddressRanges.append(
@@ -231,7 +237,7 @@ bool KillSwitch::enablePeerTraffic(const QJsonObject &configStr) {
 
     config.m_excludedAddresses.append(configStr.value("vpnServer").toString());
     if (splitTunnelType == 2) {
-        for (auto v : splitTunnelSites) {
+        for (auto v : excludeSites) {
             QString ipRange = v.toString();
             config.m_excludedAddresses.append(ipRange);
         }

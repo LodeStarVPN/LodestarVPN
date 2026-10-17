@@ -32,12 +32,13 @@ Item {
     property bool multiline: false
     readonly property string inputText: multiline ? textArea.text : textField.text
 
-    property string borderColor: DopamineStyle.color.slateGray
-    property string borderFocusedColor: DopamineStyle.color.paleGray
+    // glass, as the home's server card; the ring's blue at its edge while typed in
+    property string borderColor: "#24A9C1FF"
+    property string borderFocusedColor: "#BF6E91FF"
 
     property string backgroundColor: DopamineStyle.color.onyxBlack
     property string backgroundDisabledColor: DopamineStyle.color.transparent
-    property string bgBorderHoveredColor: DopamineStyle.color.charcoalGray
+    property string bgBorderHoveredColor: "#40A9C1FF"
 
     implicitWidth: content.implicitWidth
     implicitHeight: content.implicitHeight

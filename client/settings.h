@@ -1,6 +1,7 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+#include <QDateTime>
 #include <QObject>
 #include <QSettings>
 #include <QString>
@@ -265,6 +266,50 @@ public:
         m_settings.setValue("Conf/splitPresetsRouteMode", mode);
     }
 
+    // Russian sites directly (the switch «Российские сайты напрямую», on unless turned off): the
+    // Russian networks from the head of the gateway's order go past the VPN (DirectNetworks)
+    bool isRuDirectEnabled() const
+    {
+        return m_settings.value("Conf/ruDirectEnabled", true).toBool();
+    }
+    void setRuDirectEnabled(bool enabled)
+    {
+        m_settings.setValue("Conf/ruDirectEnabled", enabled);
+    }
+    // the gateway's order of them as last fetched (empty: the copy built in), and its version
+    QStringList ruDirectNetworks() const
+    {
+        return m_settings.value("Conf/ruDirectNetworks", QStringList()).toStringList();
+    }
+    QString ruDirectVersion() const
+    {
+        return m_settings.value("Conf/ruDirectVersion", QString()).toString();
+    }
+    void setRuDirectNetworks(const QStringList &networks, const QString &version)
+    {
+        m_settings.setValue("Conf/ruDirectNetworks", networks);
+        m_settings.setValue("Conf/ruDirectVersion", version);
+    }
+    // the version of the whole country's list kept beside the settings (DirectNetworks::whole);
+    // empty: the copy built in
+    QString ruDirectFullVersion() const
+    {
+        return m_settings.value("Conf/ruDirectFullVersion", QString()).toString();
+    }
+    void setRuDirectFullVersion(const QString &version)
+    {
+        m_settings.setValue("Conf/ruDirectFullVersion", version);
+    }
+    // when the gateway was last asked for it (the app may stay open for days)
+    QDateTime ruDirectFetchedAt() const
+    {
+        return m_settings.value("Conf/ruDirectFetchedAt", QDateTime()).toDateTime();
+    }
+    void setRuDirectFetchedAt(const QDateTime &at)
+    {
+        m_settings.setValue("Conf/ruDirectFetchedAt", at);
+    }
+
     //    static constexpr char openNicNs5[] = "94.103.153.176";
     //    static constexpr char openNicNs13[] = "144.76.103.143";
 
@@ -345,9 +390,6 @@ public:
     
     QStringList allowedDnsServers() const;
     void setAllowedDnsServers(const QStringList &servers);
-
-    bool frknDarkMode() const { return m_settings.value("FRKN/darkMode", true).toBool(); }
-    void setFrknDarkMode(bool enabled) { m_settings.setValue("FRKN/darkMode", enabled); }
 
     // the in-app update: the version whose card on the home screen was closed
     QString updateDismissedVersion() const { return m_settings.value("update/dismissedVersion").toString(); }

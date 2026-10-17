@@ -1,0 +1,11 @@
+<!-- LodestarVPN home screen telescope (HomeScene.qml), from local-tools/design/home/telescope.html; units: the telescope's own, pivot at 0,0: the tripod, its feet on the near hill -->
+<svg xmlns="http://www.w3.org/2000/svg" width="98" height="99" viewBox="-44 12 98 99">
+<defs><linearGradient id="legG2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0b1028"/><stop offset="0.45" stop-color="#060812"/><stop offset="1" stop-color="#030409"/></linearGradient></defs>
+<path d="M-7.951,19.224 L-40.078,102.039 L-37.569,103.037 L-4.049,20.776 Z" fill="url(#legG2)"/>
+<rect x="-41.929" y="100.838" width="6.21" height="3.4" rx="1.5" fill="#05070f"/>
+<path d="M4.14,20.975 L48.216,103.458 L50.607,102.205 L7.86,19.025 Z" fill="url(#legG2)"/>
+<rect x="46.307" y="101.132" width="6.21" height="3.4" rx="1.5" fill="#05070f"/>
+<path d="M-11,14 L11,14 L8.5,21 L-8.5,21 Z" fill="#05070f"/>
+<path d="M-2.295,21.156 L4.436,107.822 L7.329,107.626 L2.295,20.844 Z" fill="url(#legG2)"/>
+<rect x="2.547" y="106.024" width="6.67" height="3.4" rx="1.5" fill="#05070f"/>
+</svg>

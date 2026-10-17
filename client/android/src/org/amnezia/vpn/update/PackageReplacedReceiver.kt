@@ -49,15 +49,17 @@ class PackageReplacedReceiver : BroadcastReceiver() {
 
     private fun reconnect(app: Context) {
         if (!Prefs.load<Boolean>(PREFS_UPDATE_RECONNECT)) return
-        Prefs.prefs.edit().remove(PREFS_UPDATE_RECONNECT).commit()
+        val turnedOff = Prefs.load<Boolean>(PREFS_UPDATE_TURNED_OFF)
+        Prefs.prefs.edit().remove(PREFS_UPDATE_RECONNECT).remove(PREFS_UPDATE_TURNED_OFF).commit()
         if (VpnService.prepare(app) != null) {
             Log.i(TAG, "No VPN permission: not reconnecting")
             return
         }
         val state = runBlocking { VpnStateStore.getVpnState() }
         // the service saves every change and the update kills it without one: an «off» here is the
-        // user's own, made while the system's dialogs were open
-        if (state.protocolState == DISCONNECTED || state.protocolState == DISCONNECTING) {
+        // user's own, made while the system's dialogs were open — unless the app turned it off
+        // itself before the install (UpdateController)
+        if (!turnedOff && (state.protocolState == DISCONNECTED || state.protocolState == DISCONNECTING)) {
             Log.i(TAG, "The VPN was turned off: not reconnecting")
             return
         }

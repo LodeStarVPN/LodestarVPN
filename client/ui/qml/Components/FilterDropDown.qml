@@ -110,10 +110,12 @@ Rectangle {
         leftPadding: 4
         rightPadding: 4
 
+        // the night itself under the list, not the rows' glass: the glass is see-through and the
+        // rows under the open list showed through it (the owner, 2026-10-17: «список прозрачный»)
         background: Rectangle {
             radius: 16
-            color: DopamineStyle.color.onyxBlack
-            border.color: DopamineStyle.color.charcoalGray
+            color: DopamineStyle.color.darkCharcoal
+            border.color: DopamineStyle.color.sheerWhite
             border.width: 1
         }
 
@@ -135,17 +137,31 @@ Rectangle {
 
                 ButtonTextType {
                     anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.right: chosenMark.left
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.leftMargin: 12
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: 8
 
                     horizontalAlignment: Text.AlignLeft
                     wrapMode: Text.NoWrap
                     elide: Text.ElideRight
 
                     text: name
-                    color: value === root.currentValue ? DopamineStyle.color.goldenApricot : DopamineStyle.color.paleGray
+                    color: DopamineStyle.color.paleGray
+                }
+
+                // the chosen one: the lodestar, as everywhere a choice is shown
+                LodestarMark {
+                    id: chosenMark
+
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    implicitWidth: 22
+                    implicitHeight: 22
+
+                    visible: value === root.currentValue
                 }
 
                 MouseArea {

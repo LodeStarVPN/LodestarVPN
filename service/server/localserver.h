@@ -54,6 +54,13 @@ public:
     DaemonLocalServer server{qApp};
     MacOSDaemon daemon;
 #endif
+
+#ifdef Q_OS_WIN
+private:
+    // the daemon's pipe is made once nothing is left of an old one (localserver.cpp)
+    void startDaemonServer();
+    int m_daemonPipeWaits = 0;
+#endif
 };
 
 #endif // LOCALSERVER_H

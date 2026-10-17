@@ -67,6 +67,7 @@ PageType {
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
+                Layout.bottomMargin: 8
 
                 headerText: qsTr("Application")
             }
@@ -74,7 +75,8 @@ PageType {
 
         model: 1 // fake model to force the ListView to be created without a model
 
-        delegate: ColumnLayout { // TODO(CyAn84): add DelegateChooser when have migrated to 6.9
+        // the switches in one glass card, whichever of them the platform has
+        delegate: GlassColumn { // TODO(CyAn84): add DelegateChooser when have migrated to 6.9
 
             width: listView.width
 
@@ -84,7 +86,6 @@ PageType {
                 visible: GC.isMobile()
 
                 Layout.fillWidth: true
-                Layout.margins: 16
 
                 text: qsTr("Allow application screenshots")
 
@@ -126,7 +127,6 @@ PageType {
                 visible: !GC.isMobile()
 
                 Layout.fillWidth: true
-                Layout.margins: 16
 
                 text: qsTr("Auto start")
                 descriptionText: qsTr("Launch the application every time the device is starts")
@@ -149,7 +149,6 @@ PageType {
                 visible: !GC.isMobile()
 
                 Layout.fillWidth: true
-                Layout.margins: 16
 
                 text: qsTr("Auto connect")
                 descriptionText: qsTr("Connect to VPN on app start")
@@ -172,7 +171,6 @@ PageType {
                 visible: !GC.isMobile()
 
                 Layout.fillWidth: true
-                Layout.margins: 16
 
                 text: qsTr("Start minimized")
                 descriptionText: qsTr("Launch application minimized (works with autostart option turned on)")
@@ -198,66 +196,49 @@ PageType {
 
             width: listView.width
 
-            LabelWithButtonType {
-                id: labelWithButtonLanguage
+            spacing: 0
 
+            GlassColumn {
                 Layout.fillWidth: true
+                Layout.topMargin: 16
 
-                text: qsTr("Language")
-                descriptionText: LanguageModel.currentLanguageName
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
+                LabelWithButtonType {
+                    id: labelWithButtonLanguage
 
-                clickedFunction: function() {
-                    selectLanguageDrawer.openTriggered()
-                }
-            }
+                    Layout.fillWidth: true
 
-            DividerType {}
+                    text: qsTr("Language")
+                    descriptionText: LanguageModel.currentLanguageName
+                    rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
-            SwitcherType {
-                id: switcherDarkMode
-
-                Layout.fillWidth: true
-                Layout.margins: 16
-
-                text: qsTr("Dark mode")
-                descriptionText: qsTr("Use dark mode")
-
-                checked: SettingsController.frknDarkMode()
-                onToggled: function() {
-                    if (checked !== SettingsController.frknDarkMode()) {
-                        SettingsController.toggleFrknDarkMode(checked)
-                    }
-                    if (SettingsController.frknDarkMode()) {
-                        DopamineStyle.color = DopamineStyle.darkColorPalette
-                    } else {
-                        DopamineStyle.color = DopamineStyle.regularColorPalette
+                    clickedFunction: function() {
+                        selectLanguageDrawer.openTriggered()
                     }
                 }
-            }
 
-            DividerType {}
+                DividerType {}
 
-            LabelWithButtonType {
-                id: labelWithButtonLogging
+                LabelWithButtonType {
+                    id: labelWithButtonLogging
 
-                Layout.fillWidth: true
+                    Layout.fillWidth: true
 
-                text: qsTr("Diagnostics")
-                descriptionText: SettingsController.isLoggingEnabled ? qsTr("Enabled") : qsTr("Disabled")
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
+                    text: qsTr("Diagnostics")
+                    descriptionText: SettingsController.isLoggingEnabled ? qsTr("Enabled") : qsTr("Disabled")
+                    rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
-                clickedFunction: function() {
-                    PageController.goToPage(PageEnum.PageSettingsLogging)
+                    clickedFunction: function() {
+                        PageController.goToPage(PageEnum.PageSettingsLogging)
+                    }
                 }
             }
-
-            DividerType {}
 
             LabelWithButtonType {
                 id: labelWithButtonReloadConfig
 
                 Layout.fillWidth: true
+                Layout.topMargin: 16
+                glass: "single"
 
                 text: qsTr("Reload all servers from subscription")
                 rightImageSource: "qrc:/images/controls/chevron-right.svg"
@@ -284,12 +265,13 @@ PageType {
                 }
             }
 
-            DividerType {}
-
             LabelWithButtonType {
                 id: labelWithButtonReset
 
                 Layout.fillWidth: true
+                Layout.topMargin: 16
+                Layout.bottomMargin: 16
+                glass: "single"
 
                 text: qsTr("Reset settings and remove all data from the application")
                 rightImageSource: "qrc:/images/controls/chevron-right.svg"
@@ -316,8 +298,6 @@ PageType {
                     showQuestionDrawer(headerText, descriptionText, yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
                 }
             }
-
-            DividerType {}
         }
     }
 

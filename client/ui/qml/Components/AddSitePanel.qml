@@ -22,10 +22,13 @@ Item {
     Rectangle {
         id: background
         anchors.fill: parent
-        // the page background of the current theme (a fixed near-black was a
-        // dark slab in the light theme), like the panels of the split pages
-        color: DopamineStyle.color.midnightBlack
-        opacity: 0.85
+        // the night at the page's bottom edge, fading in over the list's last rows, like the panels
+        // of the split pages
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0010173A" }
+            GradientStop { position: 0.45; color: DopamineStyle.color.nightBottom }
+            GradientStop { position: 1.0; color: DopamineStyle.color.nightBottom }
+        }
         z: -1
     }
 

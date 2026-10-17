@@ -48,8 +48,26 @@ class WireguardUtils : public QObject {
   
   virtual bool addExclusionRoute(const IPAddress& prefix) = 0;
   virtual bool deleteExclusionRoute(const IPAddress& prefix) = 0;
+  // many at once (the Russian networks the app sends past the VPN: hundreds); one by one
+  // where a platform does no better
+  virtual bool addExclusionRoutes(const QList<IPAddress>& prefixes) {
+    bool ok = true;
+    for (const IPAddress& prefix : prefixes) {
+      ok = addExclusionRoute(prefix) && ok;
+    }
+    return ok;
+  }
+  virtual void deleteExclusionRoutes(const QList<IPAddress>& prefixes) {
+    for (const IPAddress& prefix : prefixes) {
+      deleteExclusionRoute(prefix);
+    }
+  }
 
   virtual bool excludeLocalNetworks(const QList<IPAddress>& addresses) = 0;
+
+  // the networks whose connections the tunnel opens by the device's own network itself (its
+  // sorter, tunnel/awg; none: no more); false where the tunnel cannot, and they go through it
+  virtual bool setDirectNetworks(const QStringList& networks) { return networks.isEmpty(); }
 };
 
 #endif  // WIREGUARDUTILS_H

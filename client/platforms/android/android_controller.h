@@ -34,6 +34,10 @@ public:
     void stop();
     void resetLastServer(int serverIndex);
     void saveFile(const QString &fileName, const QString &data);
+    // to another app by the system's share sheet (a file of the app's own); clearSharedFiles
+    // takes it away again
+    void shareFile(const QString &fileName, const QString &data);
+    void clearSharedFiles();
     QString openFile(const QString &filter);
     int getFd(const QString &fileName);
     void closeFd();
@@ -64,7 +68,8 @@ public:
     qint64 verifyUpdateApk(const QString &path);
     bool canInstallUpdates();
     void openUpdateInstallSettings();
-    void installUpdate(const QString &path);
+    // reconnect: the app turned the VPN off for this install, it comes back after the update
+    void installUpdate(const QString &path, bool reconnect);
     bool isXiaomiFamily();
     // the default network is a VPN (another app's, or ours not yet known to the app)
     bool isVpnNetworkActive();

@@ -159,6 +159,21 @@ Window  {
         }
     }
 
+    // the night behind every page but the home one, which draws its own (HomeScene): the home's
+    // sky without its land (shaders/pagesky.frag). Still, so drawn once
+    ShaderEffect {
+        anchors.fill: parent
+
+        layer.enabled: true
+
+        property size itemSize: Qt.size(width, height)
+        property real pixel: 1 / Screen.devicePixelRatio
+        property real sheet: 0
+        property real corner: 0
+
+        fragmentShader: "qrc:/shaders/pagesky.frag.qsb"
+    }
+
     PageStart {
         objectName: "pageStart"
         width: root.width
@@ -211,6 +226,16 @@ Window  {
 
         anchors.fill: parent
 
+        // a sheet here is under no page: Back (Escape) pressed in it goes to PageController
+        // as from a page, which closes the sheet. Unhandled, it reached the window, and on
+        // Android that closed the app
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Back || event.key === Qt.Key_Escape) {
+                PageController.keyPressEvent(event.key)
+                event.accepted = true
+            }
+        }
+
         UpdateDrawer {
             id: updateDrawer
 
@@ -231,6 +256,14 @@ Window  {
         objectName: "questionDrawerItem"
 
         anchors.fill: parent
+
+        // as for the update sheet above
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Back || event.key === Qt.Key_Escape) {
+                PageController.keyPressEvent(event.key)
+                event.accepted = true
+            }
+        }
 
         QuestionDrawer {
             id: questionDrawer

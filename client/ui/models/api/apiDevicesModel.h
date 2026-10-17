@@ -17,7 +17,11 @@ public:
         SupportTagRole,
         CountryCodeRole,
         LastUpdateRole,
-        IsCurrentDeviceRole
+        IsCurrentDeviceRole,
+        // a device without our app: "amneziawg" (files for the AmneziaWG app), "link"; "" ours
+        OtherAppRole,
+        // such a device whose key is gone from the servers (a copy of it was caught)
+        NeedsNewFileRole
     };
 
     explicit ApiDevicesModel(std::shared_ptr<Settings> settings, QObject *parent = nullptr);
@@ -45,6 +49,8 @@ private:
         QString countryCode;
 
         bool isCurrent = false;   // the gateway says it is this device
+        QString otherApp;
+        bool needsNewFile = false;
     };
 
     QVector<IssuedConfigInfo> m_issuedConfigs;

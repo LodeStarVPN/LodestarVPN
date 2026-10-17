@@ -36,6 +36,9 @@ Copy-Item "$($crt.FullName)\*.dll" $stage
 
 Copy-Item "$src\deploy\data\windows\x64\*" $stage -Recurse -Force
 Copy-Item "$src\client\3rd-prebuilt\deploy-prebuilt\windows\x64\*" $stage -Recurse -Force
+# the AmneziaWG tunnel is our own build (tunnel\awg: the sorter that opens the Russian sites
+# directly), over the one of the prebuilt set
+Copy-Item "$src\client\3rd-lodestar\amneziawg\windows\x64\tunnel.dll" $stage -Force
 
 Push-Location $build
 try {

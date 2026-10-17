@@ -35,6 +35,10 @@ public:
     Q_PROPERTY(QVariantList subscriptionPlans READ subscriptionPlans NOTIFY subscriptionPlansChanged)
     Q_PROPERTY(int selectedPlanIndex READ selectedPlanIndex WRITE setSelectedPlanIndex NOTIFY selectedPlanIndexChanged)
     Q_PROPERTY(QString shortCode READ getShortCode NOTIFY shortCodeChanged)
+    // a device without our app (an iPhone, iPad or Mac), its files for the AmneziaWG app: one per
+    // country, [{ countryCode, countryName, fileName, qrImage }]; the configs themselves stay here
+    Q_PROPERTY(QVariantList otherDeviceFiles READ otherDeviceFiles NOTIFY otherDeviceFilesChanged)
+    Q_PROPERTY(QString otherDeviceName READ otherDeviceName NOTIFY otherDeviceFilesChanged)
 
     // Asks the gateway whether this device is still one of the subscription's
     // (on every connection, and now and then while connected). The callback
@@ -120,6 +124,18 @@ public slots:
     bool deactivateDevice(const bool isRemoveEvent);
     bool deactivateExternalDevice(const QString &uuid, const QString &serverCountryCode);
 
+    // A device without our app on the processed subscription (v1/other_device): addOtherDevice
+    // takes a place for it (kind: iphone, ipad, mac), newOtherDeviceFiles gives one of them a new
+    // key (its old files stop working). Both fill otherDeviceFiles, or emit otherDeviceFailed.
+    // The files hold the device's key: cleared when their page closes (clearOtherDeviceFiles)
+    Q_INVOKABLE bool addOtherDevice(const QString &kind);
+    Q_INVOKABLE bool newOtherDeviceFiles(const QString &deviceId);
+    Q_INVOKABLE void clearOtherDeviceFiles();
+    // Android: the system's share sheet; elsewhere saved to fileName
+    Q_INVOKABLE void sendOtherDeviceFile(int index, const QString &fileName = QString());
+    QVariantList otherDeviceFiles() const;
+    QString otherDeviceName() const { return m_otherDeviceName; }
+
     bool isConfigValid();
 
     void setCurrentProtocol(const QString &protocolName);
@@ -183,6 +199,9 @@ signals:
 
     void vpnKeyExportReady();
     void shortCodeChanged();
+    void otherDeviceFilesChanged();
+    // why no files came, for people
+    void otherDeviceFailed(const QString &message);
     // removeSubscriptionServers took entries out of the server list
     void subscriptionServersRemoved();
 
@@ -241,6 +260,19 @@ private:
     QList<QString> m_qrCodes;
     QString m_vpnKey;
     QString m_shortCode;
+
+    // v1/other_device with extra fields (kind, or device_id), into m_otherDeviceFiles
+    bool requestOtherDevice(const QJsonObject &extra);
+    struct OtherDeviceFile
+    {
+        QString countryCode;
+        QString countryName;
+        QString fileName;
+        QString config;  // what the file holds (the long first packet)
+        QString qrImage; // the QR code of the short config, an SVG data URL
+    };
+    QVector<OtherDeviceFile> m_otherDeviceFiles;
+    QString m_otherDeviceName;
 
     QSharedPointer<ServersModel> m_serversModel;
     QSharedPointer<ApiServicesModel> m_apiServicesModel;

@@ -94,7 +94,11 @@ PageType {
 
         anchors.fill: parent
 
-        model: labelsModel
+        // the account's rows stand in the one item's first glass card (a Repeater there). One item,
+        // not an empty view with all of it in its footer: an empty ListView goes back to its top at
+        // every change of its footer's height, and with the VPN on the ping and speed rows change it
+        // every few seconds - the page jumped up while it was being read (the owner, 2026-10-17)
+        model: 1
 
         header: ColumnLayout {
             width: listView.width
@@ -129,33 +133,6 @@ PageType {
         }
 
         delegate: ColumnLayout {
-            width: listView.width
-            spacing: 0
-
-            Connections {
-                target: ApiAccountInfoModel
-
-                function onModelReset() {
-                    delegateItem.rightText = ApiAccountInfoModel.data(contentKey)
-                }
-            }
-
-            LabelWithImageType {
-                id: delegateItem
-
-                Layout.fillWidth: true
-                Layout.margins: 16
-
-                imageSource: objectImageSource
-                leftText: title
-                rightText: ApiAccountInfoModel.data(contentKey)
-                rightTextFormat: isRichText ? Text.RichText : Text.PlainText
-
-                visible: rightText !== ""
-            }
-        }
-
-        footer: ColumnLayout {
             id: footer
 
             width: listView.width
@@ -186,99 +163,126 @@ PageType {
                 }
             }
 
-            // only what a customer needs: no addresses, DNS, MTU, tunnel IP or
+            // what the subscription is and where this device goes, in one glass card.
+            // Only what a customer needs: no addresses, DNS, MTU, tunnel IP or
             // config exports here (the logs carry the technical details)
-            LabelWithImageType {
+            GlassColumn {
                 Layout.fillWidth: true
-                Layout.margins: 16
+                Layout.topMargin: 8
 
-                imageSource: "qrc:/images/controls/map-pin.svg"
-                leftText: qsTr("Country")
-                rightText: {
-                    var countryName = ServersModel.getProcessedServerData("countryName")
-                    return countryName !== "" ? countryName : ServersModel.getProcessedServerData("countryCode")
+                Repeater {
+                    model: root.labelsModel
+
+                    LabelWithImageType {
+                        id: accountRow
+
+                        Layout.fillWidth: true
+
+                        imageSource: modelData.objectImageSource
+                        leftText: modelData.title
+                        rightText: ApiAccountInfoModel.data(modelData.contentKey)
+                        rightTextFormat: modelData.isRichText ? Text.RichText : Text.PlainText
+
+                        visible: rightText !== ""
+
+                        Connections {
+                            target: ApiAccountInfoModel
+
+                            function onModelReset() {
+                                accountRow.rightText = ApiAccountInfoModel.data(modelData.contentKey)
+                            }
+                        }
+                    }
                 }
-                visible: rightText !== ""
-            }
 
-            LabelWithImageType {
-                Layout.fillWidth: true
-                Layout.margins: 16
+                LabelWithImageType {
+                    Layout.fillWidth: true
 
-                imageSource: "qrc:/images/controls/settings.svg"
-                leftText: qsTr("Protocol")
-                rightText: {
-                    var protocol = ("" + ServersModel.getProcessedServerData("serviceProtocol")).toLowerCase()
-                    if (protocol === "awg" || protocol === "amneziawg") return "AmneziaWG"
-                    if (protocol === "vless") return "VLESS Reality"
-                    return protocol.toUpperCase()
+                    imageSource: "qrc:/images/controls/map-pin.svg"
+                    leftText: qsTr("Country")
+                    rightText: {
+                        var countryName = ServersModel.getProcessedServerData("countryName")
+                        return countryName !== "" ? countryName : ServersModel.getProcessedServerData("countryCode")
+                    }
+                    visible: rightText !== ""
                 }
-                visible: rightText !== ""
-            }
 
-            LabelWithImageType {
-                Layout.fillWidth: true
-                Layout.margins: 16
+                LabelWithImageType {
+                    Layout.fillWidth: true
 
-                imageSource: "qrc:/images/controls/gauge.svg"
-                leftText: qsTr("Speed")
-                // one direction per line: the two values never squeeze the title
-                rightText: "↓ " + ConnectionController.downloadSpeed + "
+                    imageSource: "qrc:/images/controls/settings.svg"
+                    leftText: qsTr("Protocol")
+                    rightText: {
+                        var protocol = ("" + ServersModel.getProcessedServerData("serviceProtocol")).toLowerCase()
+                        if (protocol === "awg" || protocol === "amneziawg") return "AmneziaWG"
+                        if (protocol === "vless") return "VLESS Reality"
+                        return protocol.toUpperCase()
+                    }
+                    visible: rightText !== ""
+                }
+
+                LabelWithImageType {
+                    Layout.fillWidth: true
+
+                    imageSource: "qrc:/images/controls/gauge.svg"
+                    leftText: qsTr("Speed")
+                    // one direction per line: the two values never squeeze the title
+                    rightText: "↓ " + ConnectionController.downloadSpeed + "
 ↑ " + ConnectionController.uploadSpeed
-                visible: ServersModel.processedIndex === ServersModel.defaultIndex
-                         && ConnectionController.isConnected && ConnectionController.downloadSpeed !== ""
+                    visible: ServersModel.processedIndex === ServersModel.defaultIndex
+                             && ConnectionController.isConnected && ConnectionController.downloadSpeed !== ""
+                }
+
+                LabelWithImageType {
+                    Layout.fillWidth: true
+
+                    imageSource: "qrc:/images/controls/history.svg"
+                    leftText: qsTr("Ping")
+                    // the row stays while the VPN is on: a round of probes that got no answer clears
+                    // the figure, and a row that came and went moved the page under the finger
+                    rightText: ConnectionController.ping !== "" ? qsTr("%1 ms").arg(ConnectionController.ping) : "—"
+                    visible: ServersModel.processedIndex === ServersModel.defaultIndex
+                             && ConnectionController.isConnected
+                             && SettingsController.isServerPingTextVisible
+                }
             }
 
-            LabelWithImageType {
+            GlassColumn {
                 Layout.fillWidth: true
-                Layout.margins: 16
-
-                imageSource: "qrc:/images/controls/history.svg"
-                leftText: qsTr("Ping")
-                rightText: qsTr("%1 ms").arg(ConnectionController.ping)
-                visible: ServersModel.processedIndex === ServersModel.defaultIndex
-                         && ConnectionController.isConnected
-                         && ConnectionController.ping !== ""
-                         && SettingsController.isServerPingTextVisible
-            }
-
-            DividerType {
                 Layout.topMargin: 16
-            }
 
-            LabelWithButtonType {
-                Layout.fillWidth: true
+                LabelWithButtonType {
+                    Layout.fillWidth: true
 
-                visible: footer.isVisibleForAmneziaFree
+                    visible: footer.isVisibleForAmneziaFree
 
-                text: qsTr("Active Devices")
+                    text: qsTr("Active Devices")
 
-                descriptionText: qsTr("Manage currently connected devices")
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
+                    descriptionText: qsTr("Manage currently connected devices")
+                    rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
-                clickedFunction: function() {
-                    ApiSettingsController.updateApiDevicesModel()
-                    PageController.goToPage(PageEnum.PageSettingsApiDevices)
+                    clickedFunction: function() {
+                        ApiSettingsController.updateApiDevicesModel()
+                        PageController.goToPage(PageEnum.PageSettingsApiDevices)
+                    }
+                }
+
+                DividerType {
+                    visible: footer.isVisibleForAmneziaFree
+                }
+
+                LabelWithButtonType {
+                    Layout.fillWidth: true
+
+                    text: qsTr("Support")
+                    descriptionText: "lodestarvpn.com/support"
+                    rightImageSource: "qrc:/images/controls/chevron-right.svg"
+
+                    clickedFunction: function() {
+                        Qt.openUrlExternally(LanguageModel.getCurrentSiteUrl("support"))
+                    }
                 }
             }
-
-            DividerType {
-                visible: footer.isVisibleForAmneziaFree
-            }
-
-            LabelWithButtonType {
-                Layout.fillWidth: true
-
-                text: qsTr("Support")
-                descriptionText: "lodestarvpn.com/support"
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
-
-                clickedFunction: function() {
-                    Qt.openUrlExternally(LanguageModel.getCurrentSiteUrl("support"))
-                }
-            }
-
-            DividerType {}
 
             // The subscription's key: the only thing a new device needs. It is the
             // whole access to the subscription, so it stays behind dots until the
@@ -288,8 +292,10 @@ PageType {
                 id: subscriptionKeyRow
 
                 Layout.fillWidth: true
+                Layout.topMargin: 16
 
                 visible: root.subscriptionKey !== ""
+                glass: "single"
 
                 text: qsTr("Subscription key")
                 descriptionText: root.subscriptionKey
@@ -306,8 +312,9 @@ PageType {
 
             CaptionTextType {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
+                Layout.topMargin: 10
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
                 Layout.bottomMargin: 16
 
                 visible: subscriptionKeyRow.visible
@@ -316,26 +323,20 @@ PageType {
                 text: qsTr("To add a new device, enter this key in the app on it")
             }
 
-            DividerType {
-                visible: subscriptionKeyRow.visible
-            }
-
             LabelWithButtonType {
                 Layout.fillWidth: true
 
                 visible: footer.isVisibleForAmneziaFree
+                glass: "single"
 
+                // told here, not on a site (the owner's word, 2026-10-17)
                 text: qsTr("How to connect on another device")
-                descriptionText: "lodestarvpn.com/setup"
+                descriptionText: qsTr("Windows, Android, iPhone, iPad, Mac")
                 rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
                 clickedFunction: function() {
-                    Qt.openUrlExternally(LanguageModel.getCurrentSiteUrl("setup"))
+                    PageController.goToPage(PageEnum.PageSettingsApiInstructions)
                 }
-            }
-
-            DividerType {
-                visible: footer.isVisibleForAmneziaFree
             }
 
             // no buttons here: configs refresh by themselves (app start, every

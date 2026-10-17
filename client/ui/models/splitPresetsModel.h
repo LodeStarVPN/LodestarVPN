@@ -40,6 +40,8 @@ public:
 
     int enabledCount() const { return m_enabledPresets.size(); }
 
+    void retranslate();
+
 signals:
     void countChanged();
     void routeModeChanged();

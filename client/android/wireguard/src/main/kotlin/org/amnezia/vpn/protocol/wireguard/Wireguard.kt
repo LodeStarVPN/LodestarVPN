@@ -1,6 +1,8 @@
 package org.amnezia.vpn.protocol.wireguard
 
 import android.net.VpnService.Builder
+import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -8,6 +10,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.amnezia.awg.GoBackend
+import org.amnezia.awg.SocketProtector
 import org.amnezia.vpn.protocol.Protocol
 import org.amnezia.vpn.protocol.ProtocolState.CONNECTED
 import org.amnezia.vpn.protocol.ProtocolState.DISCONNECTED
@@ -72,7 +75,23 @@ open class Wireguard : Protocol() {
             configWireguard(config, configData)
             configSplitTunneling(config)
             configAppSplitTunneling(config)
+            configDirectNetworks(config)
         }
+    }
+
+    // The Russian networks the tunnel opens directly itself (its sorter, tunnel/awg): a file the
+    // app wrote (the config reaches this service in one system message, too small for the list).
+    // A file that cannot be read leaves them to go through the tunnel.
+    protected fun WireguardConfig.Builder.configDirectNetworks(config: JSONObject) {
+        val path = config.optStringOrNull("directNetworksFile") ?: return
+        val networks = try {
+            File(path).readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        } catch (e: IOException) {
+            Log.w(TAG, "The networks opened directly are not read: ${e.message}")
+            return
+        }
+        setDirectNetworks(networks)
+        Log.i(TAG, "The tunnel opens ${networks.size} networks directly")
     }
 
     protected fun WireguardConfig.Builder.configWireguard(config: JSONObject, configData: JSONObject) {
@@ -173,6 +192,8 @@ open class Wireguard : Protocol() {
                 throw VpnStartException("Create VPN interface: permission not granted or revoked")
             }
             Log.i(TAG, "awg-go backend ${GoBackend.awgVersion()}")
+            // before the tunnel starts: its direct sockets may open at once
+            GoBackend.awgSetProtector(SocketProtector(protect))
             tunnelHandle = GoBackend.awgTurnOn(ifName, tunFd.detachFd(), config.toWgUserspaceString())
         }
 
@@ -231,6 +252,7 @@ open class Wireguard : Protocol() {
         val handleToClose = tunnelHandle
         tunnelHandle = -1
         GoBackend.awgTurnOff(handleToClose)
+        GoBackend.awgSetProtector(null)
     }
 
     override fun stopVpn() {

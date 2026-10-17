@@ -168,6 +168,18 @@ void AndroidController::saveFile(const QString &fileName, const QString &data)
                        QJniObject::fromString(data).object<jstring>());
 }
 
+void AndroidController::shareFile(const QString &fileName, const QString &data)
+{
+    callActivityMethod("shareFile", "(Ljava/lang/String;Ljava/lang/String;)V",
+                       QJniObject::fromString(fileName).object<jstring>(),
+                       QJniObject::fromString(data).object<jstring>());
+}
+
+void AndroidController::clearSharedFiles()
+{
+    callActivityMethod("clearSharedFiles", "()V");
+}
+
 QString AndroidController::openFile(const QString &filter)
 {
     QEventLoop wait;
@@ -366,10 +378,10 @@ void AndroidController::openUpdateInstallSettings()
 }
 
 // returns at once: the copy into the installer session runs on the Android side
-void AndroidController::installUpdate(const QString &path)
+void AndroidController::installUpdate(const QString &path, bool reconnect)
 {
-    callActivityMethod("installUpdate", "(Ljava/lang/String;)V",
-                       QJniObject::fromString(path).object<jstring>());
+    callActivityMethod("installUpdate", "(Ljava/lang/String;Z)V",
+                       QJniObject::fromString(path).object<jstring>(), reconnect);
 }
 
 bool AndroidController::isXiaomiFamily()

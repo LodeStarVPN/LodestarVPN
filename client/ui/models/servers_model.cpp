@@ -1221,6 +1221,20 @@ void ServersModel::setHealthResult(int serverIndex, int latencyMs)
     emit dataChanged(modelIndex, modelIndex, { HealthLatencyRole });
 }
 
+void ServersModel::replaceHealthResult(int serverIndex, int latencyMs)
+{
+    // a figure computed whole (a country behind an entry: the way to the entry and on from it), not
+    // one of a row's addresses: it stands as it is, up or down. Kept as the best, the way on that
+    // came after the probe was thrown away, and a country behind the entry showed the entry's ping
+    const auto it = m_healthResults.constFind(serverIndex);
+    if (it != m_healthResults.constEnd() && it.value() == latencyMs) {
+        return;
+    }
+    m_healthResults.insert(serverIndex, latencyMs);
+    const QModelIndex modelIndex = index(serverIndex);
+    emit dataChanged(modelIndex, modelIndex, { HealthLatencyRole });
+}
+
 void ServersModel::clearOfflineHealthResults()
 {
     for (auto it = m_healthResults.begin(); it != m_healthResults.end();) {

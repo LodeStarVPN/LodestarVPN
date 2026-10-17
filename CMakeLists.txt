@@ -4,7 +4,7 @@ set(PROJECT Dopamine)
 # LodestarVPN's own version (the 4.8.x line was upstream Dopamine's): one
 # number everywhere - app, exe resources, MSI. Bump it for every build that
 # goes to people, or the MSI cannot upgrade an installed one.
-set(DOPAMINE_VERSION 1.0.21)
+set(DOPAMINE_VERSION 1.0.22)
 
 project(${PROJECT} VERSION ${DOPAMINE_VERSION}
         DESCRIPTION "LodestarVPN"
@@ -102,6 +102,9 @@ if(WIN32 AND NOT IOS AND NOT ANDROID AND NOT MACOS_NE)
     set(CPACK_PACKAGE_INSTALL_DIRECTORY "LodestarVPN")
     set(CPACK_PACKAGE_DIRECTORY "${CMAKE_BINARY_DIR}")
     set(CPACK_PACKAGE_EXECUTABLES "Lodestar" "LodestarVPN")
+    # the same shortcut on the desktop too, not only in the start menu (the package installs
+    # for the machine: the desktop all users share)
+    set(CPACK_CREATE_DESKTOP_LINKS "Lodestar")
     # own UpgradeCode: must differ from Dopamine by FRKN so both install side by side
     set(CPACK_WIX_UPGRADE_GUID "{5FA2BA2B-A253-46F1-AD76-014F996A7BFE}")
     set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/client/images/app.ico")

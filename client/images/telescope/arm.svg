@@ -1,0 +1,8 @@
+<!-- LodestarVPN home screen telescope (HomeScene.qml), from local-tools/design/home/telescope.html; units: the telescope's own, pivot at 0,0: the mount's arm over the tube, the altitude axis -->
+<svg xmlns="http://www.w3.org/2000/svg" width="19" height="25" viewBox="-8 -8 19 25">
+<defs></defs>
+<rect x="-5.4" y="0" width="10.8" height="15" rx="2.4" fill="#05070f"/>
+<circle cx="0" cy="0" r="6.4" fill="#05070f"/>
+<circle cx="0" cy="0" r="1.8" fill="#0c1230"/>
+<circle cx="6.6" cy="9.4" r="2.6" fill="#05070f"/>
+</svg>

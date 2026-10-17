@@ -81,8 +81,9 @@ public:
     bool isHomeCardVisible() const;
     QString updatedVersion() const { return m_updatedVersion; }
 
-    // Windows: the VPN goes down before the package replaces the service, and comes back
-    // after an install this app closed for (CoreController hands these in)
+    // the VPN goes down before the package replaces the app (Windows: and its service), and
+    // comes back after the install, or at once when it does not go ahead (CoreController
+    // hands these in)
     void setVpnControl(std::function<bool()> isConnected, std::function<void()> connectVpn,
                        std::function<void()> disconnectVpn);
     void onVpnDisconnected();
@@ -93,6 +94,9 @@ public:
     Q_INVOKABLE void install();
     Q_INVOKABLE void openInstallPermission();
     Q_INVOKABLE void dismissHomeCard();
+    // dev menu: the sheet and the card through a whole update with a made-up release and
+    // download - nothing is fetched, installed or kept, the VPN is left alone
+    Q_INVOKABLE void startDemo(bool downloadBreaks);
 
 signals:
     void updateAvailableChanged();
@@ -122,8 +126,13 @@ private:
     void onInstallResult(int code);
     void onApplicationActive();
 
-    // Windows: msiexec through a hidden PowerShell that opens the app again after it
+    // Windows: msiexec through a hidden PowerShell that opens the app again after it;
+    // Android: SelfUpdater's install session
     void launchInstaller();
+    // Android: the install the VPN went down for did not go ahead
+    void installDidNotGoAhead();
+    void demoTick();
+    void endDemo();
 #ifdef Q_OS_WIN
     void takeInstallOutcome();
 #endif
@@ -152,6 +161,10 @@ private:
     qint64 m_installedCode = 0;
     QStringList m_deviceAbis;
 
+    bool m_demo = false;
+    bool m_demoBreaks = false;
+    QTimer m_demoTimer;
+
     bool m_started = false;
     bool m_checkInFlight = false;
     bool m_userCheckPending = false;
@@ -171,11 +184,13 @@ private:
     // bumped by every cancel or new download: a late verification result is dropped
     int m_generation = 0;
 
-    // Windows
+    // the VPN around an install
     std::function<bool()> m_vpnConnected;
     std::function<void()> m_connectVpn;
     std::function<void()> m_disconnectVpn;
     bool m_launchWhenDisconnected = false;
+    // this install turned the VPN off: it comes back after it
+    bool m_reconnectAfterInstall = false;
     bool m_reconnectAfterStart = false;
     bool m_installNotDone = false;
     QString m_updatedVersion;

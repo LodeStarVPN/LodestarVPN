@@ -90,6 +90,38 @@ PageType {
                     SettingsController.isDevGatewayEnv = checked
                 }
             }
+
+            // the update's sheet and home card through a whole made-up update (nothing is
+            // fetched or installed, the VPN is left alone): to look at them without a release
+            BasicButtonType {
+                Layout.fillWidth: true
+                Layout.topMargin: 24
+                Layout.rightMargin: 16
+                Layout.leftMargin: 16
+
+                text: "Update demo"
+
+                clickedFunc: function() {
+                    UpdateController.startDemo(false)
+                    PageController.goToPageHome()
+                    showUpdateDrawer()
+                }
+            }
+
+            BasicButtonType {
+                Layout.fillWidth: true
+                Layout.topMargin: 12
+                Layout.rightMargin: 16
+                Layout.leftMargin: 16
+
+                text: "Update demo: the download breaks off"
+
+                clickedFunc: function() {
+                    UpdateController.startDemo(true)
+                    PageController.goToPageHome()
+                    showUpdateDrawer()
+                }
+            }
         }
     }
 }

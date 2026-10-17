@@ -40,6 +40,7 @@ open class WireguardConfig protected constructor(
     val rejectAfterTime: String?,
     val keepaliveTimeout: String?,
     val maxHandshakeAttempts: String?,
+    val directNetworks: List<String>,
 ) : ProtocolConfig(protocolConfigBuilder) {
 
     protected constructor(builder: Builder) : this(
@@ -75,6 +76,7 @@ open class WireguardConfig protected constructor(
         builder.rejectAfterTime,
         builder.keepaliveTimeout,
         builder.maxHandshakeAttempts,
+        builder.directNetworks,
     )
 
     fun toWgUserspaceString(): String = with(StringBuilder()) {
@@ -114,6 +116,8 @@ open class WireguardConfig protected constructor(
             keepaliveTimeout?.let { appendLine("keepalive_timeout=$it") }
             maxHandshakeAttempts?.let { appendLine("max_handshake_attempts=$it") }
         }
+        // the networks the tunnel opens directly itself (its sorter, tunnel/awg)
+        directNetworks.forEach { appendLine("direct_network=$it") }
     }
 
     private fun validateProtocolExtensionParameters() {
@@ -185,6 +189,7 @@ open class WireguardConfig protected constructor(
         internal var rejectAfterTime: String? = null
         internal var keepaliveTimeout: String? = null
         internal var maxHandshakeAttempts: String? = null
+        internal var directNetworks: List<String> = emptyList()
 
         fun setEndpoint(endpoint: InetEndpoint) = apply { this.endpoint = endpoint }
 
@@ -223,6 +228,7 @@ open class WireguardConfig protected constructor(
         fun setRejectAfterTime(rejectAfterTime: String) = apply { this.rejectAfterTime = rejectAfterTime }
         fun setKeepaliveTimeout(keepaliveTimeout: String) = apply { this.keepaliveTimeout = keepaliveTimeout }
         fun setMaxHandshakeAttempts(maxHandshakeAttempts: String) = apply { this.maxHandshakeAttempts = maxHandshakeAttempts }
+        fun setDirectNetworks(directNetworks: List<String>) = apply { this.directNetworks = directNetworks }
 
         override fun build(): WireguardConfig = configBuild().run { WireguardConfig(this@Builder) }
     }

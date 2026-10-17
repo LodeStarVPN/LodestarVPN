@@ -24,6 +24,15 @@ Logger logger("Daemon");
 
 Daemon* s_daemon = nullptr;
 
+// the addresses and networks a config sends past the tunnel
+QList<IPAddress> excludedPrefixes(const InterfaceConfig& config) {
+  QList<IPAddress> out;
+  for (const QString& i : config.m_excludedAddresses) {
+    out.append(IPAddress(i));
+  }
+  return out;
+}
+
 }  // namespace
 
 Daemon::Daemon(QObject* parent) : QObject(parent) {
@@ -121,6 +130,13 @@ bool Daemon::activate(const InterfaceConfig& config) {
     }
   }
 
+  // The networks the tunnel opens directly itself: no routes for them. Without it they
+  // simply go through the tunnel.
+  if (!wgutils()->setDirectNetworks(config.m_directNetworks)) {
+    logger.warning() << "The tunnel does not open the" << config.m_directNetworks.size()
+                     << "networks directly";
+  }
+
   // Bring the interface up.
   if (supportIPUtils()) {
     if (!iputils()->addInterfaceIPs(config)) {
@@ -131,10 +147,9 @@ bool Daemon::activate(const InterfaceConfig& config) {
     }
   }
 
-  // Configure routing for excluded addresses.
-  for (const QString& i : config.m_excludedAddresses) {
-    addExclusionRoute(IPAddress(i));
-  }
+  // Configure routing for excluded addresses: at once (the Russian networks the
+  // app sends past the VPN are hundreds).
+  addExclusionRoutes(excludedPrefixes(config));
 
   // Keep the local network reachable: route RFC1918/link-local around the
   // tunnel and let them through the kill-switch firewall (otherwise LAN,
@@ -220,26 +235,38 @@ bool Daemon::parseStringList(const QJsonObject& obj, const QString& name,
   return true;
 }
 
-bool Daemon::addExclusionRoute(const IPAddress& prefix) {
-  if (m_excludedAddrSet.contains(prefix)) {
-    m_excludedAddrSet[prefix]++;
-    return true;
+// Each excluded address counts its users (a server switch adds the new peer's
+// before it removes the old one's): a route is made for the first and removed
+// with the last.
+bool Daemon::addExclusionRoutes(const QList<IPAddress>& prefixes) {
+  QList<IPAddress> fresh;
+  for (const IPAddress& prefix : prefixes) {
+    if (m_excludedAddrSet.contains(prefix)) {
+      m_excludedAddrSet[prefix]++;
+      continue;
+    }
+    m_excludedAddrSet[prefix] = 1;
+    fresh.append(prefix);
   }
-  if (!wgutils()->addExclusionRoute(prefix)) {
-    return false;
-  }
-  m_excludedAddrSet[prefix] = 1;
-  return true;
+  return fresh.isEmpty() || wgutils()->addExclusionRoutes(fresh);
 }
 
-bool Daemon::delExclusionRoute(const IPAddress& prefix) {
-  Q_ASSERT(m_excludedAddrSet.contains(prefix));
-  if (m_excludedAddrSet[prefix] > 1) {
-    m_excludedAddrSet[prefix]--;
-    return true;
+void Daemon::delExclusionRoutes(const QList<IPAddress>& prefixes) {
+  QList<IPAddress> gone;
+  for (const IPAddress& prefix : prefixes) {
+    auto it = m_excludedAddrSet.find(prefix);
+    if (it == m_excludedAddrSet.end()) {
+      continue;
+    }
+    if (--it.value() > 0) {
+      continue;
+    }
+    m_excludedAddrSet.erase(it);
+    gone.append(prefix);
   }
-  m_excludedAddrSet.remove(prefix);
-  return wgutils()->deleteExclusionRoute(prefix);
+  if (!gone.isEmpty()) {
+    wgutils()->deleteExclusionRoutes(gone);
+  }
 }
 
 // static
@@ -398,6 +425,9 @@ bool Daemon::parseConfig(const QJsonObject& obj, InterfaceConfig& config) {
   if (!parseStringList(obj, "allowedDnsServers", config.m_allowedDnsServers)) {
     return false;
   }
+  if (!parseStringList(obj, "directNetworks", config.m_directNetworks)) {
+    return false;
+  }
 
   config.m_killSwitchEnabled = QVariant(obj.value("killSwitchOption").toString()).toBool();
   config.m_routeLanThroughVpn = QVariant(obj.value("routeLanThroughVpn").toString()).toBool();
@@ -520,11 +550,8 @@ bool Daemon::deactivate(bool emitSignals) {
     wgutils()->deletePeer(config);
   }
 
-  // Cleanup routing for excluded addresses.
-  for (auto iterator = m_excludedAddrSet.constBegin();
-       iterator != m_excludedAddrSet.constEnd(); ++iterator) {
-    wgutils()->deleteExclusionRoute(iterator.key());
-  }
+  // Cleanup routing for excluded addresses, at once.
+  wgutils()->deleteExclusionRoutes(m_excludedAddrSet.keys());
   m_excludedAddrSet.clear();
 
   m_connections.clear();
@@ -562,8 +589,13 @@ bool Daemon::switchServer(const InterfaceConfig& config) {
       m_connections.value(config.m_hopType).m_config;
 
   // Configure routing for new excluded addresses.
-  for (const QString& i : config.m_excludedAddresses) {
-    addExclusionRoute(IPAddress(i));
+  addExclusionRoutes(excludedPrefixes(config));
+
+  // The networks the tunnel opens directly itself, when they changed (the switch, a newer list)
+  if (config.m_directNetworks != lastConfig.m_directNetworks &&
+      !wgutils()->setDirectNetworks(config.m_directNetworks)) {
+    logger.warning() << "The tunnel does not open the" << config.m_directNetworks.size()
+                     << "networks directly";
   }
 
   // Activate the new peer and its routes.
@@ -578,10 +610,9 @@ bool Daemon::switchServer(const InterfaceConfig& config) {
     }
   }
 
-  // Remove routing entries for the old peer.
-  for (const QString& i : lastConfig.m_excludedAddresses) {
-    delExclusionRoute(QHostAddress(i));
-  }
+  // Remove routing entries for the old peer (networks too: an address read as
+  // QHostAddress lost its prefix and its route stayed).
+  delExclusionRoutes(excludedPrefixes(lastConfig));
   for (const IPAddress& ip : lastConfig.m_allowedIPAddressRanges) {
     if (!config.m_allowedIPAddressRanges.contains(ip)) {
       wgutils()->deleteRoutePrefix(ip);

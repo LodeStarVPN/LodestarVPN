@@ -13,6 +13,9 @@ import "../Controls2/TextTypes"
 ColumnLayout {
     id: root
 
+    // the update sheet is a night sky in both themes
+    property color captionColor: DopamineStyle.color.mutedGray
+
     spacing: 12
 
     // one row of the window to tap, outlined in our accent, with its step number
@@ -194,7 +197,7 @@ ColumnLayout {
         Layout.fillWidth: true
 
         horizontalAlignment: Text.AlignHCenter
-        color: DopamineStyle.color.mutedGray
+        color: root.captionColor
         font.pixelSize: 13
 
         text: qsTr("«OK» cancels the update")

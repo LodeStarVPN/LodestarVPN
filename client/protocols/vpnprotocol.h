@@ -83,6 +83,8 @@ public slots:
 protected:
     void startTimeoutTimer();
     void stopTimeoutTimer();
+    // the totals the next ones are counted from, nothing reported for them
+    void setBytesBaseline(quint64 receivedBytes, quint64 sentBytes);
 
     Vpn::ConnectionState m_connectionState;
 

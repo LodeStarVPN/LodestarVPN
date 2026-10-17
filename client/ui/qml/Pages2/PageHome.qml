@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
 
 import SortFilterProxyModel 0.2
 
@@ -11,6 +10,7 @@ import ProtocolEnum 1.0
 import ContainerProps 1.0
 import ContainersModelFilters 1.0
 import Style 1.0
+import UpdateEnum 1.0
 
 import "./"
 import "../Controls2"
@@ -20,6 +20,21 @@ import "../Components"
 
 PageType {
     id: root
+
+    // the land's dark at the bottom edge (shaders/homeland.frag)
+    navigationBarColor: 0xFF02040B
+
+    // the night over the hills, the telescope on the near one aiming at the circle
+    HomeScene {
+        id: homeScene
+
+        anchors.fill: parent
+
+        button: connectButton
+        circle: Qt.point(homeColumn.x + connectButton.x + connectButton.width / 2,
+                         homeColumn.y + connectButton.y + connectButton.height / 2)
+        cardTop: homeColumn.y + serverCard.y
+    }
 
     ImageButtonType {
         id: settingsButton
@@ -36,21 +51,9 @@ PageType {
         implicitHeight: 48
 
         image: "qrc:/images/controls/settings.svg"
-        imageColor: DopamineStyle.color.paleGray
+        imageColor: "#8A93B2"
 
         onClicked: PageController.goToPage(PageEnum.PageSettings)
-    }
-
-    Connections {
-        target: Qt.application
-
-        function onStateChanged() {
-            if (Qt.application.state !== Qt.ApplicationActive) {
-                if (homeSplitTunnelingDrawer.isOpened) {
-                    homeSplitTunnelingDrawer.closeTriggered()
-                }
-            }
-        }
     }
 
     Item {
@@ -59,6 +62,7 @@ PageType {
         anchors.fill: parent
 
         ColumnLayout {
+            id: homeColumn
             objectName: "homeColumnLayout"
 
             anchors.fill: parent
@@ -139,6 +143,13 @@ PageType {
                 Layout.fillHeight: true
                 Layout.alignment: Qt.AlignCenter
 
+                // its sky is the eye of the telescope on the hill
+                eyeAngle: homeScene.angle
+                eyeAim: homeScene.aim
+                eyeRest: homeScene.rest
+                eyeRate: homeScene.angleRate
+                eyeReady: homeScene.ready
+
                 // desktop easter egg: right-click sends the star on a lap
                 onRightClicked: connectButton.startTrip()
             }
@@ -152,17 +163,43 @@ PageType {
                 Layout.rightMargin: 16
                 Layout.bottomMargin: 8
 
-                implicitHeight: ConnectionController.isConnected ? 112 : 96
-                radius: 20
+                // one height connected or not: the land of HomeScene stands on its top,
+                // the circle above is centred in what is left; the figures fade in
+                implicitHeight: 96
+                radius: 16
 
-                // the ring above is centred in what is left: it glides with
-                // the card instead of jumping 8 px when the state changes
-                Behavior on implicitHeight {
-                    NumberAnimation { duration: 300; easing.type: Easing.InOutSine }
+                // glass over the land: a cool tint, a faint edge
+                gradient: Gradient {
+                    GradientStop { position: 0; color: serverCardMouse.containsPress ? "#297892FF" : "#177892FF" }
+                    GradientStop { position: 1; color: serverCardMouse.containsPress ? "#1A7892FF" : "#0D7892FF" }
+                }
+                border.width: 1
+                border.color: "#17A9C1FF"
+
+                // the landed star's light from above, coming with its wave
+                Image {
+                    anchors.fill: parent
+
+                    source: "qrc:/images/home/card_light.png"
+                    smooth: true
+                    opacity: homeScene.cardLight
+                    visible: opacity > 0
                 }
 
-                color: serverCardMouse.containsPress ? DopamineStyle.color.sheerWhite
-                                                     : DopamineStyle.color.translucentWhite
+                Rectangle {
+                    x: parent.width * 0.1
+                    width: parent.width * 0.8
+                    height: 1
+
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "#00BED2FF" }
+                        GradientStop { position: 0.5; color: "#E6CEDEFF" }
+                        GradientStop { position: 1; color: "#00BED2FF" }
+                    }
+                    opacity: homeScene.cardEdge
+                    visible: opacity > 0
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -184,6 +221,7 @@ PageType {
                             font.weight: 600
                             // a 24 px line needs more than the type's 21.6
                             lineHeight: 30
+                            color: "#E9EDFB"
 
                             text: SettingsController.autoServerSelection && !ConnectionController.isConnected
                                   ? qsTr("Auto-select")
@@ -194,7 +232,7 @@ PageType {
                             Layout.fillWidth: true
 
                             visible: text !== ""
-                            color: DopamineStyle.color.mutedGray
+                            color: "#8A93B2"
                             font.pixelSize: 14
                             maximumLineCount: 1
                             elide: Text.ElideRight
@@ -203,17 +241,19 @@ PageType {
                             text: ServersModel.defaultServerProtocolName
                         }
 
+                        // the figures come in once the wave from the landed star reaches the
+                        // card, and go as it leaves (HomeScene)
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
 
-                            visible: ConnectionController.isConnected
+                            opacity: homeScene.figures
 
                             CaptionTextType {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 80
 
-                                color: DopamineStyle.color.mutedGray
+                                color: "#8A93B2"
                                 font.pixelSize: 13
                                 wrapMode: Text.NoWrap
                                 elide: Text.ElideRight
@@ -225,15 +265,15 @@ PageType {
 
                             Rectangle {
                                 Layout.alignment: Qt.AlignVCenter
-                                width: 8
-                                height: 8
-                                radius: 4
+                                width: 6
+                                height: 6
+                                radius: 3
 
                                 visible: ConnectionController.ping !== ""
 
                                 color: {
                                     const ms = Number(ConnectionController.ping)
-                                    return ms < 120 ? "#34C759" : (ms < 300 ? "#FF9F0A" : "#FF453A")
+                                    return ms < 120 ? "#5FD497" : (ms < 300 ? "#FF9F0A" : "#FF453A")
                                 }
                             }
 
@@ -247,7 +287,7 @@ PageType {
                                 text: qsTr("%1 ms").arg(ConnectionController.ping)
                                 color: {
                                     const ms = Number(ConnectionController.ping)
-                                    return ms < 120 ? "#34C759" : (ms < 300 ? "#FF9F0A" : "#FF453A")
+                                    return ms < 120 ? "#9FE0BC" : (ms < 300 ? "#FF9F0A" : "#FF453A")
                                 }
                             }
                         }
@@ -314,7 +354,8 @@ PageType {
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
                 disabledColor: DopamineStyle.color.transparent
-                textColor: DopamineStyle.color.mutedGray
+                // the night's grey, as on the card above
+                textColor: "#8A93B2"
                 borderWidth: 0
 
                 buttonTextLabel.lineHeight: 20
@@ -328,29 +369,58 @@ PageType {
 
                 leftImageSource: isSplitTunnelingEnabled ? "qrc:/images/controls/split-tunneling.svg" : ""
                 leftImageColor: ""
-                rightImageSource: "qrc:/images/controls/chevron-down.svg"
+                // a page of its own, the settings entry's too (it was a sheet over the home screen)
+                rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
                 Keys.onEnterPressed: this.clicked()
                 Keys.onReturnPressed: this.clicked()
 
                 onClicked: {
-                    homeSplitTunnelingDrawer.openTriggered()
-                }
-
-                HomeSplitTunnelingDrawer {
-                    id: homeSplitTunnelingDrawer
-                    objectName: "homeSplitTunnelingDrawer"
-
-                    parent: root
+                    PageController.goToPage(PageEnum.PageSettingsSplit)
                 }
             }
 
-            // a published update (Android): its sheet on a tap, gone for this version on ×
-            Rectangle {
+            // a published update: its sheet on a tap; the offer itself can be put away (×) for
+            // this version. A strip of the update sheet's night sky (UpdateSky): what is going
+            // on and how much has come, the route into the lodestar under the percent
+            Item {
                 id: updateCard
                 objectName: "updateCard"
 
                 property bool isFocusable: true
+
+                readonly property int updateState: UpdateController.state
+                readonly property int updateFailure: UpdateController.failure
+
+                readonly property string title: {
+                    switch (updateState) {
+                    case UpdateEnum.Downloading:
+                        return UpdateController.progress >= 1 ? qsTr("Checking the file") : qsTr("Downloading the update")
+                    case UpdateEnum.ReadyToInstall:
+                        return qsTr("The update is ready")
+                    case UpdateEnum.WaitingPermission:
+                        return qsTr("Allow updates")
+                    case UpdateEnum.Installing:
+                        return qsTr("Installing")
+                    case UpdateEnum.Failed:
+                        return updateFailure === UpdateEnum.Network || updateFailure === UpdateEnum.Corrupt
+                                ? qsTr("Couldn't download") : qsTr("The update didn't go through")
+                    }
+                    return qsTr("Version %1 is available").arg("<font color=\"#A9C1FF\">" + UpdateController.availableVersion + "</font>")
+                }
+
+                // how much has come, or what the sheet will do
+                readonly property string action: {
+                    switch (updateState) {
+                    case UpdateEnum.Downloading:
+                        return Math.floor(UpdateController.progress * 100) + "%"
+                    case UpdateEnum.ReadyToInstall:
+                        return qsTr("Install")
+                    case UpdateEnum.Failed:
+                        return updateFailure === UpdateEnum.BlockedBySystem ? "" : qsTr("Retry")
+                    }
+                    return ""
+                }
 
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
@@ -358,18 +428,9 @@ PageType {
                 // edge to edge (Android 14+): clear of the system navigation bar
                 Layout.bottomMargin: Math.max(12, SettingsController.safeAreaBottomMargin)
 
-                implicitHeight: updateCardContent.implicitHeight + 16
+                implicitHeight: 64
 
                 visible: UpdateController.homeCardVisible
-
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: DopamineStyle.color.translucentSlateGray }
-                    GradientStop { position: 1.0; color: DopamineStyle.color.translucentOnyxBlack }
-                }
-                border.width: updateCard.activeFocus ? 2 : 1
-                border.color: updateCard.activeFocus ? DopamineStyle.color.paleGray : DopamineStyle.color.onyxBlack
-                radius: 13
 
                 Keys.onTabPressed: FocusController.nextKeyTabItem()
                 Keys.onBacktabPressed: FocusController.previousKeyTabItem()
@@ -380,7 +441,24 @@ PageType {
                 Keys.onEnterPressed: showUpdateDrawer()
                 Keys.onReturnPressed: showUpdateDrawer()
 
-                // under the row: the × button on it takes its own taps
+                UpdateSky {
+                    anchors.fill: parent
+
+                    card: true
+                    running: updateCard.visible && Qt.application.state === Qt.ApplicationActive
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+
+                    visible: updateCard.activeFocus
+                    radius: 13
+                    color: "transparent"
+                    border.width: 2
+                    border.color: "#C9D1EA"
+                }
+
+                // under the texts: the × button takes its own taps
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -388,74 +466,67 @@ PageType {
                     onClicked: showUpdateDrawer()
                 }
 
-                RowLayout {
-                    id: updateCardContent
-
+                Text {
                     anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: updateCardAction.visible ? updateCardAction.left : updateCardCloseButton.left
+                    anchors.top: parent.top
                     anchors.leftMargin: 16
+                    anchors.rightMargin: 12
+                    anchors.topMargin: 11
+
+                    font.family: "IBM Plex Mono"
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    lineHeight: 20
+                    lineHeightMode: Text.FixedHeight
+                    color: "#D5DBF0"
+                    textFormat: Text.StyledText
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
+
+                    text: updateCard.title
+                }
+
+                Text {
+                    id: updateCardAction
+
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.rightMargin: 16
+                    anchors.topMargin: 11
+
+                    visible: text !== ""
+
+                    font.family: "IBM Plex Mono"
+                    font.pixelSize: 15
+                    font.weight: Font.Medium
+                    font.features: { "tnum": 1 }
+                    lineHeight: 20
+                    lineHeightMode: Text.FixedHeight
+                    color: updateCard.updateState === UpdateEnum.Failed ? "#8A93B2" : "#A9C1FF"
+
+                    text: updateCard.action
+                }
+
+                // only the offer can be put away: a download on its way is cancelled in its sheet
+                ImageButtonType {
+                    id: updateCardCloseButton
+                    objectName: "updateCardCloseButton"
+
+                    anchors.right: parent.right
+                    anchors.top: parent.top
                     anchors.rightMargin: 4
+                    anchors.topMargin: 1
 
-                    spacing: 12
+                    implicitWidth: 40
+                    implicitHeight: 40
 
-                    Image {
-                        Layout.alignment: Qt.AlignVCenter
+                    visible: updateCard.updateState === UpdateEnum.Available
 
-                        source: "qrc:/images/controls/download.svg"
-                        sourceSize: Qt.size(22, 22)
+                    image: "qrc:/images/controls/close.svg"
+                    imageColor: "#8A93B2"
 
-                        layer.enabled: true
-                        layer.effect: ColorOverlay {
-                            color: DopamineStyle.color.goldenApricot
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-
-                        spacing: 2
-
-                        CaptionTextType {
-                            Layout.fillWidth: true
-
-                            color: DopamineStyle.color.paleGray
-                            font.pixelSize: 14
-                            font.weight: 700
-                            maximumLineCount: 1
-                            elide: Text.ElideRight
-                            wrapMode: Text.NoWrap
-
-                            text: qsTr("Update available")
-                        }
-
-                        CaptionTextType {
-                            Layout.fillWidth: true
-
-                            color: DopamineStyle.color.mutedGray
-                            font.pixelSize: 14
-                            maximumLineCount: 1
-                            elide: Text.ElideRight
-                            wrapMode: Text.NoWrap
-
-                            text: qsTr("Version %1").arg(UpdateController.availableVersion)
-                        }
-                    }
-
-                    ImageButtonType {
-                        id: updateCardCloseButton
-                        objectName: "updateCardCloseButton"
-
-                        Layout.alignment: Qt.AlignVCenter
-
-                        implicitWidth: 40
-                        implicitHeight: 40
-
-                        image: "qrc:/images/controls/close.svg"
-                        imageColor: DopamineStyle.color.mutedGray
-
-                        onClicked: UpdateController.dismissHomeCard()
-                    }
+                    onClicked: UpdateController.dismissHomeCard()
                 }
             }
 

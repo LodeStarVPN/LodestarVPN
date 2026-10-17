@@ -115,7 +115,7 @@ PageType {
                 hoveredColor: DopamineStyle.color.translucentWhite
                 pressedColor: DopamineStyle.color.sheerWhite
                 disabledColor: DopamineStyle.color.mutedGray
-                textColor: DopamineStyle.color.goldenApricot
+                textColor: DopamineStyle.color.link
 
                 text: showContent ? qsTr("Collapse content") : qsTr("Show content")
 

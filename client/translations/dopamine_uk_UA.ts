@@ -107,6 +107,16 @@
         <source>Shared connection</source>
         <translation>Спільне підключення</translation>
     </message>
+    <message>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="2030"/>
+        <source>Could not get the file now. Try again a little later.</source>
+        <translation>Зараз не вдалося отримати файл. Спробуйте трохи пізніше.</translation>
+    </message>
+    <message>
+        <location filename="../ui/controllers/api/apiConfigsController.cpp" line="2062"/>
+        <source>The subscription has no free place. Unlink a device you no longer use in Active devices, then try again.</source>
+        <translation>На підписці немає вільного місця. Відв&apos;яжіть непотрібний пристрій в «Активних пристроях» і спробуйте знову.</translation>
+    </message>
 </context>
 <context>
     <name>ApiServicesModel</name>
@@ -316,25 +326,29 @@ for the best server...</source>
 <context>
     <name>HomeSplitTunnelingDrawer</name>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="66"/>
+        <source>Russian sites directly</source>
+        <translation type="vanished">Російські сайти напряму</translation>
+    </message>
+    <message>
+        <source>They open without the VPN: faster, and banks and public services work as usual</source>
+        <translation type="vanished">Відкриваються без VPN: швидше, а банки й держпослуги працюють як зазвичай</translation>
+    </message>
+    <message>
         <source>Split tunneling</source>
-        <translation>Роздільне тунелювання</translation>
+        <translation type="vanished">Роздільне тунелювання</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="67"/>
         <source>Allows you to connect to some sites or applications through a VPN connection and bypass others</source>
-        <translation>Дозволяє підключатись до одних сайтів та застосунків через захищене з&apos;єднання, а іншим в обхід нього</translation>
+        <translation type="vanished">Дозволяє підключатись до одних сайтів та застосунків через захищене з&apos;єднання, а іншим в обхід нього</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="77"/>
         <source>Split tunneling on the server</source>
-        <translation>Роздільне тунелювання на сервері</translation>
+        <translation type="vanished">Роздільне тунелювання на сервері</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="78"/>
         <source>Enabled 
 Can&apos;t be disabled for current server</source>
-        <translation>Увімкнено.
+        <translation type="vanished">Увімкнено.
 Не може бути вимкнено для даного сервера.</translation>
     </message>
     <message>
@@ -346,51 +360,40 @@ Can&apos;t be disabled for current server</source>
         <translation type="vanished">Роздільне тунелювання за сервісами</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="214"/>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="216"/>
         <source>via VPN</source>
-        <translation>через VPN</translation>
+        <translation type="vanished">через VPN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="215"/>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="217"/>
         <source>bypass VPN</source>
-        <translation>повз VPN</translation>
+        <translation type="vanished">повз VPN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="138"/>
         <source>Enabled</source>
-        <translation>Увімкнено</translation>
+        <translation type="vanished">Увімкнено</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="138"/>
         <source>Disabled</source>
-        <translation>Вимкнено</translation>
+        <translation type="vanished">Вимкнено</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="157"/>
         <source>App-based split tunneling</source>
-        <translation>Роздільне тунелювання застосунків</translation>
+        <translation type="vanished">Роздільне тунелювання застосунків</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="125"/>
         <source>Manage the site list</source>
-        <translation>Налаштувати список сайтів</translation>
+        <translation type="vanished">Налаштувати список сайтів</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="191"/>
         <source>Manage the app list</source>
-        <translation>Налаштувати список застосунків</translation>
+        <translation type="vanished">Налаштувати список застосунків</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="97"/>
         <source>Site and service split tunneling</source>
-        <translation>Роздільне тунелювання сайтів і сервісів</translation>
+        <translation type="vanished">Роздільне тунелювання сайтів і сервісів</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Components/HomeSplitTunnelingDrawer.qml" line="137"/>
         <source>Manage the service list</source>
-        <translation>Налаштувати список сервісів</translation>
+        <translation type="vanished">Налаштувати список сервісів</translation>
     </message>
 </context>
 <context>
@@ -641,12 +644,62 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageHome.qml" line="428"/>
         <source>Update available</source>
-        <translation>Доступне оновлення</translation>
+        <translation type="vanished">Доступне оновлення</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageHome.qml" line="440"/>
         <source>Version %1</source>
-        <translation>Версія %1</translation>
+        <translation type="vanished">Версія %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="363"/>
+        <source>Checking the file</source>
+        <translation>Перевіряємо файл</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="363"/>
+        <source>Downloading the update</source>
+        <translation>Завантажуємо оновлення</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="365"/>
+        <source>The update is ready</source>
+        <translation>Оновлення готове</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="367"/>
+        <source>Allow updates</source>
+        <translation>Дозвольте оновлення</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="369"/>
+        <source>Installing</source>
+        <translation>Встановлюємо</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="372"/>
+        <source>Couldn&apos;t download</source>
+        <translation>Не вдалося завантажити</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="372"/>
+        <source>The update didn&apos;t go through</source>
+        <translation>Оновлення не вдалося</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="374"/>
+        <source>Version %1 is available</source>
+        <translation>Доступна версія %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="383"/>
+        <source>Install</source>
+        <translation>Встановити</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageHome.qml" line="1"/>
+        <source>Retry</source>
+        <translation>Повторити</translation>
     </message>
 </context>
 <context>
@@ -1474,6 +1527,11 @@ Already installed containers were found on the server. All installed containers 
         <source>Subscription</source>
         <translation>Підписка</translation>
     </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettings.qml" line="195"/>
+        <source>Split tunneling</source>
+        <translation>Роздільне тунелювання</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsAbout</name>
@@ -1683,78 +1741,98 @@ Already installed containers were found on the server. All installed containers 
         <source>Unlink</source>
         <translation>Відв’язати</translation>
     </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="159"/>
+        <source>It connects through AmneziaWG. A new file replaces the old one: the old files and codes stop working.</source>
+        <translation>Підключається через AmneziaWG. Новий файл замінює старий: старі файли й коди перестають працювати.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="160"/>
+        <source>New file</source>
+        <translation>Новий файл</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="127"/>
+        <source>The device will be unlinked from your subscription, and its files will stop working.</source>
+        <translation>Пристрій буде відв&apos;язано від підписки, і його файли перестануть працювати.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiDevices.qml" line="95"/>
+        <source>Needs a new file: tap it</source>
+        <translation>Потрібен новий файл — натисніть</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsApiInstructions</name>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="22"/>
         <source>Windows</source>
-        <translation>Windows</translation>
+        <translation type="vanished">Windows</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="23"/>
         <source>documentation/instructions/connect-dopamine-premium#windows</source>
-        <translation>documentation/instructions/connect-dopamine-premium#windows</translation>
+        <translation type="vanished">documentation/instructions/connect-dopamine-premium#windows</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="29"/>
         <source>macOS</source>
-        <translation>macOS</translation>
+        <translation type="vanished">macOS</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="30"/>
         <source>documentation/instructions/connect-dopamine-premium#macos</source>
-        <translation>documentation/instructions/connect-dopamine-premium#macos</translation>
+        <translation type="vanished">documentation/instructions/connect-dopamine-premium#macos</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="36"/>
         <source>Android</source>
-        <translation>Android</translation>
+        <translation type="vanished">Android</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="37"/>
         <source>documentation/instructions/connect-dopamine-premium#android</source>
-        <translation>documentation/instructions/connect-dopamine-premium#android</translation>
+        <translation type="vanished">documentation/instructions/connect-dopamine-premium#android</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="43"/>
         <source>AndroidTV</source>
-        <translation>AndroidTV</translation>
+        <translation type="vanished">AndroidTV</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="44"/>
         <source>documentation/instructions/android_tv_connect/</source>
-        <translation>documentation/instructions/android_tv_connect/</translation>
+        <translation type="vanished">documentation/instructions/android_tv_connect/</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="50"/>
         <source>iOS</source>
-        <translation>iOS</translation>
+        <translation type="vanished">iOS</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="51"/>
         <source>documentation/instructions/connect-dopamine-premium#ios</source>
-        <translation>documentation/instructions/connect-dopamine-premium#ios</translation>
+        <translation type="vanished">documentation/instructions/connect-dopamine-premium#ios</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="57"/>
         <source>Linux</source>
-        <translation>Linux</translation>
+        <translation type="vanished">Linux</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="58"/>
         <source>documentation/instructions/connect-dopamine-premium#linux</source>
-        <translation>documentation/instructions/connect-dopamine-premium#linux</translation>
+        <translation type="vanished">documentation/instructions/connect-dopamine-premium#linux</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="64"/>
         <source>Routers</source>
-        <translation>Роутери</translation>
+        <translation type="vanished">Роутери</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="65"/>
         <source>documentation/instructions/connect-dopamine-premium#routers</source>
-        <translation>documentation/instructions/connect-dopamine-premium#routers</translation>
+        <translation type="vanished">documentation/instructions/connect-dopamine-premium#routers</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="101"/>
@@ -1764,7 +1842,77 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="102"/>
         <source>Setup guides on the LodestarVPN website</source>
-        <translation>Інструкції з налаштування на сайті LodestarVPN</translation>
+        <translation type="vanished">Інструкції з налаштування на сайті LodestarVPN</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="105"/>
+        <source>One subscription works on several devices, each takes a place on it. In use: %1</source>
+        <translation>Одна підписка працює на кількох пристроях, кожен займає на ній місце. Зайнято: %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="106"/>
+        <source>One subscription works on several devices, each takes a place on it.</source>
+        <translation>Одна підписка працює на кількох пристроях, кожен займає на ній місце.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="111"/>
+        <source>Windows computer, Android phone or tablet</source>
+        <translation>Комп&apos;ютер з Windows, телефон або планшет на Android</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="116"/>
+        <source>1. Download LodestarVPN on that device: the link is below. For Windows take the file ending in win64.msi, for Android the one ending in arm64-v8a.apk (it suits almost any phone).</source>
+        <translation>1. Завантажте LodestarVPN на цей пристрій — посилання нижче. Для Windows потрібен файл, що закінчується на win64.msi, для Android — на arm64-v8a.apk (підходить майже будь-якому телефону).</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="120"/>
+        <source>2. Install it and open it, then enter the subscription key.</source>
+        <translation>2. Встановіть і відкрийте застосунок, потім введіть ключ підписки.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="127"/>
+        <source>If Android warns about an app not from Google Play, tap «More details» → «Install anyway».</source>
+        <translation>Якщо Android попередить про застосунок не з Google Play, натисніть «Докладніше» → «Усе одно встановити».</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="138"/>
+        <source>Link to LodestarVPN</source>
+        <translation>Посилання на LodestarVPN</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="144"/>
+        <source>Link copied: send it to the other device</source>
+        <translation>Посилання скопійовано — надішліть його на інший пристрій</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="156"/>
+        <source>Subscription key</source>
+        <translation>Ключ підписки</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="164"/>
+        <source>Subscription key copied</source>
+        <translation>Ключ підписки скопійовано</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="171"/>
+        <source>iPhone, iPad or Mac</source>
+        <translation>iPhone, iPad або Mac</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="176"/>
+        <source>There is no LodestarVPN app for them yet: they connect through the free AmneziaWG app from the App Store.</source>
+        <translation>Застосунку LodestarVPN для них поки немає: вони підключаються через безкоштовний застосунок AmneziaWG з App Store.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="180"/>
+        <source>Such a device gets its own place on the subscription and its own key, which works on one device at a time.</source>
+        <translation>Такий пристрій отримує своє місце на підписці та свій ключ, який працює лише на одному пристрої одночасно.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiInstructions.qml" line="190"/>
+        <source>Add iPhone, iPad or Mac</source>
+        <translation>Додати iPhone, iPad або Mac</translation>
     </message>
 </context>
 <context>
@@ -1848,6 +1996,84 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsApiNativeConfigs.qml" line="229"/>
         <source>Cancel</source>
         <translation>Відмінити</translation>
+    </message>
+</context>
+<context>
+    <name>PageSettingsApiOtherDevice</name>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="68"/>
+        <source>Save</source>
+        <translation>Зберегти</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="69"/>
+        <source>AmneziaWG files (*.conf)</source>
+        <translation>Файли AmneziaWG (*.conf)</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="75"/>
+        <source>File saved: send it to the device</source>
+        <translation>Файл збережено — надішліть його на пристрій</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="111"/>
+        <source>A device without our app</source>
+        <translation>Пристрій без нашого застосунку</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="113"/>
+        <source>An iPhone, iPad or Mac connects through the AmneziaWG app. It will take a place on the subscription.</source>
+        <translation>iPhone, iPad і Mac підключаються через застосунок AmneziaWG. Пристрій займе місце на підписці.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="114"/>
+        <source>Scan the code in AmneziaWG, or send the file to the device.</source>
+        <translation>Відскануйте код в AmneziaWG або надішліть файл на пристрій.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="115"/>
+        <source>Send the file to the Mac and open it in AmneziaWG.</source>
+        <translation>Надішліть файл на Mac і відкрийте його в AmneziaWG.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="211"/>
+        <source>Send file</source>
+        <translation>Надіслати файл</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="211"/>
+        <source>Save file</source>
+        <translation>Зберегти файл</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="244"/>
+        <source>1. Install AmneziaWG from the App Store.</source>
+        <translation>1. Встановіть AmneziaWG з App Store.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="249"/>
+        <source>2. In AmneziaWG tap «+», choose to create from a QR code and point the camera at the code. Or open the file you sent to the device and choose AmneziaWG.</source>
+        <translation>2. В AmneziaWG натисніть «+», виберіть створення з QR-коду та наведіть камеру на код. Або відкрийте надісланий на пристрій файл і виберіть AmneziaWG.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="250"/>
+        <source>2. In AmneziaWG choose to import a tunnel from a file and pick the file you sent.</source>
+        <translation>2. В AmneziaWG виберіть імпорт тунелю з файлу та вкажіть надісланий файл.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="254"/>
+        <source>3. Allow it to add a VPN configuration and turn the tunnel on.</source>
+        <translation>3. Дозвольте додати конфігурацію VPN і ввімкніть тунель.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="268"/>
+        <source>The code and the file are this device&apos;s key: do not send them to anyone else. It works on one device at a time. A new file is in Active devices: tap the device; the old files then stop working.</source>
+        <translation>Код і файл — ключ цього пристрою: не пересилайте їх іншим. Ключ працює на одному пристрої одночасно. Новий файл — в «Активних пристроях»: натисніть на пристрій; старі файли тоді перестануть працювати.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiOtherDevice.qml" line="280"/>
+        <source>On such a device Russian sites go through the VPN too: AmneziaWG does not send them directly as our app does.</source>
+        <translation>На такому пристрої російські сайти теж ідуть через VPN: AmneziaWG не пускає їх напряму, як наш застосунок.</translation>
     </message>
 </context>
 <context>
@@ -2099,6 +2325,11 @@ Already installed containers were found on the server. All installed containers 
         <source>%1 ms</source>
         <translation>%1 мс</translation>
     </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsApiServerInfo.qml" line="330"/>
+        <source>Windows, Android, iPhone, iPad, Mac</source>
+        <translation>Windows, Android, iPhone, iPad, Mac</translation>
+    </message>
 </context>
 <context>
     <name>PageSettingsApiSubscriptionKey</name>
@@ -2197,7 +2428,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsAppSplitTunneling.qml" line="28"/>
         <source>Cannot change split tunneling settings during active connection</source>
-        <translation>Не можна змінити налаштування роздільного тунелювання при підключеному VPN</translation>
+        <translation type="vanished">Не можна змінити налаштування роздільного тунелювання при підключеному VPN</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsAppSplitTunneling.qml" line="50"/>
@@ -2257,6 +2488,11 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsAppSplitTunneling.qml" line="257"/>
         <source>Programs (*.exe)</source>
         <translation>Програми (*.exe)</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsAppSplitTunneling.qml" line="99"/>
+        <source>VPN is connected — changes will apply on the next connection</source>
+        <translation>VPN підключено — зміни застосуються при наступному підключенні</translation>
     </message>
 </context>
 <context>
@@ -2331,12 +2567,12 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApplication.qml" line="222"/>
         <source>Dark mode</source>
-        <translation>Темна тема</translation>
+        <translation type="vanished">Темна тема</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApplication.qml" line="223"/>
         <source>Use dark mode</source>
-        <translation>Використовувати темну тему</translation>
+        <translation type="vanished">Використовувати темну тему</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsApplication.qml" line="245"/>
@@ -2527,7 +2763,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsConnection.qml" line="115"/>
         <source>Allows you to use the VPN only for certain Apps</source>
-        <translation>Дозволяє використовувати VPN тільки для вибраних застосунків</translation>
+        <translation type="vanished">Дозволяє використовувати VPN тільки для вибраних застосунків</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsConnection.qml" line="133"/>
@@ -2558,7 +2794,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsConnection.qml" line="114"/>
         <source>App-based split tunneling</source>
-        <translation>Роздільне VPN-тунелювання застосунків</translation>
+        <translation type="vanished">Роздільне VPN-тунелювання застосунків</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsConnection.qml" line="90"/>
@@ -2925,7 +3161,7 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsRuAppsHelp.qml" line="65"/>
         <source>On Android: open Settings → Split tunneling → App-based split tunneling and add the app to the list. It will use your regular connection and won&apos;t see the VPN at all.</source>
-        <translation>На Android: відкрийте Налаштування → Роздільне тунелювання → За застосунками і додайте застосунок до списку. Він працюватиме через звичайне з&apos;єднання і взагалі не бачитиме VPN.</translation>
+        <translation type="vanished">На Android: відкрийте Налаштування → Роздільне тунелювання → За застосунками і додайте застосунок до списку. Він працюватиме через звичайне з&apos;єднання і взагалі не бачитиме VPN.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Pages2/PageSettingsRuAppsHelp.qml" line="76"/>
@@ -2936,6 +3172,11 @@ Already installed containers were found on the server. All installed containers 
         <location filename="../ui/qml/Pages2/PageSettingsRuAppsHelp.qml" line="85"/>
         <source>If an app still refuses to work, the only remaining option is to pause the VPN while using it — some apps detect the VPN interface itself, which cannot be hidden on this platform.</source>
         <translation>Якщо застосунок все одно відмовляється працювати, залишається лише призупиняти VPN на час його використання — деякі застосунки бачать сам VPN-інтерфейс, а сховати його на цій платформі неможливо.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsRuAppsHelp.qml" line="65"/>
+        <source>On Android: open Settings → Split tunneling, turn on App-based split tunneling (bypass VPN) and add the app under Manage the app list. It will use your regular connection and won&apos;t see the VPN at all.</source>
+        <translation>На Android: відкрийте Налаштування → Роздільне тунелювання, увімкніть «Роздільне тунелювання застосунків» (повз VPN) і додайте застосунок у «Налаштувати список застосунків». Він працюватиме через звичайне з&apos;єднання і взагалі не бачитиме VPN.</translation>
     </message>
 </context>
 <context>
@@ -3132,6 +3373,86 @@ Already installed containers were found on the server. All installed containers 
     <message>
         <source>Another VPN is on: the ping through it would be wrong. Turn it off and check again.</source>
         <translation>Увімкнено інший VPN: пінг через нього буде неправильним. Вимкніть його та перевірте знову.</translation>
+    </message>
+</context>
+<context>
+    <name>PageSettingsSplit</name>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="149"/>
+        <source>Russian sites directly</source>
+        <translation>Російські сайти напряму</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="150"/>
+        <source>They open without the VPN: faster, and banks and public services work as usual</source>
+        <translation>Відкриваються без VPN: швидше, а банки й держпослуги працюють як зазвичай</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="120"/>
+        <source>Split tunneling</source>
+        <translation>Роздільне тунелювання</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="121"/>
+        <source>Allows you to connect to some sites or applications through a VPN connection and bypass others</source>
+        <translation>Дозволяє підключатись до одних сайтів та застосунків через захищене з&apos;єднання, а іншим в обхід нього</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="132"/>
+        <source>Split tunneling on the server</source>
+        <translation>Роздільне тунелювання на сервері</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="133"/>
+        <source>Enabled 
+Can&apos;t be disabled for current server</source>
+        <translation>Увімкнено.
+Не може бути вимкнено для даного сервера.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="276"/>
+        <source>via VPN</source>
+        <translation>через VPN</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="277"/>
+        <source>bypass VPN</source>
+        <translation>повз VPN</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="206"/>
+        <source>Enabled</source>
+        <translation>Увімкнено</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="206"/>
+        <source>Disabled</source>
+        <translation>Вимкнено</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="228"/>
+        <source>App-based split tunneling</source>
+        <translation>Роздільне тунелювання застосунків</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="194"/>
+        <source>Manage the site list</source>
+        <translation>Налаштувати список сайтів</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="256"/>
+        <source>Manage the app list</source>
+        <translation>Налаштувати список застосунків</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="172"/>
+        <source>Site and service split tunneling</source>
+        <translation>Роздільне тунелювання сайтів і сервісів</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="205"/>
+        <source>Manage the service list</source>
+        <translation>Налаштувати список сервісів</translation>
     </message>
 </context>
 <context>
@@ -5750,7 +6071,7 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="42"/>
         <source>Before you install</source>
-        <translation>Перед встановленням</translation>
+        <translation type="vanished">Перед встановленням</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="45"/>
@@ -5765,17 +6086,17 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="50"/>
         <source>Update available</source>
-        <translation>Доступне оновлення</translation>
+        <translation type="vanished">Доступне оновлення</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="57"/>
         <source>Version %1 is ready. The download is about %2 MB.</source>
-        <translation>Версія %1 готова. Завантаження — близько %2 МБ.</translation>
+        <translation type="vanished">Версія %1 готова. Завантаження — близько %2 МБ.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="61"/>
         <source>Downloading the update…</source>
-        <translation>Завантаження оновлення…</translation>
+        <translation type="vanished">Завантаження оновлення…</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="63"/>
@@ -5790,27 +6111,27 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="69"/>
         <source>The update was cancelled.</source>
-        <translation>Оновлення скасовано.</translation>
+        <translation type="vanished">Оновлення скасовано.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="71"/>
         <source>Couldn&apos;t download the update. Check your internet connection and try again.</source>
-        <translation>Не вдалося завантажити оновлення. Перевірте інтернет і спробуйте знову.</translation>
+        <translation type="vanished">Не вдалося завантажити оновлення. Перевірте інтернет і спробуйте знову.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="73"/>
         <source>The update file was damaged. Try again.</source>
-        <translation>Файл оновлення пошкоджено. Спробуйте ще раз.</translation>
+        <translation type="vanished">Файл оновлення пошкоджено. Спробуйте ще раз.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="75"/>
         <source>Android didn&apos;t allow the installation. Try again later or contact support.</source>
-        <translation>Android не дозволив встановлення. Спробуйте пізніше або напишіть у підтримку.</translation>
+        <translation type="vanished">Android не дозволив встановлення. Спробуйте пізніше або напишіть у підтримку.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="77"/>
         <source>Couldn&apos;t install the update. Try again.</source>
-        <translation>Не вдалося встановити оновлення. Спробуйте знову.</translation>
+        <translation type="vanished">Не вдалося встановити оновлення. Спробуйте знову.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="87"/>
@@ -5840,7 +6161,7 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="295"/>
         <source>The VPN will reconnect after the update.</source>
-        <translation>Після оновлення VPN перепідключиться сам.</translation>
+        <translation type="vanished">Після оновлення VPN перепідключиться сам.</translation>
     </message>
     <message>
         <location filename="../ui/qml/Components/UpdateDrawer.qml" line="328"/>
@@ -5853,11 +6174,116 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     </message>
     <message>
         <source>Installing the update — the app will close and open again.</source>
-        <translation>Встановлюємо оновлення — застосунок закриється і відкриється знову.</translation>
+        <translation type="vanished">Встановлюємо оновлення — застосунок закриється і відкриється знову.</translation>
     </message>
     <message>
         <source>The update was not installed. When Windows asks to allow changes, choose «Yes».</source>
-        <translation>Оновлення не встановилося. Коли Windows запитає дозвіл на зміни, виберіть «Так».</translation>
+        <translation type="vanished">Оновлення не встановилося. Коли Windows запитає дозвіл на зміни, виберіть «Так».</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="51"/>
+        <source>Update %1</source>
+        <translation>Оновлення %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="56"/>
+        <source>A new version is available</source>
+        <translation>Доступна нова версія</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="59"/>
+        <source>Checking the file</source>
+        <translation>Перевіряємо файл</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="59"/>
+        <source>Downloading</source>
+        <translation>Завантажуємо</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="61"/>
+        <source>Ready to install</source>
+        <translation>Готово до встановлення</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="65"/>
+        <source>Installing</source>
+        <translation>Встановлюємо</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="69"/>
+        <source>Couldn&apos;t download</source>
+        <translation>Не вдалося завантажити</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="71"/>
+        <source>The file was damaged</source>
+        <translation>Файл пошкоджено</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="75"/>
+        <source>The update was not installed</source>
+        <translation>Оновлення не встановилося</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="75"/>
+        <source>The update was cancelled</source>
+        <translation>Оновлення скасовано</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="77"/>
+        <source>Android didn&apos;t allow the installation</source>
+        <translation>Android не дозволив встановлення</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="79"/>
+        <source>Couldn&apos;t install the update</source>
+        <translation>Не вдалося встановити оновлення</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="87"/>
+        <source>The download is about %1 MB</source>
+        <translation>Завантаження — близько %1 МБ</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="89"/>
+        <source>%1 of %2 MB</source>
+        <translation>%1 з %2 МБ</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="96"/>
+        <source>The VPN turns off for the install and comes back by itself.</source>
+        <translation>VPN вимкнеться на час встановлення і ввімкнеться сам.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="100"/>
+        <source>The app will close and open again.</source>
+        <translation>Застосунок закриється і відкриється знову.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="104"/>
+        <source>Check your internet connection and try again.</source>
+        <translation>Перевірте інтернет і спробуйте знову.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="106"/>
+        <source>Download it again.</source>
+        <translation>Завантажте його ще раз.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="108"/>
+        <source>When Windows asks to allow changes, choose «Yes».</source>
+        <translation>Коли Windows запитає дозвіл на зміни, виберіть «Так».</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="110"/>
+        <source>Try again later or contact support.</source>
+        <translation>Спробуйте пізніше або напишіть у підтримку.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Components/UpdateDrawer.qml" line="112"/>
+        <source>Try again.</source>
+        <translation>Спробуйте знову.</translation>
     </message>
 </context>
 <context>

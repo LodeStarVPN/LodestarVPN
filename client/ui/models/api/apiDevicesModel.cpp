@@ -54,6 +54,12 @@ QVariant ApiDevicesModel::data(const QModelIndex &index, int role) const
         // our gateway lists devices by a hash of the installation id and marks this one
         return issuedConfigInfo.isCurrent || issuedConfigInfo.installationUuid == m_settings->getInstallationUuid(false);
     }
+    case OtherAppRole: {
+        return issuedConfigInfo.otherApp;
+    }
+    case NeedsNewFileRole: {
+        return issuedConfigInfo.needsNewFile;
+    }
     }
 
     return QVariant();
@@ -81,6 +87,8 @@ void ApiDevicesModel::updateModel(const QJsonArray &issuedConfigs)
         issuedConfigInfo.countryName = issuedConfigObject.value(apiDefs::key::serverCountryName).toString();
         issuedConfigInfo.countryCode = issuedConfigObject.value(apiDefs::key::serverCountryCode).toString();
         issuedConfigInfo.isCurrent = issuedConfigObject.value(QStringLiteral("is_current")).toBool();
+        issuedConfigInfo.otherApp = issuedConfigObject.value(QStringLiteral("other_app")).toString();
+        issuedConfigInfo.needsNewFile = issuedConfigObject.value(QStringLiteral("needs_new_file")).toBool();
 
         m_issuedConfigs.push_back(issuedConfigInfo);
     }
@@ -96,5 +104,7 @@ QHash<int, QByteArray> ApiDevicesModel::roleNames() const
     roles[CountryCodeRole] = "countryCode";
     roles[LastUpdateRole] = "lastUpdate";
     roles[IsCurrentDeviceRole] = "isCurrentDevice";
+    roles[OtherAppRole] = "otherApp";
+    roles[NeedsNewFileRole] = "needsNewFile";
     return roles;
 }

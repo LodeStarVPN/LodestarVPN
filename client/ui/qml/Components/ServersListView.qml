@@ -145,7 +145,8 @@ ListViewType {
     header: Item {
         visible: true
         width: root.width
-        height: visible ? headerColumn.implicitHeight + 8 : 0
+        // the auto-select card, then the servers' card
+        height: visible ? headerColumn.implicitHeight + 16 : 0
 
         ColumnLayout {
             id: headerColumn
@@ -212,10 +213,11 @@ ListViewType {
                     implicitHeight: 40
                     cornerRadius: 12
 
-                    defaultColor: DopamineStyle.color.slateGray
-                    hoveredColor: DopamineStyle.color.charcoalGray
-                    pressedColor: DopamineStyle.color.mutedGray
-                    textColor: DopamineStyle.color.paleGray
+                    // the soft glass button
+                    defaultColor: DopamineStyle.color.glassButton
+                    hoveredColor: DopamineStyle.color.glassButtonHovered
+                    pressedColor: DopamineStyle.color.glassButtonPressed
+                    textColor: DopamineStyle.color.glassButtonText
 
                     leftImageSource: "qrc:/images/controls/gauge.svg"
                     text: iconOnly ? "" : qsTr("Check servers")
@@ -229,35 +231,86 @@ ListViewType {
                 }
             }
 
-            VerticalRadioButton {
-                id: autoSelectButton
-                objectName: "autoSelectButton"
-
+            // auto-select: a glass card of its own, lit by the lodestar while it is the choice
+            Item {
                 Layout.fillWidth: true
-                // in line with the servers' circles and names, which follow a
-                // 24 px flag and the row's 5 px spacing
-                Layout.leftMargin: 16 + 24 + 5
-                Layout.rightMargin: 16
+                Layout.topMargin: 4
 
-                text: qsTr("Auto-select")
-                descriptionText: qsTr("Fastest available server")
+                implicitHeight: Math.max(64, autoSelectButton.implicitHeight + 16)
 
-                checked: SettingsController.autoServerSelection
-                checkable: true
+                GlassSegment {
+                    anchors.fill: parent
 
-                ButtonGroup.group: serversRadioButtonGroup
-
-                onClicked: {
-                    SettingsController.autoServerSelection = true
-
-                    // connected already - reconnect to the auto-picked server
-                    if (ConnectionController.isConnected) {
-                        ConnectionController.openConnection()
-                    }
+                    pressed: autoSelectButton.pressed
+                    lit: autoSelectButton.checked
                 }
 
-                Keys.onEnterPressed: autoSelectButton.clicked()
-                Keys.onReturnPressed: autoSelectButton.clicked()
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 32
+                    anchors.rightMargin: 32
+
+                    spacing: 14
+
+                    // the gauge in a ring, where a server has its flag
+                    Rectangle {
+                        Layout.preferredWidth: 26
+                        Layout.preferredHeight: 26
+
+                        radius: 13
+                        color: DopamineStyle.color.transparent
+                        border.width: 1.5
+                        border.color: "#47A9C1FF"
+
+                        Image {
+                            anchors.centerIn: parent
+                            width: 14
+                            height: 14
+
+                            source: "qrc:/images/controls/gauge.svg"
+                            sourceSize: Qt.size(42, 42)
+
+                            layer.enabled: true
+                            layer.effect: ColorOverlay {
+                                color: DopamineStyle.color.mutedGray
+                            }
+                        }
+                    }
+
+                    VerticalRadioButton {
+                        id: autoSelectButton
+                        objectName: "autoSelectButton"
+
+                        Layout.fillWidth: true
+
+                        bare: true
+                        selectedTextColor: textColor
+
+                        text: qsTr("Auto-select")
+                        descriptionText: qsTr("Fastest available server")
+
+                        checked: SettingsController.autoServerSelection
+                        checkable: true
+
+                        ButtonGroup.group: serversRadioButtonGroup
+
+                        onClicked: {
+                            SettingsController.autoServerSelection = true
+
+                            // connected already - reconnect to the auto-picked server
+                            if (ConnectionController.isConnected) {
+                                ConnectionController.openConnection()
+                            }
+                        }
+
+                        Keys.onEnterPressed: autoSelectButton.clicked()
+                        Keys.onReturnPressed: autoSelectButton.clicked()
+                    }
+
+                    LodestarMark {
+                        visible: autoSelectButton.checked
+                    }
+                }
             }
         }
     }
@@ -301,15 +354,24 @@ ListViewType {
         property VerticalRadioButton serverRadioButtonProperty: serverRadioButton
 
         implicitWidth: root.width
-        implicitHeight: serverRadioButtonContent.implicitHeight
+        implicitHeight: Math.max(64, serverRadioButtonContent.implicitHeight)
+
+        // the servers stand in one glass card; the chosen one is lit by the lodestar
+        GlassSegment {
+            anchors.fill: parent
+
+            position: root.count === 1 ? "single" : index === 0 ? "first" : index === root.count - 1 ? "last" : "middle"
+            pressed: serverRadioButton.pressed
+            lit: serverRadioButton.checked
+        }
 
         ColumnLayout {
             id: serverRadioButtonContent
             objectName: "serverRadioButtonContent"
 
             anchors.fill: parent
-            anchors.rightMargin: 16
-            anchors.leftMargin: 16
+            anchors.rightMargin: 20
+            anchors.leftMargin: 32
 
             spacing: 0
 
@@ -317,6 +379,8 @@ ListViewType {
                 objectName: "serverRadioButtonRowLayout"
 
                 Layout.fillWidth: true
+
+                spacing: 14
 
                 Image {
                     id: serverCountryFlag
@@ -352,18 +416,34 @@ ListViewType {
 
                     Layout.fillWidth: true
 
+                    // chosen: lit by the lodestar, the name keeps its colour
+                    bare: true
+                    selectedTextColor: textColor
+
                     text: listName
                     // no address/protocol/country here - technical details live
                     // on the server details card; legacy servers keep services.
                     // The ping goes under the name: in a column of its own it
-                    // left the name ~10 letters and long countries broke mid-word
+                    // left the name ~10 letters and long countries broke mid-word.
+                    // Its dot is the home card's: green, amber, red as it gets slower
                     descriptionText: {
                         var parts = []
                         if (!isServerFromGatewayApi && serverDescription !== "") {
-                            parts.push(serverDescription)
+                            parts.push(serverDescription.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"))
                         }
-                        if (SettingsController.isServerPingTextVisible && healthLatency !== -2) {
-                            parts.push(healthLatency >= 0 ? qsTr("%1 ms").arg(healthLatency) : qsTr("offline"))
+                        // the server the VPN is on: the home card's ping through the tunnel, not the
+                        // figure from before the connect (the two did not agree)
+                        var latency = ConnectionController.isConnected && ConnectionController.ping !== ""
+                                && index === proxyServersModel.mapFromSource(root.selectedIndex)
+                                ? Number(ConnectionController.ping) : healthLatency
+                        if (latency !== -2) {
+                            var dot = "<font color='" + (latency < 0 || latency >= 300 ? "#F08A93"
+                                                         : latency < 120 ? "#5FD497" : "#F2B45A") + "'>●</font>"
+                            if (SettingsController.isServerPingTextVisible) {
+                                parts.push(dot + " " + (latency >= 0 ? qsTr("%1 ms").arg(latency) : qsTr("offline")))
+                            } else {
+                                parts.push(dot)
+                            }
                         }
                         return parts.join(" · ")
                     }
@@ -390,40 +470,8 @@ ListViewType {
                     Keys.onReturnPressed: serverRadioButton.clicked()
                 }
 
-                RowLayout {
-                    objectName: "serverHealthBadge"
-
-                    Layout.alignment: Qt.AlignVCenter
-                    Layout.rightMargin: 8
-                    spacing: 6
-
-                    visible: healthLatency !== -2
-
-                    Rectangle {
-                        Layout.alignment: Qt.AlignVCenter
-                        width: 10
-                        height: 10
-                        radius: 5
-
-                        visible: healthLatency >= 0
-
-                        color: healthLatency < 120 ? "#34C759" : (healthLatency < 300 ? "#FF9F0A" : "#FF453A")
-                    }
-
-                    Image {
-                        Layout.alignment: Qt.AlignVCenter
-                        sourceSize.width: 12
-                        sourceSize.height: 12
-
-                        visible: healthLatency === -1
-
-                        source: "qrc:/images/controls/close.svg"
-
-                        layer.enabled: true
-                        layer.effect: ColorOverlay {
-                            color: "#FF453A"
-                        }
-                    }
+                LodestarMark {
+                    visible: serverRadioButton.checked
                 }
 
                 ImageButtonType {
@@ -431,9 +479,9 @@ ListViewType {
                     objectName: "serverInfoButton"
 
                     image: "qrc:/images/controls/settings.svg"
-                    imageColor: DopamineStyle.color.paleGray
+                    imageColor: DopamineStyle.color.mutedGray
 
-                    implicitWidth: 56
+                    implicitWidth: 48
                     implicitHeight: 56
 
                     z: 1
@@ -455,12 +503,6 @@ ListViewType {
                         }
                     }
                 }
-            }
-
-            DividerType {
-                Layout.fillWidth: true
-                Layout.leftMargin: 0
-                Layout.rightMargin: 0
             }
         }
     }

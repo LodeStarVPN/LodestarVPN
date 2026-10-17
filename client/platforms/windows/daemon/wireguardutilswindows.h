@@ -43,8 +43,11 @@ class WireguardUtilsWindows final : public WireguardUtils {
 
   bool addExclusionRoute(const IPAddress& prefix) override;
   bool deleteExclusionRoute(const IPAddress& prefix) override;
+  bool addExclusionRoutes(const QList<IPAddress>& prefixes) override;
+  void deleteExclusionRoutes(const QList<IPAddress>& prefixes) override;
 
   bool WireguardUtilsWindows::excludeLocalNetworks(const QList<IPAddress>& addresses) override;
+  bool setDirectNetworks(const QStringList& networks) override;
 
  signals:
   void backendFailure();

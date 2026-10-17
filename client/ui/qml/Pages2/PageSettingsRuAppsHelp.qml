@@ -62,7 +62,7 @@ PageType {
                 Layout.bottomMargin: 16
 
                 visible: root.isAndroid
-                text: qsTr("On Android: open Settings → Split tunneling → App-based split tunneling and add the app to the list. It will use your regular connection and won't see the VPN at all.")
+                text: qsTr("On Android: open Settings → Split tunneling, turn on App-based split tunneling (bypass VPN) and add the app under Manage the app list. It will use your regular connection and won't see the VPN at all.")
             }
 
             // other platforms: only the site-based bypass is available

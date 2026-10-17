@@ -28,6 +28,7 @@ import org.amnezia.vpn.util.Log
 import org.amnezia.vpn.util.net.InetNetwork
 import org.amnezia.vpn.util.net.ip
 import org.amnezia.vpn.util.net.parseInetAddress
+import org.json.JSONArray
 import org.json.JSONObject
 
 private const val TAG = "Xray"
@@ -94,6 +95,7 @@ class Xray : Protocol() {
         (xrayJsonConfig.optJSONObject("log") ?: JSONObject().also { xrayJsonConfig.put("log", it) })
             .put("loglevel", "warning")
             .put("access", "none") // disable access log
+        putFileNetworks(xrayJsonConfig)
 
         var xrayJsonConfigString = xrayJsonConfig.toString()
         config.getString("hostName").let { hostName ->
@@ -115,6 +117,32 @@ class Xray : Protocol() {
         }
         state.value = CONNECTED
         isRunning = true
+    }
+
+    // A rule may name its networks by a file of the app ("ipFile"): the whole Russian list, too
+    // big for the one system message that brings the config here (vpnconnection.cpp). The
+    // networks go into the rule; a file that cannot be read takes its rule away, and those
+    // connections go through the server, as with the switch off.
+    private fun putFileNetworks(xrayJsonConfig: JSONObject) {
+        val rules = xrayJsonConfig.optJSONObject("routing")?.optJSONArray("rules") ?: return
+        for (i in rules.length() - 1 downTo 0) {
+            val rule = rules.optJSONObject(i) ?: continue
+            val path = rule.optString("ipFile").ifBlank { null } ?: continue
+            rule.remove("ipFile")
+            val networks = try {
+                File(path).readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+            } catch (e: IOException) {
+                Log.w(TAG, "The networks of a rule are not read: ${e.message}")
+                emptyList()
+            }
+            if (networks.isEmpty()) {
+                rules.remove(i)
+                Log.w(TAG, "A rule without its networks is left out")
+            } else {
+                rule.put("ip", JSONArray(networks))
+                Log.i(TAG, "A rule takes ${networks.size} networks from its file")
+            }
+        }
     }
 
     private suspend fun proveTraffic(socksPort: Int): Boolean = withContext(Dispatchers.IO) {

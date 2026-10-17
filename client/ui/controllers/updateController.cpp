@@ -11,6 +11,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QQmlEngine>
+#include <QRandomGenerator>
 #include <QSharedPointer>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -106,7 +107,7 @@ namespace
     constexpr qint64 kRetryAfterFailureMs = 30 * 60 * 1000;
     constexpr int kTransferTimeoutMs = 60 * 1000;
     constexpr int kInstallWatchMs = 15 * 1000;
-    // Windows: how long the VPN may take to go down before the install starts anyway
+    // how long the VPN may take to go down before the install starts anyway
     constexpr int kDisconnectWaitMs = 15 * 1000;
     // the installer's process is up: the app closes a moment later
     constexpr int kQuitAfterLaunchMs = 500;
@@ -163,6 +164,9 @@ UpdateController::UpdateController(const std::shared_ptr<Settings> &settings, QO
 {
     m_dismissedVersion = m_settings->updateDismissedVersion();
 
+    m_demoTimer.setInterval(100);
+    connect(&m_demoTimer, &QTimer::timeout, this, &UpdateController::demoTick);
+
 #ifdef LODESTAR_SELF_UPDATE
 #ifdef Q_OS_ANDROID
     m_xiaomi = AndroidController::instance()->isXiaomiFamily();
@@ -190,6 +194,7 @@ UpdateController::UpdateController(const std::shared_ptr<Settings> &settings, QO
         if (m_state == Installing && QGuiApplication::applicationState() == Qt::ApplicationActive) {
             qInfo() << "[UPDATE] no installer window over the app: back to the Install button";
             setState(ReadyToInstall);
+            installDidNotGoAhead();
         }
     });
 
@@ -224,11 +229,20 @@ bool UpdateController::isSupported() const
 
 bool UpdateController::isHomeCardVisible() const
 {
-    return m_updateAvailable && m_version != m_dismissedVersion;
+    if (!m_updateAvailable) {
+        return false;
+    }
+    // only the offer itself can be put away: an update on its way (started from the About
+    // page too) keeps its card, to be followed with the sheet closed
+    return m_version != m_dismissedVersion
+            || (m_state != Available && m_state != Idle && m_state != Checking && m_state != UpToDate);
 }
 
 void UpdateController::checkForUpdate(bool userInitiated)
 {
+    if (m_demo) {
+        return;
+    }
 #ifdef LODESTAR_SELF_UPDATE
     // the release on its way down or into the system stays as it is
     if (m_state == Downloading || m_state == Installing) {
@@ -299,7 +313,7 @@ void UpdateController::requestUpdateInfo()
 void UpdateController::applyUpdateInfo(bool userInitiated, const QJsonObject &data)
 {
     // the system has the file now: what came of it decides, not this answer
-    if (m_state == Installing) {
+    if (m_state == Installing || m_demo) {
         return;
     }
 
@@ -439,6 +453,14 @@ void UpdateController::clearOffer()
 
 void UpdateController::startUpdate()
 {
+    if (m_demo) {
+        if (m_state != Downloading && m_state != Installing) {
+            setProgress(0);
+            setState(Downloading);
+            m_demoTimer.start();
+        }
+        return;
+    }
 #ifdef LODESTAR_SELF_UPDATE
     if (!m_updateAvailable || m_state == Downloading || m_state == Installing) {
         return;
@@ -603,6 +625,14 @@ void UpdateController::stopDownload()
 
 void UpdateController::cancelDownload()
 {
+    if (m_demo) {
+        if (m_state == Downloading) {
+            m_demoTimer.stop();
+            setProgress(0);
+            setState(Available);
+        }
+        return;
+    }
 #ifdef LODESTAR_SELF_UPDATE
     if (m_state != Downloading) {
         return;
@@ -618,6 +648,18 @@ void UpdateController::cancelDownload()
 
 void UpdateController::install()
 {
+    if (m_demo) {
+        if (m_state == ReadyToInstall) {
+            qInfo() << "[UPDATE] demo: the install is only shown";
+            setState(Installing);
+            QTimer::singleShot(2500, this, [this]() {
+                if (m_demo) {
+                    endDemo();
+                }
+            });
+        }
+        return;
+    }
 #ifdef LODESTAR_SELF_UPDATE
     if (!m_updateAvailable || m_state == Downloading || m_state == Installing) {
         return;
@@ -631,15 +673,28 @@ void UpdateController::install()
         return;
     }
 
-#ifdef Q_OS_WIN
+#ifdef Q_OS_ANDROID
+    if (!AndroidController::instance()->canInstallUpdates()) {
+        qInfo() << "[UPDATE] the app may not install apps yet: asking the user";
+        setState(WaitingPermission);
+        return;
+    }
+#endif
+
     qInfo() << "[UPDATE] installing" << m_version << "code" << m_versionCode << "over" << installedVersionCode();
     setState(Installing);
-    // the package stops the service and replaces the app: the VPN goes down cleanly first
-    // (a VLESS tunnel cut by the service stopping leaves its routes behind), and comes back
-    // when the app opens again
+    // the VPN goes down cleanly first, and comes back after the install. Cut by the install
+    // instead, it came back broken (the owner saw it on both): Windows' package stops the
+    // service under it (a VLESS tunnel leaves its routes behind), Android's kills the app
+    // with its tunnel
     if (m_vpnConnected && m_vpnConnected() && m_disconnectVpn) {
+        m_reconnectAfterInstall = true;
+#ifdef Q_OS_WIN
         m_settings->setUpdateReconnect(true);
+#endif
         m_launchWhenDisconnected = true;
+        // (Android's watch for the installer window starts with the install, not now)
+        m_installWatch.stop();
         m_disconnectVpn();
         QTimer::singleShot(kDisconnectWaitMs, this, [this]() {
             if (m_launchWhenDisconnected) {
@@ -650,17 +705,6 @@ void UpdateController::install()
         return;
     }
     launchInstaller();
-#else
-    if (!AndroidController::instance()->canInstallUpdates()) {
-        qInfo() << "[UPDATE] the app may not install apps yet: asking the user";
-        setState(WaitingPermission);
-        return;
-    }
-
-    qInfo() << "[UPDATE] installing" << m_version << "code" << m_versionCode << "over" << installedVersionCode();
-    setState(Installing);
-    AndroidController::instance()->installUpdate(path);
-#endif
 #endif
 }
 
@@ -692,8 +736,14 @@ void UpdateController::onVpnDisconnected()
 
 void UpdateController::launchInstaller()
 {
-#ifdef Q_OS_WIN
     m_launchWhenDisconnected = false;
+#ifdef Q_OS_ANDROID
+    // the watch counts from the install itself, not from the VPN's going down; SelfUpdater
+    // keeps whether the VPN comes back after the update (PackageReplacedReceiver)
+    m_installWatch.start();
+    AndroidController::instance()->installUpdate(updateFilePath(), m_reconnectAfterInstall);
+#endif
+#ifdef Q_OS_WIN
     // PowerShell's single-quoted string: a ' inside doubles
     const auto quoted = [](QString text) {
         return QLatin1Char('\'') + text.replace(QLatin1Char('\''), QLatin1String("''")) + QLatin1Char('\'');
@@ -764,6 +814,10 @@ void UpdateController::openInstallPermission()
 
 void UpdateController::dismissHomeCard()
 {
+    if (m_demo) {
+        endDemo();
+        return;
+    }
     if (!m_updateAvailable || m_dismissedVersion == m_version) {
         return;
     }
@@ -793,6 +847,23 @@ void UpdateController::onInstallResult(int code)
     case InstallFailedOther:
     default: setState(Failed, Other); break;
     }
+    if (code != InstallSuccess && code != InstallConfirming) {
+        installDidNotGoAhead();
+    }
+}
+
+// the VPN went down for an install that is not happening (cancelled, refused, no installer
+// window): it comes back now, not after an update that is not coming
+void UpdateController::installDidNotGoAhead()
+{
+    if (!m_reconnectAfterInstall) {
+        return;
+    }
+    m_reconnectAfterInstall = false;
+    if (m_connectVpn && m_vpnConnected && !m_vpnConnected()) {
+        qInfo() << "[UPDATE] the install did not go ahead: connecting the VPN again";
+        m_connectVpn();
+    }
 }
 
 void UpdateController::onApplicationActive()
@@ -821,6 +892,7 @@ void UpdateController::setState(State state, Failure failure)
         return;
     }
     qInfo() << "[UPDATE] state" << state << failure;
+    const bool cardWasVisible = isHomeCardVisible();
     m_state = state;
     m_failure = failure;
     if (state == Installing) {
@@ -829,6 +901,75 @@ void UpdateController::setState(State state, Failure failure)
         m_installWatch.stop();
     }
     emit stateChanged();
+    if (isHomeCardVisible() != cardWasVisible) {
+        emit homeCardVisibleChanged();
+    }
+}
+
+void UpdateController::startDemo(bool downloadBreaks)
+{
+    // a real update on its way stays as it is
+    if (!m_demo && (m_state == Downloading || m_state == Installing)) {
+        return;
+    }
+    qInfo() << "[UPDATE] demo" << (downloadBreaks ? "with the download breaking off" : "");
+    m_demoTimer.stop();
+    m_demo = true;
+    m_demoBreaks = downloadBreaks;
+    const bool cardWasVisible = isHomeCardVisible();
+    m_updateAvailable = true;
+    m_version = QStringLiteral("9.9.9");
+    m_versionCode = 0;
+    m_abi.clear();
+    m_urls.clear();
+    m_sha256.clear();
+    m_size = 38 * 1000 * 1000;
+    ++m_generation;
+    emit updateAvailableChanged();
+    setProgress(0);
+    setState(Available);
+    if (isHomeCardVisible() != cardWasVisible) {
+        emit homeCardVisibleChanged();
+    }
+}
+
+// some 11 s for the whole made-up download, in uneven steps; the file is "checked" after it
+void UpdateController::demoTick()
+{
+    if (!m_demo || m_state != Downloading) {
+        m_demoTimer.stop();
+        return;
+    }
+    const double next = qMin(1.0, m_progress + 0.004 + QRandomGenerator::global()->bounded(0.010));
+    if (m_demoBreaks && next > 0.42) {
+        m_demoBreaks = false;
+        m_demoTimer.stop();
+        setProgress(0);
+        setState(Failed, Network);
+        return;
+    }
+    setProgress(next);
+    if (next >= 1.0) {
+        m_demoTimer.stop();
+        QTimer::singleShot(1200, this, [this]() {
+            if (m_demo && m_state == Downloading) {
+                setState(ReadyToInstall);
+            }
+        });
+    }
+}
+
+void UpdateController::endDemo()
+{
+    qInfo() << "[UPDATE] demo over";
+    m_demoTimer.stop();
+    m_demo = false;
+    clearOffer();
+    setState(Idle);
+    // a real offer the demo stood in for comes back with a check now
+    m_lastCheckAt = 0;
+    m_lastAttemptAt = 0;
+    checkForUpdate(false);
 }
 
 void UpdateController::setProgress(double progress)

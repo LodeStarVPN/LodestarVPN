@@ -1,0 +1,5 @@
+<!-- LodestarVPN home screen telescope (HomeScene.qml), from local-tools/design/home/telescope.html; units: the telescope's own, pivot at 0,0: the starlight on the axis -->
+<svg xmlns="http://www.w3.org/2000/svg" width="19" height="25" viewBox="-8 -8 19 25">
+<defs><linearGradient id="hubLit" x1="-6" y1="-6" x2="3" y2="3" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a9bdff" stop-opacity="0.8"/><stop offset="0.5" stop-color="#7f98ff" stop-opacity="0"/></linearGradient></defs>
+<circle cx="0" cy="0" r="5.9" fill="none" stroke="url(#hubLit)" stroke-width="1"/>
+</svg>

@@ -52,92 +52,93 @@ PageType {
                                       "By default, logging functionality is disabled.")
             }
 
-            SwitcherType {
-                id: switcher
-
+            GlassColumn {
                 Layout.fillWidth: true
                 Layout.topMargin: 16
-                Layout.bottomMargin: 10
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
 
-                text: qsTr("Enable logs")
+                SwitcherType {
+                    id: switcher
 
-                checked: SettingsController.isLoggingEnabled
+                    Layout.fillWidth: true
+
+                    text: qsTr("Enable logs")
+
+                    checked: SettingsController.isLoggingEnabled
                 
-                onToggled: function() {
-                    if (checked !== SettingsController.isLoggingEnabled) {
-                        SettingsController.isLoggingEnabled = checked
+                    onToggled: function() {
+                        if (checked !== SettingsController.isLoggingEnabled) {
+                            SettingsController.isLoggingEnabled = checked
+                        }
+                    }
+                }
+
+                DividerType {}
+
+                SwitcherType {
+                    id: pingTextSwitcher
+
+                    Layout.fillWidth: true
+
+                    text: qsTr("Show server ping values")
+                    descriptionText: qsTr("By default the server list shows only a colored status dot. Enable to see the exact latency in milliseconds.")
+
+                    checked: SettingsController.isServerPingTextVisible
+
+                    onToggled: function() {
+                        if (checked !== SettingsController.isServerPingTextVisible) {
+                            SettingsController.isServerPingTextVisible = checked
+                        }
                     }
                 }
             }
 
-            DividerType {}
-
-            SwitcherType {
-                id: pingTextSwitcher
-
+            GlassColumn {
                 Layout.fillWidth: true
-                Layout.topMargin: 10
-                Layout.bottomMargin: 10
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
+                Layout.topMargin: 16
+                Layout.bottomMargin: 8
 
-                text: qsTr("Show server ping values")
-                descriptionText: qsTr("By default the server list shows only a colored status dot. Enable to see the exact latency in milliseconds.")
+                LabelWithButtonType {
+                    Layout.fillWidth: true
 
-                checked: SettingsController.isServerPingTextVisible
+                    text: qsTr("Subscription ID")
+                    // the ID is the key to the subscription: copied for support,
+                    // never shown (it would end up in every screenshot)
+                    descriptionText: ApiConfigsController.subscriptionId !== "" ? qsTr("Click to copy it for support") : qsTr("not set")
+                    rightImageSource: "qrc:/images/controls/copy.svg"
 
-                onToggled: function() {
-                    if (checked !== SettingsController.isServerPingTextVisible) {
-                        SettingsController.isServerPingTextVisible = checked
+                    clickedFunction: function() {
+                        ApiConfigsController.copySubscriptionIdToClipboard()
+                        PageController.showNotificationMessage(qsTr("Subscription ID copied"))
                     }
                 }
-            }
 
-            DividerType {}
+                DividerType {}
 
-            LabelWithButtonType {
-                Layout.fillWidth: true
+                LabelWithButtonType {
+                    Layout.fillWidth: true
 
-                text: qsTr("Subscription ID")
-                // the ID is the key to the subscription: copied for support,
-                // never shown (it would end up in every screenshot)
-                descriptionText: ApiConfigsController.subscriptionId !== "" ? qsTr("Click to copy it for support") : qsTr("not set")
-                rightImageSource: "qrc:/images/controls/copy.svg"
+                    text: qsTr("Clear logs")
+                    leftImageSource: "qrc:/images/controls/trash.svg"
+                    isSmallLeftImage: true
 
-                clickedFunction: function() {
-                    ApiConfigsController.copySubscriptionIdToClipboard()
-                    PageController.showNotificationMessage(qsTr("Subscription ID copied"))
-                }
-            }
+                    clickedFunction: function() {
+                        var headerText = qsTr("Clear logs?")
+                        var yesButtonText = qsTr("Continue")
+                        var noButtonText = qsTr("Cancel")
 
-            DividerType {}
+                        var yesButtonFunction = function() {
+                            PageController.showBusyIndicator(true)
+                            SettingsController.clearLogs()
+                            PageController.showBusyIndicator(false)
+                            PageController.showNotificationMessage(qsTr("Logs have been cleaned up"))
+                        }
 
-            LabelWithButtonType {
-                Layout.fillWidth: true
+                        var noButtonFunction = function() {
 
-                text: qsTr("Clear logs")
-                leftImageSource: "qrc:/images/controls/trash.svg"
-                isSmallLeftImage: true
+                        }
 
-                clickedFunction: function() {
-                    var headerText = qsTr("Clear logs?")
-                    var yesButtonText = qsTr("Continue")
-                    var noButtonText = qsTr("Cancel")
-
-                    var yesButtonFunction = function() {
-                        PageController.showBusyIndicator(true)
-                        SettingsController.clearLogs()
-                        PageController.showBusyIndicator(false)
-                        PageController.showNotificationMessage(qsTr("Logs have been cleaned up"))
+                        showQuestionDrawer(headerText, "", yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
                     }
-
-                    var noButtonFunction = function() {
-
-                    }
-
-                    showQuestionDrawer(headerText, "", yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
                 }
             }
         }
@@ -171,35 +172,35 @@ PageType {
                 text: description
             }
 
-            LabelWithButtonType {
+            GlassColumn {
                 Layout.fillWidth: true
-                Layout.topMargin: -8
-                Layout.bottomMargin: -8
+                Layout.topMargin: 8
+                Layout.bottomMargin: 8
 
-                visible: !GC.isMobile()
+                LabelWithButtonType {
+                    Layout.fillWidth: true
 
-                text: qsTr("Open logs folder")
-                leftImageSource: "qrc:/images/controls/folder-open.svg"
-                isSmallLeftImage: true
+                    visible: !GC.isMobile()
 
-                clickedFunction: openLogsHandler
+                    text: qsTr("Open logs folder")
+                    leftImageSource: "qrc:/images/controls/folder-open.svg"
+                    isSmallLeftImage: true
+
+                    clickedFunction: openLogsHandler
+                }
+
+                DividerType {}
+
+                LabelWithButtonType {
+                    Layout.fillWidth: true
+
+                    text: qsTr("Export logs")
+                    leftImageSource: "qrc:/images/controls/save.svg"
+                    isSmallLeftImage: true
+
+                    clickedFunction: exportLogsHandler
+                }
             }
-
-            DividerType {}
-
-            LabelWithButtonType {
-                Layout.fillWidth: true
-                Layout.topMargin: -8
-                Layout.bottomMargin: -8
-
-                text: qsTr("Export logs")
-                leftImageSource: "qrc:/images/controls/save.svg"
-                isSmallLeftImage: true
-
-                clickedFunction: exportLogsHandler
-            }
-
-            DividerType {}
         }
     }
 

@@ -56,6 +56,8 @@ PageType {
                 Layout.rightMargin: 16
                 Layout.leftMargin: 16
 
+                Layout.bottomMargin: 8
+
                 headerText: qsTr("Active Devices")
                 // one limit for the whole subscription, whatever the protocol
                 descriptionText: {
@@ -68,21 +70,32 @@ PageType {
             }
         }
 
+        // the devices in one glass card; this one lit by the lodestar, which takes its trash's place
+        // (unlinking itself is still a tap on it away)
         delegate: ColumnLayout {
             width: listView.width
 
+            spacing: 0
+
             LabelWithButtonType {
                 Layout.fillWidth: true
-                Layout.topMargin: 6
+
+                glass: listView.count === 1 ? "single" : index === 0 ? "first"
+                     : index === listView.count - 1 ? "last" : "middle"
+                glassLit: isCurrentDevice
 
                 // the OS the device reported and when it was last active; its id
                 // (supportTag) is only used to unlink it, never shown. "This
                 // device" goes under the name: glued to it, it read as part of
-                // the name and made the row taller
-                text: osVersion !== "" ? osVersion : qsTr("Device")
+                // the name and made the row taller. A device without our app
+                // (an iPhone) says by its name what it connects through
+                text: (osVersion !== "" ? osVersion : qsTr("Device")) + (otherApp === "amneziawg" ? " · AmneziaWG" : "")
+                // (its key gone from the servers: a copy of it was caught, only a new file helps)
                 descriptionText: isCurrentDevice ? qsTr("This device")
-                                                 : (lastUpdate !== "" ? qsTr("Last active: %1").arg(lastUpdate) : "")
-                rightImageSource: "qrc:/images/controls/trash.svg"
+                                                 : needsNewFile ? qsTr("Needs a new file: tap it")
+                                                                : (lastUpdate !== "" ? qsTr("Last active: %1").arg(lastUpdate) : "")
+                rightImageSource: isCurrentDevice ? "" : otherApp === "amneziawg" ? "qrc:/images/controls/chevron-right.svg"
+                                                                                    : "qrc:/images/controls/trash.svg"
 
                 clickedFunction: function() {
                     if (isCurrentDevice && ServersModel.isDefaultServerCurrentlyProcessed() && ConnectionController.isConnected) {
@@ -90,23 +103,70 @@ PageType {
                         return
                     }
 
-                    var headerText = qsTr("Unlink this device?")
-                    // the gateway lets an unlinked device back only after 24 h
-                    var descriptionText = qsTr("The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it.")
-                    var yesButtonText = qsTr("Unlink")
-                    var noButtonText = qsTr("Cancel")
-
-                    var yesButtonFunction = function() {
-                        Qt.callLater(unlinkDevice, supportTag, countryCode, isCurrentDevice)
-                    }
-                    var noButtonFunction = function() {
+                    // its files are had again here, or it is unlinked like any other
+                    if (otherApp === "amneziawg") {
+                        otherDeviceDrawer.deviceId = supportTag
+                        otherDeviceDrawer.headerText = osVersion !== "" ? osVersion : qsTr("Device")
+                        otherDeviceDrawer.openTriggered()
+                        return
                     }
 
-                    showQuestionDrawer(headerText, descriptionText, yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
+                    root.askUnlink(supportTag, countryCode, isCurrentDevice, false)
                 }
             }
+        }
+    }
 
-            DividerType {}
+    function askUnlink(supportTag, countryCode, isCurrentDevice, isOther) {
+        var yesButtonFunction = function() {
+            Qt.callLater(unlinkDevice, supportTag, countryCode, isCurrentDevice)
+        }
+        // the gateway lets an unlinked device back only after 24 h; one without our app has no
+        // key to enter: its files just stop working
+        showQuestionDrawer(qsTr("Unlink this device?"),
+                           isOther ? qsTr("The device will be unlinked from your subscription, and its files will stop working.")
+                                   : qsTr("The device will be unlinked from your subscription. It can be added again in 24 hours by entering the subscription ID on it."),
+                           qsTr("Unlink"), qsTr("Cancel"), yesButtonFunction, function() {})
+    }
+
+    // a new key for a device without our app: its old files stop working, the new ones are shown
+    function newFiles(deviceId) {
+        PageController.showBusyIndicator(true)
+        var done = ApiConfigsController.newOtherDeviceFiles(deviceId)
+        PageController.showBusyIndicator(false)
+        if (done) {
+            PageController.goToPage(PageEnum.PageSettingsApiOtherDevice)
+        }
+    }
+
+    Connections {
+        target: ApiConfigsController
+        // only while this page is on top: the device's own page says it itself
+        enabled: root.StackView.status === StackView.Active
+
+        function onOtherDeviceFailed(message) {
+            PageController.showErrorMessage(message)
+        }
+    }
+
+    QuestionDrawer {
+        id: otherDeviceDrawer
+
+        property string deviceId
+
+        anchors.fill: parent
+
+        descriptionText: qsTr("It connects through AmneziaWG. A new file replaces the old one: the old files and codes stop working.")
+        yesButtonText: qsTr("New file")
+        noButtonText: qsTr("Unlink")
+
+        yesButtonFunction: function() {
+            otherDeviceDrawer.closeTriggered()
+            Qt.callLater(root.newFiles, otherDeviceDrawer.deviceId)
+        }
+        noButtonFunction: function() {
+            otherDeviceDrawer.closeTriggered()
+            root.askUnlink(otherDeviceDrawer.deviceId, "", false, true)
         }
     }
 

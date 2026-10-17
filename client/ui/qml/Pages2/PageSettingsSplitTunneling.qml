@@ -115,7 +115,8 @@ PageType {
 
         LabelWithButtonType {
             Layout.fillWidth: true
-            Layout.topMargin: 8
+            Layout.topMargin: 16
+            glass: "single"
 
             text: qsTr("Bank and marketplace apps don't work?")
             rightImageSource: "qrc:/images/controls/chevron-right.svg"
@@ -177,6 +178,7 @@ PageType {
             LabelWithButtonType {
                 id: site
                 Layout.fillWidth: true
+                glass: listView.count === 1 ? "single" : index === 0 ? "first" : index === listView.count - 1 ? "last" : "middle"
 
                 text: url
                 descriptionText: ip
@@ -203,8 +205,6 @@ PageType {
                     showQuestionDrawer(headerText, "", yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
                 }
             }
-
-            DividerType {}
         }
     }
 
@@ -215,7 +215,13 @@ PageType {
         
         height: addSiteButton.implicitHeight + 48
         
-        color: DopamineStyle.color.midnightBlack
+        // the night at the page's bottom edge, fading in over the list's last rows: a flat band stood
+        // out of the sky's gradient as a step
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#0010173A" }
+            GradientStop { position: 0.45; color: DopamineStyle.color.nightBottom }
+            GradientStop { position: 1.0; color: DopamineStyle.color.nightBottom }
+        }
         
         RowLayout {
             id: addSiteButton
@@ -285,73 +291,75 @@ PageType {
                 headerText: qsTr("Additional options")
             }
 
-            LabelWithButtonType {
-                id: importSitesButton
+            GlassColumn {
                 Layout.fillWidth: true
 
-                text: qsTr("Import")
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
+                LabelWithButtonType {
+                    id: importSitesButton
+                    Layout.fillWidth: true
 
-                clickedFunction: function() {
-                    importSitesDrawer.openTriggered()
-                }
-            }
+                    text: qsTr("Import")
+                    rightImageSource: "qrc:/images/controls/chevron-right.svg"
 
-            DividerType {}
-
-            LabelWithButtonType {
-                id: exportSitesButton
-                Layout.fillWidth: true
-                text: qsTr("Save site list")
-
-                clickedFunction: function() {
-                    var fileName = ""
-                    if (GC.isMobile()) {
-                        fileName = "amnezia_sites.json"
-                    } else {
-                        fileName = SystemController.getFileName(qsTr("Save sites"),
-                                                                qsTr("Sites files (*.json)"),
-                                                                StandardPaths.standardLocations(StandardPaths.DocumentsLocation) + "/amnezia_sites",
-                                                                true,
-                                                                ".json")
-                    }
-                    if (fileName !== "") {
-                        PageController.showBusyIndicator(true)
-                        SitesController.exportSites(fileName)
-                        moreActionsDrawer.closeTriggered()
-                        PageController.showBusyIndicator(false)
+                    clickedFunction: function() {
+                        importSitesDrawer.openTriggered()
                     }
                 }
-            }
 
-            DividerType {}
+                DividerType {}
+
+                LabelWithButtonType {
+                    id: exportSitesButton
+                    Layout.fillWidth: true
+                    text: qsTr("Save site list")
+
+                    clickedFunction: function() {
+                        var fileName = ""
+                        if (GC.isMobile()) {
+                            fileName = "amnezia_sites.json"
+                        } else {
+                            fileName = SystemController.getFileName(qsTr("Save sites"),
+                                                                    qsTr("Sites files (*.json)"),
+                                                                    StandardPaths.standardLocations(StandardPaths.DocumentsLocation) + "/amnezia_sites",
+                                                                    true,
+                                                                    ".json")
+                        }
+                        if (fileName !== "") {
+                            PageController.showBusyIndicator(true)
+                            SitesController.exportSites(fileName)
+                            moreActionsDrawer.closeTriggered()
+                            PageController.showBusyIndicator(false)
+                        }
+                    }
+                }
+
+                DividerType {}
             
-            LabelWithButtonType {
-                id: clearSitesButton
-                Layout.fillWidth: true
+                LabelWithButtonType {
+                    id: clearSitesButton
+                    Layout.fillWidth: true
 
-                text: qsTr("Clear site list")
+                    text: qsTr("Clear site list")
 
-                clickedFunction: function() {
-                    var headerText = qsTr("Clear site list?")
-                    var descriptionText = qsTr("All sites will be removed from list.")
-                    var yesButtonText = qsTr("Continue")
-                    var noButtonText = qsTr("Cancel")
+                    clickedFunction: function() {
+                        var headerText = qsTr("Clear site list?")
+                        var descriptionText = qsTr("All sites will be removed from list.")
+                        var yesButtonText = qsTr("Continue")
+                        var noButtonText = qsTr("Cancel")
 
-                    var yesButtonFunction = function() {
-                        PageController.showBusyIndicator(true)
-                        SitesController.removeSites()
-                        PageController.showBusyIndicator(false)
-                    }
-                    var noButtonFunction = function() {
+                        var yesButtonFunction = function() {
+                            PageController.showBusyIndicator(true)
+                            SitesController.removeSites()
+                            PageController.showBusyIndicator(false)
+                        }
+                        var noButtonFunction = function() {
                         
-                    }
+                        }
 
-                    showQuestionDrawer(headerText, descriptionText, yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
+                        showQuestionDrawer(headerText, descriptionText, yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)
+                    }
                 }
             }
-
-            DividerType {}
         }
     }
 
@@ -409,6 +417,7 @@ PageType {
 
                     LabelWithButtonType {
                         Layout.fillWidth: true
+                        glass: importSitesDrawerListView.count === 1 ? "single" : index === 0 ? "first" : index === importSitesDrawerListView.count - 1 ? "last" : "middle"
 
                         text: title
 
@@ -416,8 +425,6 @@ PageType {
                             clickedHandler()
                         }
                     }
-
-                    DividerType {}
                 }
             }
         }

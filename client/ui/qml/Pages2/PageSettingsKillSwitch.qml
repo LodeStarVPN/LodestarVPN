@@ -127,6 +127,8 @@ PageType {
                 Layout.fillWidth: true
 
                 enabled: true
+                glass: "single"
+
                 text: qsTr("DNS Exceptions")
                 descriptionText: qsTr("DNS servers listed here will remain accessible when KillSwitch is active.")
                 rightImageSource: "qrc:/images/controls/chevron-right.svg"

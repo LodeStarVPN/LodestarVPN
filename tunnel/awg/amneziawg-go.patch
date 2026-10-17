@@ -1,0 +1,1296 @@
+diff --git a/device/device.go b/device/device.go
+index 781a899..d44a31c 100644
+--- a/device/device.go
++++ b/device/device.go
+@@ -14,6 +14,7 @@ import (
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/ratelimiter"
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/rwcancel"
++	"github.com/amnezia-vpn/amneziawg-go/v3/sorter"
+ 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
+ )
+ 
+@@ -129,6 +130,9 @@ type Device struct {
+ 
+ 	randomTrailers atomic.Bool
+ 	disableCookies atomic.Bool
++
++	// the networks whose connections the device opens by its own network (sorter.go)
++	direct atomic.Pointer[sorter.Sorter]
+ }
+ 
+ // deviceState represents the state of a Device.
+@@ -430,6 +434,10 @@ func (device *Device) Close() {
+ 	device.state.state.Store(uint32(deviceStateClosed))
+ 	device.log.Verbosef("Device closing")
+ 
++	if direct := device.direct.Swap(nil); direct != nil {
++		direct.Close()
++	}
++
+ 	device.tun.device.Close()
+ 	device.downLocked()
+ 
+diff --git a/device/send.go b/device/send.go
+index 4a303d2..cc3022f 100644
+--- a/device/send.go
++++ b/device/send.go
+@@ -354,6 +354,12 @@ func (device *Device) RoutineReadFromTUN() {
+ 				if len(elem.packet) < ipv4.HeaderLen {
+ 					continue
+ 				}
++				// a connection to one of the networks opened directly: the device's own
++				// network carries it, not a peer
++				if direct := device.direct.Load(); direct != nil && direct.Takes(elem.packet) {
++					direct.Deliver(elem.packet)
++					continue
++				}
+ 				dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+ 				peer = device.allowedips.Lookup(dst)
+ 
+diff --git a/device/sorter.go b/device/sorter.go
+new file mode 100644
+index 0000000..0458830
+--- /dev/null
++++ b/device/sorter.go
+@@ -0,0 +1,38 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package device
++
++import (
++	"net/netip"
++
++	"github.com/amnezia-vpn/amneziawg-go/v3/sorter"
++)
++
++// setDirectNetworks makes prefixes the networks whose TCP and UDP connections the device opens
++// by its own network instead of sending them to a peer (package sorter); none stops that. The
++// "direct_network" lines of one UAPI set operation give the whole list.
++func (device *Device) setDirectNetworks(prefixes []netip.Prefix) {
++	networks := sorter.NewSet(prefixes)
++	if networks.Len() == 0 {
++		if s := device.direct.Swap(nil); s != nil {
++			s.Close()
++		}
++		device.log.Verbosef("UAPI: No networks are opened directly")
++		return
++	}
++	s := device.direct.Load()
++	if s == nil {
++		var err error
++		s, err = sorter.New(device.tun.device.Write, MessageTransportOffsetContent, int(device.tun.mtu.Load()), device.log.Verbosef)
++		if err != nil {
++			device.log.Errorf("Unable to open networks directly: %v", err)
++			return
++		}
++		device.direct.Store(s)
++	}
++	s.SetNetworks(networks)
++	device.log.Verbosef("UAPI: %d networks are opened directly (%d ranges)", len(prefixes), networks.Len())
++}
+diff --git a/device/sorter_test.go b/device/sorter_test.go
+new file mode 100644
+index 0000000..75da27b
+--- /dev/null
++++ b/device/sorter_test.go
+@@ -0,0 +1,175 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package device
++
++import (
++	"context"
++	"io"
++	"net"
++	"net/netip"
++	"strconv"
++	"syscall"
++	"testing"
++	"time"
++
++	"gvisor.dev/gvisor/pkg/buffer"
++	"gvisor.dev/gvisor/pkg/tcpip"
++	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
++	"gvisor.dev/gvisor/pkg/tcpip/header"
++	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
++	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
++	"gvisor.dev/gvisor/pkg/tcpip/stack"
++	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
++
++	"github.com/amnezia-vpn/amneziawg-go/v3/conn/bindtest"
++	"github.com/amnezia-vpn/amneziawg-go/v3/sorter"
++	"github.com/amnezia-vpn/amneziawg-go/v3/tun/tuntest"
++)
++
++// an IPv4 address of this machine that is not loopback: the apps' stack does not send to 127/8
++func localIPv4(t *testing.T) netip.Addr {
++	ifaces, _ := net.Interfaces()
++	for _, iface := range ifaces {
++		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
++			continue
++		}
++		addrs, _ := iface.Addrs()
++		for _, a := range addrs {
++			if n, ok := a.(*net.IPNet); ok {
++				if ip, ok := netip.AddrFromSlice(n.IP.To4()); ok && n.IP.To4() != nil {
++					return ip
++				}
++			}
++		}
++	}
++	t.Skip("no IPv4 address but loopback")
++	return netip.Addr{}
++}
++
++// The device takes the direct_network lines of its settings: a connection to such an address
++// goes through the device's read path into the sorter and on to the site by this machine's own
++// network, and the answers come back through the tunnel device.
++func TestDirectNetworks(t *testing.T) {
++	site := localIPv4(t)
++	listener, err := net.Listen("tcp4", net.JoinHostPort(site.String(), "0"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
++	go func() {
++		for {
++			c, err := listener.Accept()
++			if err != nil {
++				return
++			}
++			go func() {
++				io.Copy(c, c)
++				c.Close()
++			}()
++		}
++	}()
++	port := uint16(listener.Addr().(*net.TCPAddr).Port)
++
++	// the test's own network is not a VPN's: nothing to keep its sockets out of
++	sorter.SetDialControl(func(network, address string, c syscall.RawConn) error { return nil })
++	defer sorter.SetDialControl(nil)
++
++	tunDev := tuntest.NewChannelTUN()
++	binds := bindtest.NewChannelBinds()
++	dev := NewDevice(tunDev.TUN(), binds[0], NewLogger(LogLevelError, "dev: "))
++	defer dev.Close()
++	if err := dev.IpcSet("direct_network=" + site.String() + "/32\ndirect_network=198.18.0.0/15\n"); err != nil {
++		t.Fatal(err)
++	}
++	if dev.direct.Load() == nil {
++		t.Fatal("no sorter after direct_network lines")
++	}
++	if err := dev.Up(); err != nil {
++		t.Fatal(err)
++	}
++
++	// the apps: a gVisor stack on the channel tunnel device
++	apps := stack.New(stack.Options{
++		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol},
++		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol},
++	})
++	defer apps.Close()
++	mtu, _ := tunDev.TUN().MTU()
++	ep := channel.New(256, uint32(mtu), "")
++	if err := apps.CreateNIC(1, ep); err != nil {
++		t.Fatal(err)
++	}
++	apps.AddProtocolAddress(1, tcpip.ProtocolAddress{
++		Protocol:          ipv4.ProtocolNumber,
++		AddressWithPrefix: tcpip.AddrFrom4([4]byte{10, 9, 0, 2}).WithPrefix(),
++	}, stack.AddressProperties{})
++	apps.AddRoute(tcpip.Route{Destination: header.IPv4EmptySubnet, NIC: 1})
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	go func() {
++		for {
++			pkt := ep.ReadContext(ctx)
++			if pkt.IsNil() {
++				return
++			}
++			b := pkt.ToView().AsSlice()
++			pkt.DecRef()
++			select {
++			case tunDev.Outbound <- b:
++			case <-ctx.Done():
++				return
++			}
++		}
++	}()
++	go func() {
++		for {
++			select {
++			case b, ok := <-tunDev.Inbound:
++				if !ok {
++					return
++				}
++				pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(b)})
++				ep.InjectInbound(header.IPv4ProtocolNumber, pkt)
++				pkt.DecRef()
++			case <-ctx.Done():
++				return
++			}
++		}
++	}()
++
++	dialCtx, dialCancel := context.WithTimeout(ctx, 5*time.Second)
++	defer dialCancel()
++	c, err := gonet.DialContextTCP(dialCtx, apps, tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(site.As4()), Port: port}, ipv4.ProtocolNumber)
++	if err != nil {
++		t.Fatalf("connect to %v:%d through the device: %v", site, port, err)
++	}
++	defer c.Close()
++	msg := []byte("through the device's own network")
++	c.Write(msg)
++	got := make([]byte, len(msg))
++	c.SetReadDeadline(time.Now().Add(5 * time.Second))
++	if _, err := io.ReadFull(c, got); err != nil || string(got) != string(msg) {
++		t.Fatalf("echo %q, %v", got, err)
++	}
++
++	// settings: an IPv6 network is refused; replace_direct_networks alone stops the sorter
++	if err := dev.IpcSet("direct_network=2001:db8::/32\n"); err == nil {
++		t.Error("an IPv6 direct_network was taken")
++	}
++	if err := dev.IpcSet("direct_network=10.0.0.0/33\n"); err == nil {
++		t.Error("a bad direct_network was taken")
++	}
++	if dev.direct.Load() == nil {
++		t.Error("a refused setting stopped the sorter")
++	}
++	if err := dev.IpcSet("replace_direct_networks=true\n"); err != nil {
++		t.Fatal(err)
++	}
++	if dev.direct.Load() != nil {
++		t.Error("the sorter lives on after replace_direct_networks")
++	}
++	t.Logf("site %v:%s", site, strconv.Itoa(int(port)))
++}
+diff --git a/device/uapi.go b/device/uapi.go
+index 4fc162e..619cb89 100644
+--- a/device/uapi.go
++++ b/device/uapi.go
+@@ -543,6 +543,21 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string)
+ 		device.log.Verbosef("UAPI: Updating disable cookies")
+ 		device.disableCookies.Store(val)
+ 
++	case "direct_network":
++		prefix, err := netip.ParsePrefix(value)
++		if err != nil || !prefix.Addr().Is4() {
++			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse direct_network %q", value)
++		}
++		ipcDev.direct = append(ipcDev.direct, prefix)
++		ipcDev.directGiven = true
++
++	case "replace_direct_networks":
++		if value != "true" {
++			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set replace_direct_networks, invalid value: %v", value)
++		}
++		ipcDev.direct = ipcDev.direct[:0]
++		ipcDev.directGiven = true
++
+ 	default:
+ 		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI device key: %v", key)
+ 	}
+@@ -802,6 +817,11 @@ type ipcSetDevice struct {
+ 		transport uint32
+ 	}
+ 	headerProtectionKey HeaderCipherKey
++
++	// the networks opened directly (sorter.go): the direct_network lines of one set operation
++	// replace the list, replace_direct_networks=true alone clears it
++	direct      []netip.Prefix
++	directGiven bool
+ }
+ 
+ func (d *ipcSetDevice) fromDevice(device *Device) {
+@@ -873,5 +893,9 @@ func (d *ipcSetDevice) mergeWithDevice(device *Device) error {
+ 	device.log.Verbosef("UAPI: Updating header protection key")
+ 	device.headerProtection.key = d.headerProtectionKey
+ 
++	if d.directGiven {
++		device.setDirectNetworks(d.direct)
++	}
++
+ 	return nil
+ }
+diff --git a/sorter/control_windows.go b/sorter/control_windows.go
+new file mode 100644
+index 0000000..f6a3b48
+--- /dev/null
++++ b/sorter/control_windows.go
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package sorter
++
++import (
++	"encoding/binary"
++	"errors"
++	"sync/atomic"
++	"syscall"
++	"unsafe"
++
++	"golang.org/x/sys/windows"
++)
++
++var interface4 atomic.Uint32
++
++// SetInterface4 makes the direct sockets leave by the network interface with this index: the
++// physical network's, as the best default route that is not the tunnel's finds it (the tunnel
++// service follows it). 0: there is no such network now, and a direct connection is refused
++// rather than sent into the tunnel again.
++func SetInterface4(index uint32) {
++	interface4.Store(index)
++}
++
++func init() {
++	SetDialControl(bindToInterface4)
++}
++
++// bindToInterface4 binds a direct socket to the physical network (IP_UNICAST_IF), the way the
++// WireGuard service binds its own socket: the routes that take everything into the tunnel are
++// not on that interface, so the socket's packets go around them.
++func bindToInterface4(network, address string, c syscall.RawConn) error {
++	index := interface4.Load()
++	if index == 0 {
++		return errors.New("no physical network to leave by")
++	}
++	// for IPv4 the option takes the index in network byte order
++	var b [4]byte
++	binary.BigEndian.PutUint32(b[:], index)
++	value := *(*uint32)(unsafe.Pointer(&b[0]))
++	const ipUnicastIf = 31
++	var serr error
++	err := c.Control(func(fd uintptr) {
++		serr = windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, ipUnicastIf, int(value))
++	})
++	if err != nil {
++		return err
++	}
++	return serr
++}
+diff --git a/sorter/set.go b/sorter/set.go
+new file mode 100644
+index 0000000..306d627
+--- /dev/null
++++ b/sorter/set.go
+@@ -0,0 +1,66 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package sorter
++
++import (
++	"net/netip"
++	"sort"
++)
++
++// Set is a set of IPv4 networks kept as sorted address ranges that neither overlap nor touch:
++// a lookup is one binary search, some 13 steps for the 8,700 networks of a country.
++type Set struct {
++	first []uint32 // the first address of each range, ascending
++	last  []uint32 // the last address of the same range
++}
++
++// NewSet makes a set of the IPv4 networks among prefixes (anything else is left out).
++func NewSet(prefixes []netip.Prefix) *Set {
++	type span struct{ first, last uint32 }
++	spans := make([]span, 0, len(prefixes))
++	for _, p := range prefixes {
++		if !p.Addr().Is4() || !p.IsValid() {
++			continue
++		}
++		p = p.Masked()
++		first := addr4(p.Addr().As4())
++		size := uint64(1) << (32 - p.Bits())
++		spans = append(spans, span{first, uint32(uint64(first) + size - 1)})
++	}
++	sort.Slice(spans, func(i, j int) bool { return spans[i].first < spans[j].first })
++
++	s := &Set{}
++	for _, sp := range spans {
++		n := len(s.first)
++		// one inside, overlapping or right after the previous range: it grows that range
++		if n > 0 && uint64(sp.first) <= uint64(s.last[n-1])+1 {
++			if sp.last > s.last[n-1] {
++				s.last[n-1] = sp.last
++			}
++			continue
++		}
++		s.first = append(s.first, sp.first)
++		s.last = append(s.last, sp.last)
++	}
++	return s
++}
++
++// Len is the number of ranges the networks came to.
++func (s *Set) Len() int {
++	return len(s.first)
++}
++
++// Contains reports whether the IPv4 address (4 bytes, network order) is in one of the networks.
++func (s *Set) Contains(ip []byte) bool {
++	a := uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
++	// the first range that starts after the address: the one before it may hold the address
++	i := sort.Search(len(s.first), func(i int) bool { return s.first[i] > a })
++	return i > 0 && a <= s.last[i-1]
++}
++
++func addr4(b [4]byte) uint32 {
++	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
++}
+diff --git a/sorter/sorter.go b/sorter/sorter.go
+new file mode 100644
+index 0000000..9a5d4a9
+--- /dev/null
++++ b/sorter/sorter.go
+@@ -0,0 +1,458 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++// Package sorter lets a tunnel device open by itself, over the device's own network, the
++// connections to a set of IPv4 networks that would otherwise go to a peer: LodestarVPN's
++// «Russian sites directly» for AmneziaWG, the way a rule of Xray does it for VLESS. Such a
++// packet never reaches a peer. A user-space TCP/IP stack (gVisor) plays the far side of the
++// app's connection, and the sorter carries the data over an ordinary socket that the platform
++// keeps out of the VPN (SetDialControl). Everything else goes to the peers as before, and no
++// route of the system is needed, however many networks there are.
++package sorter
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"net/netip"
++	"sync"
++	"sync/atomic"
++	"syscall"
++	"time"
++
++	"gvisor.dev/gvisor/pkg/buffer"
++	"gvisor.dev/gvisor/pkg/tcpip"
++	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
++	"gvisor.dev/gvisor/pkg/tcpip/header"
++	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
++	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
++	"gvisor.dev/gvisor/pkg/tcpip/stack"
++	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
++	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
++	"gvisor.dev/gvisor/pkg/waiter"
++)
++
++const (
++	nicID = 1
++	// how long the direct socket of a TCP connection may take to open: the app's SYN waits for
++	// it, so a site that refuses or does not answer looks the same to the app
++	dialTimeout = 15 * time.Second
++	// TCP connections that may wait for their direct socket at once (more SYNs are dropped
++	// and come again)
++	maxPendingTCP = 512
++	// once one side of a TCP connection has finished sending, how long the other may go on
++	halfClosedTimeout = 2 * time.Minute
++	// a UDP flow that carried nothing either way for so long is forgotten (a DNS query sooner)
++	udpIdle    = 2 * time.Minute
++	dnsUDPIdle = 20 * time.Second
++	// packets the stack may queue on their way into the tunnel device
++	queueLen = 1024
++	// packets handed to the tunnel device in one write
++	writeBatch = 32
++	// the copy buffers of a connection
++	copyBufferSize = 32 << 10
++	udpBufferSize  = 64 << 10
++)
++
++var dialControl atomic.Pointer[func(network, address string, c syscall.RawConn) error]
++
++// SetDialControl sets what every direct socket goes through before it connects: the platform's
++// way of keeping it out of the VPN (Android: VpnService.protect; Windows: a bind to the physical
++// network, SetInterface4). It must fail when it cannot do that, or the connection would come
++// back into the tunnel. Without one no direct socket is opened at all.
++func SetDialControl(fn func(network, address string, c syscall.RawConn) error) {
++	if fn == nil {
++		dialControl.Store(nil)
++		return
++	}
++	dialControl.Store(&fn)
++}
++
++// dial opens a direct socket (tests take it over)
++var dial = func(ctx context.Context, network, address string) (net.Conn, error) {
++	fn := dialControl.Load()
++	if fn == nil {
++		return nil, errNoDialControl
++	}
++	d := &net.Dialer{Control: *fn}
++	return d.DialContext(ctx, network, address)
++}
++
++var errNoDialControl = errors.New("no way to keep a direct socket out of the VPN")
++
++// Sorter plays the far side of the apps' connections to its networks and carries their data
++// over direct sockets.
++type Sorter struct {
++	networks atomic.Pointer[Set]
++
++	stack *stack.Stack
++	ep    *channel.Endpoint
++
++	write  func(bufs [][]byte, offset int) (int, error)
++	offset int
++	logf   func(format string, args ...any)
++
++	packets sync.Pool // buffers of packets on their way into the tunnel device
++	copies  sync.Pool // copy buffers of TCP connections
++
++	ctx    context.Context
++	cancel context.CancelFunc
++	wg     sync.WaitGroup
++
++	mu     sync.Mutex
++	open   map[io.Closer]struct{} // every live connection: closed with the sorter
++	closed bool
++
++	tcpOpened, udpOpened, failed atomic.Uint64
++	writeErrors                  atomic.Uint64
++}
++
++// New starts a sorter that hands the packets of the connections it plays to write - the tunnel
++// device's own Write, given bufs with offset bytes of room before each packet - and logs by
++// logf. mtu is the tunnel device's.
++func New(write func(bufs [][]byte, offset int) (int, error), offset, mtu int, logf func(format string, args ...any)) (*Sorter, error) {
++	s := &Sorter{
++		write:  write,
++		offset: offset,
++		logf:   logf,
++		open:   make(map[io.Closer]struct{}),
++	}
++	s.ctx, s.cancel = context.WithCancel(context.Background())
++	packetSize := offset + mtu
++	s.packets.New = func() any {
++		b := make([]byte, packetSize)
++		return &b
++	}
++	s.copies.New = func() any {
++		b := make([]byte, copyBufferSize)
++		return &b
++	}
++
++	s.stack = stack.New(stack.Options{
++		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol},
++		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
++	})
++	fail := func(err error) (*Sorter, error) {
++		s.cancel()
++		s.stack.Close()
++		return nil, err
++	}
++	sack := tcpip.TCPSACKEnabled(true)
++	moderate := tcpip.TCPModerateReceiveBufferOption(true)
++	for _, opt := range []tcpip.SettableTransportProtocolOption{&sack, &moderate} {
++		if err := s.stack.SetTransportProtocolOption(tcp.ProtocolNumber, opt); err != nil {
++			return fail(fmt.Errorf("TCP option: %v", err))
++		}
++	}
++	s.ep = channel.New(queueLen, uint32(mtu), "")
++	if err := s.stack.CreateNIC(nicID, s.ep); err != nil {
++		return fail(fmt.Errorf("CreateNIC: %v", err))
++	}
++	// the stack answers for whatever address an app connects to, and sends from it
++	if err := s.stack.SetPromiscuousMode(nicID, true); err != nil {
++		return fail(fmt.Errorf("SetPromiscuousMode: %v", err))
++	}
++	if err := s.stack.SetSpoofing(nicID, true); err != nil {
++		return fail(fmt.Errorf("SetSpoofing: %v", err))
++	}
++	s.stack.SetRouteTable([]tcpip.Route{{Destination: header.IPv4EmptySubnet, NIC: nicID}})
++
++	tcpForwarder := tcp.NewForwarder(s.stack, 0, maxPendingTCP, s.handleTCP)
++	s.stack.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
++	udpForwarder := udp.NewForwarder(s.stack, s.handleUDP)
++	s.stack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
++
++	s.wg.Add(2)
++	go s.toTunnel()
++	go s.report()
++	return s, nil
++}
++
++// SetNetworks makes networks the ones whose connections the sorter opens itself.
++func (s *Sorter) SetNetworks(networks *Set) {
++	s.networks.Store(networks)
++}
++
++// Takes reports whether an IPv4 packet read from the tunnel device is the sorter's: TCP or UDP
++// to one of its networks. Any other protocol (ICMP: a ping) goes to the peer as before.
++func (s *Sorter) Takes(packet []byte) bool {
++	if len(packet) < header.IPv4MinimumSize {
++		return false
++	}
++	if p := packet[9]; p != uint8(header.TCPProtocolNumber) && p != uint8(header.UDPProtocolNumber) {
++		return false
++	}
++	networks := s.networks.Load()
++	return networks != nil && networks.Contains(packet[16:20])
++}
++
++// Deliver hands the sorter a packet it takes. The packet is copied: its buffer may be reused.
++func (s *Sorter) Deliver(packet []byte) {
++	if s.ctx.Err() != nil {
++		return
++	}
++	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(packet)})
++	s.ep.InjectInbound(header.IPv4ProtocolNumber, pkt)
++	pkt.DecRef()
++}
++
++// Close ends every connection the sorter carries and stops it.
++func (s *Sorter) Close() {
++	s.mu.Lock()
++	if s.closed {
++		s.mu.Unlock()
++		return
++	}
++	s.closed = true
++	open := s.open
++	s.open = nil
++	s.mu.Unlock()
++
++	s.cancel()
++	for c := range open {
++		c.Close()
++	}
++	s.stack.Close()
++	s.ep.Close()
++	s.wg.Wait()
++	s.stack.Wait()
++}
++
++// toTunnel carries what the stack sends - the far sides' answers - into the tunnel device, as
++// if they had come from a peer.
++func (s *Sorter) toTunnel() {
++	defer s.wg.Done()
++	bufs := make([][]byte, 0, writeBatch)
++	held := make([]*[]byte, 0, writeBatch)
++	for {
++		pkt := s.ep.ReadContext(s.ctx)
++		if pkt.IsNil() {
++			return
++		}
++		for {
++			b := s.packets.Get().(*[]byte)
++			if need := s.offset + pkt.Size(); need > len(*b) {
++				big := make([]byte, need)
++				b = &big
++			}
++			n := s.offset
++			for _, v := range pkt.AsSlices() {
++				n += copy((*b)[n:], v)
++			}
++			pkt.DecRef()
++			bufs = append(bufs, (*b)[:n])
++			held = append(held, b)
++			if len(bufs) == writeBatch {
++				break
++			}
++			if pkt = s.ep.Read(); pkt.IsNil() {
++				break
++			}
++		}
++		if _, err := s.write(bufs, s.offset); err != nil && s.ctx.Err() == nil {
++			if s.writeErrors.Add(1) == 1 {
++				s.logf("Sorter: writing into the tunnel device: %v", err)
++			}
++		}
++		for _, b := range held {
++			s.packets.Put(b)
++		}
++		bufs, held = bufs[:0], held[:0]
++	}
++}
++
++// report logs, once a minute while anything changed, how many connections went directly.
++func (s *Sorter) report() {
++	defer s.wg.Done()
++	ticker := time.NewTicker(time.Minute)
++	defer ticker.Stop()
++	var last [4]uint64
++	for {
++		select {
++		case <-s.ctx.Done():
++			return
++		case <-ticker.C:
++		}
++		now := [4]uint64{s.tcpOpened.Load(), s.udpOpened.Load(), s.failed.Load(), s.writeErrors.Load()}
++		if now != last {
++			s.logf("Sorter: opened directly %d TCP connections and %d UDP flows so far, %d did not open, %d writes into the tunnel failed",
++				now[0], now[1], now[2], now[3])
++			last = now
++		}
++	}
++}
++
++func (s *Sorter) track(conns ...io.Closer) bool {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.closed {
++		for _, c := range conns {
++			c.Close()
++		}
++		return false
++	}
++	for _, c := range conns {
++		s.open[c] = struct{}{}
++	}
++	return true
++}
++
++func (s *Sorter) untrack(conns ...io.Closer) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	for _, c := range conns {
++		delete(s.open, c)
++	}
++}
++
++func farSide(id stack.TransportEndpointID) string {
++	return netip.AddrPortFrom(netip.AddrFrom4(id.LocalAddress.As4()), id.LocalPort).String()
++}
++
++// handleTCP opens an app's TCP connection to one of the networks: the direct socket to the site
++// first, then the app's side - so a site that refuses, or does not answer, is refused to the
++// app as well. The stack calls it in a goroutine of its own.
++func (s *Sorter) handleTCP(r *tcp.ForwarderRequest) {
++	ctx, cancel := context.WithTimeout(s.ctx, dialTimeout)
++	out, err := dial(ctx, "tcp4", farSide(r.ID()))
++	cancel()
++	if err != nil {
++		s.failed.Add(1)
++		r.Complete(true)
++		return
++	}
++	var wq waiter.Queue
++	ep, terr := r.CreateEndpoint(&wq)
++	if terr != nil {
++		r.Complete(true)
++		out.Close()
++		return
++	}
++	r.Complete(false)
++	in := gonet.NewTCPConn(&wq, ep)
++	if !s.track(in, out) {
++		return
++	}
++	s.tcpOpened.Add(1)
++	s.relayTCP(in, out.(*net.TCPConn))
++	s.untrack(in, out)
++}
++
++// relayTCP carries a connection's data both ways until both have finished, or one has and the
++// other stays quiet for halfClosedTimeout, then closes it.
++func (s *Sorter) relayTCP(in *gonet.TCPConn, out *net.TCPConn) {
++	var halfClosed atomic.Bool
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		s.pipe(out, in, &halfClosed) // the app's data to the site
++		out.CloseWrite()
++		halfClosed.Store(true)
++		out.SetReadDeadline(time.Now().Add(halfClosedTimeout))
++	}()
++	s.pipe(in, out, &halfClosed) // the site's data to the app
++	in.CloseWrite()
++	halfClosed.Store(true)
++	in.SetReadDeadline(time.Now().Add(halfClosedTimeout))
++	<-done
++	in.Close()
++	out.Close()
++}
++
++// pipe copies src to dst until src ends or either fails; once the other way has finished, each
++// read moves the deadline of the next one on.
++func (s *Sorter) pipe(dst io.Writer, src net.Conn, halfClosed *atomic.Bool) {
++	b := s.copies.Get().(*[]byte)
++	defer s.copies.Put(b)
++	for {
++		n, err := src.Read(*b)
++		if n > 0 {
++			if _, werr := dst.Write((*b)[:n]); werr != nil {
++				return
++			}
++			if halfClosed.Load() {
++				src.SetReadDeadline(time.Now().Add(halfClosedTimeout))
++			}
++		}
++		if err != nil {
++			return
++		}
++	}
++}
++
++// handleUDP opens an app's UDP flow to one of the networks (a QUIC connection, a DNS query):
++// the stack's endpoint for it at once - the packet that began the flow goes into it - and the
++// direct socket next. The stack calls it on its way in, so nothing here may wait.
++func (s *Sorter) handleUDP(r *udp.ForwarderRequest) {
++	var wq waiter.Queue
++	ep, terr := r.CreateEndpoint(&wq)
++	if terr != nil {
++		return
++	}
++	in := gonet.NewUDPConn(s.stack, &wq, ep)
++	id := r.ID()
++	to := farSide(id)
++	idle := udpIdle
++	if id.LocalPort == 53 {
++		idle = dnsUDPIdle
++	}
++	go func() {
++		out, err := dial(s.ctx, "udp4", to)
++		if err != nil {
++			s.failed.Add(1)
++			in.Close()
++			return
++		}
++		if !s.track(in, out) {
++			return
++		}
++		s.udpOpened.Add(1)
++		relayUDP(in, out, idle)
++		s.untrack(in, out)
++	}()
++}
++
++// relayUDP carries a flow's datagrams both ways until neither way carried any for idle, or one
++// way fails; then closes it.
++func relayUDP(in *gonet.UDPConn, out net.Conn, idle time.Duration) {
++	var last atomic.Int64
++	last.Store(time.Now().UnixNano())
++	var once sync.Once
++	stop := func() {
++		once.Do(func() {
++			in.Close()
++			out.Close()
++		})
++	}
++	carry := func(dst, src net.Conn) {
++		defer stop()
++		b := make([]byte, udpBufferSize)
++		for {
++			src.SetReadDeadline(time.Now().Add(idle))
++			n, err := src.Read(b)
++			if err != nil {
++				var timeout net.Error
++				if errors.As(err, &timeout) && timeout.Timeout() &&
++					time.Since(time.Unix(0, last.Load())) < idle {
++					continue // quiet this way, busy the other
++				}
++				return
++			}
++			last.Store(time.Now().UnixNano())
++			if _, err := dst.Write(b[:n]); err != nil {
++				return
++			}
++		}
++	}
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		carry(out, in) // the app's datagrams to the site
++	}()
++	carry(in, out) // the site's to the app
++	<-done
++}
+diff --git a/sorter/sorter_test.go b/sorter/sorter_test.go
+new file mode 100644
+index 0000000..cf3473d
+--- /dev/null
++++ b/sorter/sorter_test.go
+@@ -0,0 +1,372 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package sorter
++
++import (
++	"bytes"
++	"context"
++	"crypto/rand"
++	"crypto/sha256"
++	"errors"
++	"io"
++	"net"
++	"net/netip"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"gvisor.dev/gvisor/pkg/buffer"
++	"gvisor.dev/gvisor/pkg/tcpip"
++	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
++	"gvisor.dev/gvisor/pkg/tcpip/header"
++	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
++	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
++	"gvisor.dev/gvisor/pkg/tcpip/stack"
++	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
++	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
++)
++
++const testMTU = 1280
++
++var (
++	siteDirect = netip.MustParseAddr("192.0.2.10")  // in the test's networks (TEST-NET-1)
++	siteAbroad = netip.MustParseAddr("192.0.2.200") // not in them
++)
++
++// rig: a second gVisor stack plays the apps of the device; what it sends goes through the
++// device's read path (the sorter takes its packets, the rest "go to the peer" and are counted),
++// and what the sorter writes into the tunnel device reaches it. Direct sockets go to local
++// servers instead of the far sides.
++type rig struct {
++	t        *testing.T
++	sorter   *Sorter
++	apps     *stack.Stack
++	appsEP   *channel.Endpoint
++	toPeer   atomic.Int64
++	cancel   context.CancelFunc
++	listener net.Listener
++	udpConn  net.PacketConn
++	refused  atomic.Bool
++	sites    atomic.Int64 // TCP connections the site has open
++}
++
++func newRig(t *testing.T) *rig {
++	t.Helper()
++	r := &rig{t: t}
++
++	// the sites: a TCP echo and a UDP echo on this machine
++	var err error
++	r.listener, err = net.Listen("tcp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	go func() {
++		for {
++			c, err := r.listener.Accept()
++			if err != nil {
++				return
++			}
++			r.sites.Add(1)
++			go func() {
++				defer r.sites.Add(-1)
++				io.Copy(c, c)
++				c.(*net.TCPConn).CloseWrite()
++				c.Close()
++			}()
++		}
++	}()
++	r.udpConn, err = net.ListenPacket("udp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	go func() {
++		b := make([]byte, 65536)
++		for {
++			n, from, err := r.udpConn.ReadFrom(b)
++			if err != nil {
++				return
++			}
++			r.udpConn.WriteTo(append([]byte("echo:"), b[:n]...), from)
++		}
++	}()
++	tcpSite := r.listener.Addr().String()
++	udpSite := r.udpConn.LocalAddr().String()
++	dial = func(ctx context.Context, network, address string) (net.Conn, error) {
++		if r.refused.Load() {
++			return nil, errors.New("refused by the test")
++		}
++		var d net.Dialer
++		if strings.HasPrefix(network, "udp") {
++			return d.DialContext(ctx, network, udpSite)
++		}
++		return d.DialContext(ctx, network, tcpSite)
++	}
++
++	// the apps
++	r.apps = stack.New(stack.Options{
++		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol},
++		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
++	})
++	r.appsEP = channel.New(1024, testMTU, "")
++	if err := r.apps.CreateNIC(1, r.appsEP); err != nil {
++		t.Fatal(err)
++	}
++	if err := r.apps.AddProtocolAddress(1, tcpip.ProtocolAddress{
++		Protocol:          ipv4.ProtocolNumber,
++		AddressWithPrefix: tcpip.AddrFrom4([4]byte{10, 7, 0, 2}).WithPrefix(),
++	}, stack.AddressProperties{}); err != nil {
++		t.Fatal(err)
++	}
++	r.apps.AddRoute(tcpip.Route{Destination: header.IPv4EmptySubnet, NIC: 1})
++
++	// the sorter, writing into "the tunnel device": the apps' stack
++	const offset = 16
++	r.sorter, err = New(func(bufs [][]byte, off int) (int, error) {
++		if off != offset {
++			t.Errorf("offset %d, want %d", off, offset)
++		}
++		for _, b := range bufs {
++			pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(b[off:])})
++			r.appsEP.InjectInbound(header.IPv4ProtocolNumber, pkt)
++			pkt.DecRef()
++		}
++		return len(bufs), nil
++	}, offset, testMTU, t.Logf)
++	if err != nil {
++		t.Fatal(err)
++	}
++	r.sorter.SetNetworks(NewSet([]netip.Prefix{netip.MustParsePrefix("192.0.2.0/25")}))
++
++	// the device's read path: what the apps send
++	var ctx context.Context
++	ctx, r.cancel = context.WithCancel(context.Background())
++	go func() {
++		for {
++			pkt := r.appsEP.ReadContext(ctx)
++			if pkt.IsNil() {
++				return
++			}
++			b := pkt.ToView().AsSlice()
++			pkt.DecRef()
++			if r.sorter.Takes(b) {
++				r.sorter.Deliver(b)
++			} else {
++				r.toPeer.Add(1)
++			}
++		}
++	}()
++	t.Cleanup(r.close)
++	return r
++}
++
++func (r *rig) close() {
++	r.cancel()
++	r.sorter.Close()
++	r.apps.Close()
++	r.listener.Close()
++	r.udpConn.Close()
++}
++
++func (r *rig) dialTCP(to netip.Addr, port uint16) (*gonet.TCPConn, error) {
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	return gonet.DialContextTCP(ctx, r.apps, tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(to.As4()), Port: port}, ipv4.ProtocolNumber)
++}
++
++func TestSetContains(t *testing.T) {
++	s := NewSet([]netip.Prefix{
++		netip.MustParsePrefix("10.0.0.0/9"),
++		netip.MustParsePrefix("10.1.0.0/16"),  // inside the first
++		netip.MustParsePrefix("10.128.0.0/9"), // right after it: one range
++		netip.MustParsePrefix("192.168.1.0/24"),
++		netip.MustParsePrefix("2001:db8::/32"), // not IPv4: left out
++		netip.MustParsePrefix("0.0.0.0/32"),
++		netip.MustParsePrefix("255.255.255.255/32"),
++	})
++	if s.Len() != 4 {
++		t.Fatalf("ranges: %d, want 4", s.Len())
++	}
++	for _, c := range []struct {
++		ip   string
++		want bool
++	}{
++		{"10.0.0.0", true}, {"10.255.255.255", true}, {"9.255.255.255", false}, {"11.0.0.0", false},
++		{"192.168.1.77", true}, {"192.168.2.1", false}, {"0.0.0.0", true}, {"0.0.0.1", false},
++		{"255.255.255.255", true}, {"255.255.255.254", false},
++	} {
++		a := netip.MustParseAddr(c.ip).As4()
++		if got := s.Contains(a[:]); got != c.want {
++			t.Errorf("%s: %v, want %v", c.ip, got, c.want)
++		}
++	}
++	if NewSet(nil).Contains([]byte{1, 2, 3, 4}) {
++		t.Error("an empty set holds an address")
++	}
++}
++
++func TestTakes(t *testing.T) {
++	s := &Sorter{}
++	s.SetNetworks(NewSet([]netip.Prefix{netip.MustParsePrefix("192.0.2.0/25")}))
++	packet := func(proto byte, dst netip.Addr) []byte {
++		b := make([]byte, 40)
++		b[0] = 0x45
++		b[9] = proto
++		d := dst.As4()
++		copy(b[16:20], d[:])
++		return b
++	}
++	if !s.Takes(packet(6, siteDirect)) || !s.Takes(packet(17, siteDirect)) {
++		t.Error("TCP or UDP to the networks is not taken")
++	}
++	if s.Takes(packet(1, siteDirect)) {
++		t.Error("ICMP is taken: a ping must go to the peer")
++	}
++	if s.Takes(packet(6, siteAbroad)) {
++		t.Error("an address outside the networks is taken")
++	}
++	if s.Takes(packet(6, siteDirect)[:19]) {
++		t.Error("a packet shorter than an IPv4 header is taken")
++	}
++}
++
++func TestTCP(t *testing.T) {
++	r := newRig(t)
++	c, err := r.dialTCP(siteDirect, 443)
++	if err != nil {
++		t.Fatalf("connect: %v", err)
++	}
++	defer c.Close()
++	msg := []byte("hello through the sorter")
++	if _, err := c.Write(msg); err != nil {
++		t.Fatal(err)
++	}
++	got := make([]byte, len(msg))
++	c.SetReadDeadline(time.Now().Add(5 * time.Second))
++	if _, err := io.ReadFull(c, got); err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(got, msg) {
++		t.Fatalf("echo %q, want %q", got, msg)
++	}
++	// the app finishes: the site finishes too, and the app sees the end
++	c.CloseWrite()
++	if n, err := c.Read(got); err != io.EOF {
++		t.Fatalf("after the end: %d bytes, %v", n, err)
++	}
++	if r.toPeer.Load() != 0 {
++		t.Errorf("%d packets went to the peer", r.toPeer.Load())
++	}
++}
++
++func TestTCPBulk(t *testing.T) {
++	r := newRig(t)
++	c, err := r.dialTCP(siteDirect, 80)
++	if err != nil {
++		t.Fatalf("connect: %v", err)
++	}
++	defer c.Close()
++	const size = 32 << 20
++	data := make([]byte, size)
++	rand.Read(data)
++	want := sha256.Sum256(data)
++	start := time.Now()
++	go func() {
++		c.Write(data)
++		c.CloseWrite()
++	}()
++	h := sha256.New()
++	c.SetReadDeadline(time.Now().Add(60 * time.Second))
++	n, err := io.Copy(h, c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	elapsed := time.Since(start)
++	if n != size || !bytes.Equal(h.Sum(nil), want[:]) {
++		t.Fatalf("%d bytes back, the same: %v", n, bytes.Equal(h.Sum(nil), want[:]))
++	}
++	t.Logf("32 MB there and back in %v (%.0f Mbit/s each way)", elapsed, float64(size)*8/elapsed.Seconds()/1e6)
++}
++
++func TestTCPRefused(t *testing.T) {
++	r := newRig(t)
++	r.refused.Store(true)
++	start := time.Now()
++	c, err := r.dialTCP(siteDirect, 443)
++	if err == nil {
++		c.Close()
++		t.Fatal("a refused site connected")
++	}
++	if time.Since(start) > 3*time.Second {
++		t.Errorf("refused after %v: the app should learn at once", time.Since(start))
++	}
++}
++
++func TestTCPAbroadGoesToPeer(t *testing.T) {
++	r := newRig(t)
++	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
++	defer cancel()
++	_, err := gonet.DialContextTCP(ctx, r.apps, tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(siteAbroad.As4()), Port: 443}, ipv4.ProtocolNumber)
++	if err == nil {
++		t.Fatal("a site outside the networks was answered by the sorter")
++	}
++	if r.toPeer.Load() == 0 {
++		t.Error("nothing went to the peer")
++	}
++}
++
++func TestUDP(t *testing.T) {
++	r := newRig(t)
++	c, err := gonet.DialUDP(r.apps, nil, &tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(siteDirect.As4()), Port: 53}, ipv4.ProtocolNumber)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	for i := 0; i < 3; i++ {
++		msg := []byte{'q', byte('0' + i)}
++		if _, err := c.Write(msg); err != nil {
++			t.Fatal(err)
++		}
++		got := make([]byte, 100)
++		c.SetReadDeadline(time.Now().Add(5 * time.Second))
++		n, err := c.Read(got)
++		if err != nil {
++			t.Fatalf("answer %d: %v", i, err)
++		}
++		if want := "echo:" + string(msg); string(got[:n]) != want {
++			t.Fatalf("answer %q, want %q", got[:n], want)
++		}
++	}
++	if r.toPeer.Load() != 0 {
++		t.Errorf("%d packets went to the peer", r.toPeer.Load())
++	}
++}
++
++func TestCloseEndsConnections(t *testing.T) {
++	r := newRig(t)
++	c, err := r.dialTCP(siteDirect, 443)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	c.Write([]byte("x"))
++	got := make([]byte, 1)
++	c.SetReadDeadline(time.Now().Add(5 * time.Second))
++	if _, err := io.ReadFull(c, got); err != nil {
++		t.Fatal(err)
++	}
++	if r.sites.Load() != 1 {
++		t.Fatalf("the site has %d connections, want 1", r.sites.Load())
++	}
++	r.sorter.Close()
++	// the direct socket is closed with the sorter: the site's side ends at once
++	for deadline := time.Now().Add(2 * time.Second); r.sites.Load() != 0; {
++		if time.Now().After(deadline) {
++			t.Fatal("the site's connection lives on after the sorter closed")
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++}

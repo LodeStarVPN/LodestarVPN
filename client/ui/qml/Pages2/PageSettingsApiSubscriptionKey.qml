@@ -115,11 +115,10 @@ PageType {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
-                defaultColor: "transparent"
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                textColor: DopamineStyle.color.paleGray
-                borderWidth: 1
+                defaultColor: DopamineStyle.color.glassButton
+                hoveredColor: DopamineStyle.color.glassButtonHovered
+                pressedColor: DopamineStyle.color.glassButtonPressed
+                textColor: DopamineStyle.color.glassButtonText
 
                 text: qsTr("Save key as a file")
                 leftImageSource: "qrc:/images/controls/share-2.svg"
@@ -148,11 +147,10 @@ PageType {
                 Layout.topMargin: 24
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
-                defaultColor: "transparent"
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
-                textColor: DopamineStyle.color.paleGray
-                borderWidth: 1
+                defaultColor: DopamineStyle.color.glassButton
+                hoveredColor: DopamineStyle.color.glassButtonHovered
+                pressedColor: DopamineStyle.color.glassButtonPressed
+                textColor: DopamineStyle.color.glassButtonText
 
                 text: qsTr("Show key text")
                 leftImageSource: "qrc:/images/controls/eye.svg"

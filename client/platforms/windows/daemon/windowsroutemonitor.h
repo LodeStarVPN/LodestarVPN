@@ -12,8 +12,11 @@
 #include <ws2ipdef.h>
 
 #include <QHash>
+#include <QList>
 #include <QMap>
 #include <QObject>
+
+#include <atomic>
 
 #include "ipaddress.h"
 
@@ -28,9 +31,15 @@ class WindowsRouteMonitor final : public QObject {
 
   bool addExclusionRoute(const IPAddress& prefix);
   bool deleteExclusionRoute(const IPAddress& prefix);
+  // many at once: the routing table read once, not once a route
+  bool addExclusionRoutes(const QList<IPAddress>& prefixes);
+  void deleteExclusionRoutes(const QList<IPAddress>& prefixes);
   void flushExclusionRoutes() { return flushRouteTable(m_exclusionRoutes); };
 
   quint64 getLuid() const { return m_luid; }
+
+  // from the notification's thread: one look at the routes for a burst of changes
+  void scheduleRouteCheck();
 
  public slots:
   void routeChanged();
@@ -40,6 +49,7 @@ class WindowsRouteMonitor final : public QObject {
   static bool routeContainsDest(const IP_ADDRESS_PREFIX* route,
                                 const IP_ADDRESS_PREFIX* dest);
   static QHostAddress prefixToAddress(const IP_ADDRESS_PREFIX* dest);
+  static MIB_IPFORWARD_ROW2* newExclusionRow(const IPAddress& prefix);
 
   void flushRouteTable(QHash<IPAddress, MIB_IPFORWARD_ROW2*>& table);
   void updateExclusionRoute(MIB_IPFORWARD_ROW2* data, void* table);
@@ -57,6 +67,8 @@ class WindowsRouteMonitor final : public QObject {
 
   const quint64 m_luid = 0;
   HANDLE m_routeHandle = INVALID_HANDLE_VALUE;
+  // a look at the routes is queued and not yet begun
+  std::atomic_bool m_checkPending{false};
 };
 
 #endif /* WINDOWSROUTEMONITOR_H */

@@ -109,27 +109,22 @@ DrawerType2 {
                             FocusController.nextKeyRightItem()
                         }
 
-                        indicator: Rectangle {
-                            width: parent.width - 1
+                        // the languages in one glass card; the chosen one lit by the lodestar
+                        indicator: GlassSegment {
+                            width: parent.width
                             height: parent.height
-                            color: radioButton.hovered ? DopamineStyle.color.slateGray : DopamineStyle.color.onyxBlack
-                            border.color: radioButton.focus ? DopamineStyle.color.paleGray : DopamineStyle.color.transparent
-                            border.width: radioButton.focus ? 1 : 0
 
-                            Behavior on color {
-                                PropertyAnimation { duration: 200 }
-                            }
-                            Behavior on border.color {
-                                PropertyAnimation { duration: 200 }
-                            }
+                            position: listView.count === 1 ? "single" : index === 0 ? "first" : index === listView.count - 1 ? "last" : "middle"
+                            pressed: radioButton.pressed || radioButton.hovered
+                            lit: radioButton.checked
                         }
 
                         RowLayout {
                             id: radioButtonContent
                             anchors.fill: parent
 
-                            anchors.rightMargin: 16
-                            anchors.leftMargin: 16
+                            anchors.rightMargin: 28
+                            anchors.leftMargin: 32
 
                             spacing: 0
 
@@ -143,20 +138,8 @@ DrawerType2 {
                                 text: languageName
                             }
 
-                            Image {
-                                source: "qrc:/images/controls/check.svg"
+                            LodestarMark {
                                 visible: radioButton.checked
-
-                                width: 24
-                                height: 24
-
-                                Layout.rightMargin: 8
-
-                                // drawn light grey: visible in the light theme too
-                                layer.enabled: true
-                                layer.effect: ColorOverlay {
-                                    color: DopamineStyle.color.paleGray
-                                }
                             }
                         }
 

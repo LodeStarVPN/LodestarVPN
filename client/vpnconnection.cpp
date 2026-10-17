@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QPair>
+#include <QSet>
 #include <QSharedPointer>
 #include <QString>
 #include <QStringList>
@@ -35,6 +36,7 @@
 #endif
 
 #include "core/builtinSplitPresets.h"
+#include "core/directNetworks.h"
 #include "core/networkUtilities.h"
 #include "vpnconnection.h"
 
@@ -219,22 +221,45 @@ void VpnConnection::onConnectionStateChanged(Vpn::ConnectionState state)
                     // TODO: add error code handling for all routeAddList (or rework the code below)
                     iface->routeAddList(m_vpnProtocol->vpnGateway(), QStringList() << dns1 << dns2);
 
-                    if (m_settings->isSitesSplitTunnelingEnabled()) {
+                    // what the config's lists came to (appendSplitTunnelingConfig): the user's
+                    // sites, the services' and the Russian networks sent past the VPN
+                    const auto splitMode =
+                            static_cast<Settings::RouteMode>(m_vpnConfiguration.value(config_key::splitTunnelType).toInt());
+                    const auto listOf = [this](const char *key) {
+                        QStringList out;
+                        for (const auto &value : m_vpnConfiguration.value(key).toArray()) {
+                            if (!value.toString().isEmpty()) {
+                                out.append(value.toString());
+                            }
+                        }
+                        return out;
+                    };
+                    // the user's own sites are among them: their names are looked up again
+                    const bool ownSites = m_settings->isSitesSplitTunnelingEnabled() && m_settings->routeMode() == splitMode;
+                    if (splitMode == Settings::VpnOnlyForwardSites || splitMode == Settings::VpnAllExceptSites) {
                         iface->routeDeleteList(m_vpnProtocol->vpnGateway(), QStringList() << "0.0.0.0");
-                        // qDebug() << "VpnConnection::onConnectionStateChanged :: adding custom routes, count:" << forwardIps.size();
-                        if (m_settings->routeMode() == Settings::VpnOnlyForwardSites) {
-                            QTimer::singleShot(1000, m_vpnProtocol.data(),
-                                               [this]() { addSitesRoutes(m_vpnProtocol->vpnGateway(), m_settings->routeMode()); });
-                        } else if (m_settings->routeMode() == Settings::VpnAllExceptSites) {
+                        if (splitMode == Settings::VpnOnlyForwardSites) {
+                            const QStringList included = listOf(config_key::splitTunnelIncludeSites);
+                            QTimer::singleShot(1000, m_vpnProtocol.data(), [this, included, ownSites]() {
+                                IpcClient::withInterface([&](QSharedPointer<IpcInterfaceReplica> iface) {
+                                    iface->routeAddList(m_vpnProtocol->vpnGateway(), included);
+                                });
+                                if (ownSites) {
+                                    addSitesRoutes(m_vpnProtocol->vpnGateway(), Settings::VpnOnlyForwardSites);
+                                }
+                            });
+                        } else {
                             iface->routeAddList(m_vpnProtocol->vpnGateway(), QStringList() << "0.0.0.0/1");
                             iface->routeAddList(m_vpnProtocol->vpnGateway(), QStringList() << "128.0.0.0/1");
 
                             iface->routeAddList(m_vpnProtocol->routeGateway(), QStringList() << remoteAddress());
-                            addSitesRoutes(m_vpnProtocol->routeGateway(), m_settings->routeMode());
+                            iface->routeAddList(m_vpnProtocol->routeGateway(), listOf(config_key::splitTunnelExcludeSites));
+                            if (ownSites) {
+                                addSitesRoutes(m_vpnProtocol->routeGateway(), Settings::VpnAllExceptSites);
+                            }
                         }
 
-                        if (m_settings->routeMode() == Settings::VpnOnlyForwardSites
-                            || m_settings->routeMode() == Settings::VpnAllExceptSites) {
+                        if (ownSites) {
                             m_splitRefreshGeneration++;
                             QTimer::singleShot(kSplitRefreshFirstDelayMs, this,
                                                [this, generation = m_splitRefreshGeneration]() {
@@ -559,6 +584,55 @@ void VpnConnection::appendKillSwitchConfig()
     m_vpnConfiguration.insert(config_key::allowedDnsServers, QVariant(m_settings->allowedDnsServers()).toJsonValue());
 }
 
+namespace
+{
+    // The whole Russian list as a rule of the app's Xray (VLESS): a connection to those
+    // networks leaves by the config's own way out past the server - its "freedom" outbound
+    // (one is added when there is none), whose sockets the service binds to the physical
+    // network on Windows and the VPN service protects on Android - the way an entry's Xray
+    // did it. No system route is needed, so the whole list fits on any system.
+    // Android hands the config to its VPN service in one system message, and such a message
+    // holds some 500 KB: with the whole list in it (750 KB) the service did not even start.
+    // There the rule names a file of the app with the list instead ("ipFile"), and the
+    // service - the same app in another process - puts the networks into the rule itself
+    // (Xray.kt). False: no rule was added.
+    bool addRussiaDirectRule(QJsonObject &xrayConfig, const QStringList &networks)
+    {
+        QJsonObject rule { { "type", "field" }, { "ruleTag", "ru-direct" } };
+#ifdef Q_OS_ANDROID
+        const QString file = DirectNetworks::saveForService(networks);
+        if (file.isEmpty()) {
+            return false;
+        }
+        rule.insert("ipFile", file);
+#else
+        rule.insert("ip", QJsonArray::fromStringList(networks));
+#endif
+
+        QJsonArray outbounds = xrayConfig.value("outbounds").toArray();
+        QString direct;
+        for (const auto &value : outbounds) {
+            const QJsonObject outbound = value.toObject();
+            if (outbound.value("protocol").toString() == QLatin1String("freedom") && !outbound.value("tag").toString().isEmpty()) {
+                direct = outbound.value("tag").toString();
+                break;
+            }
+        }
+        if (direct.isEmpty()) {
+            direct = QStringLiteral("ru-direct");
+            outbounds.append(QJsonObject { { "tag", direct }, { "protocol", "freedom" } });
+            xrayConfig.insert("outbounds", outbounds);
+        }
+        rule.insert("outboundTag", direct);
+        QJsonObject routing = xrayConfig.value("routing").toObject();
+        QJsonArray rules = routing.value("rules").toArray();
+        rules.prepend(rule);
+        routing.insert("rules", rules);
+        xrayConfig.insert("routing", routing);
+        return true;
+    }
+}
+
 void VpnConnection::appendSplitTunnelingConfig()
 {
     bool allowSiteBasedSplitTunneling = true;
@@ -613,6 +687,10 @@ void VpnConnection::appendSplitTunnelingConfig()
         }
     }
 
+    // the direction the user chose for the lists, whatever they hold
+    const Settings::RouteMode chosenMode =
+            m_settings->isSitesSplitTunnelingEnabled() ? m_settings->routeMode() : Settings::VpnAllSites;
+
     Settings::RouteMode routeMode = Settings::RouteMode::VpnAllSites;
     QJsonArray sitesJsonArray;
     if (m_settings->isSitesSplitTunnelingEnabled()) {
@@ -634,13 +712,14 @@ void VpnConnection::appendSplitTunnelingConfig()
         }
     }
 
-    m_vpnConfiguration.insert(config_key::splitTunnelType, routeMode);
     m_vpnConfiguration.insert(config_key::splitTunnelSites, sitesJsonArray);
 
     // 2x2 split tunneling: the manual site list (direction = routeMode) and the
     // service presets are flattened into include/exclude sets. A checked preset is
     // always the EXCEPTION to the default: it goes direct when the default route is
-    // VPN (routeMode != VpnOnlyForwardSites) and via VPN when the default is direct.
+    // VPN (the chosen mode is not VpnOnlyForwardSites) and via VPN when the default
+    // is direct - also when the user's own list is empty. The Russian networks join
+    // the exclusions below; splitTunnelType is what all of it comes to.
     // The iOS network extension applies both sets simultaneously (excluded wins).
     QJsonArray includeSitesJsonArray;
     QJsonArray excludeSitesJsonArray;
@@ -759,7 +838,7 @@ void VpnConnection::appendSplitTunnelingConfig()
                 }
             };
 
-            if (routeMode == Settings::VpnOnlyForwardSites) {
+            if (chosenMode == Settings::VpnOnlyForwardSites) {
                 appendAll(includeSitesJsonArray, followIps);
                 appendAll(includeSitesJsonArray, vpnIps);
             } else {
@@ -817,6 +896,80 @@ void VpnConnection::appendSplitTunnelingConfig()
             excludeSitesJsonArray = filteredExclude;
         }
     }
+
+    // Russian sites directly (the switch «Российские сайты напрямую», on unless turned
+    // off), the whole country's list (DirectNetworks), with no system routes: VLESS takes it
+    // as a rule of its Xray, AmneziaWG on Windows and Android gives it to its tunnel, which
+    // opens those connections by the device's own network itself (its sorter, tunnel/awg).
+    // Elsewhere the Russian networks from the head of the gateway's order, as many as the
+    // system carries next to the lists above, go past the VPN as the user's exceptions do,
+    // and the rest of Russia goes through the VPN abroad (no entry sends it out by itself any
+    // more). Nothing to add where only the listed sites go through the VPN: everything else
+    // is direct anyway.
+    const bool onlyListed = chosenMode == Settings::VpnOnlyForwardSites && !includeSitesJsonArray.isEmpty();
+    // VLESS: the whole list, as a rule of its Xray (each connection sorted there, no routes)
+    const QString xrayKey = ProtocolProps::key_proto_config_data(Proto::Xray);
+    const bool sortsItself = protocolName == ProtocolProps::protoToString(Proto::Xray) && m_vpnConfiguration.value(xrayKey).isObject();
+#if defined(Q_OS_WIN) || defined(Q_OS_ANDROID)
+    const bool tunnelSorts = protocolName == ProtocolProps::protoToString(Proto::Awg)
+                             || protocolName == ProtocolProps::protoToString(Proto::WireGuard);
+#else
+    const bool tunnelSorts = false;
+#endif
+    if (m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed && tunnelSorts) {
+        const QStringList whole = DirectNetworks::whole(*m_settings);
+#ifdef Q_OS_ANDROID
+        // the config reaches the VPN service in one system message: the list goes by a file
+        // the service reads itself (Wireguard.kt)
+        const QString file = DirectNetworks::saveForService(whole);
+        if (!file.isEmpty()) {
+            m_vpnConfiguration.insert(config_key::directNetworksFile, file);
+            qDebug() << "Russian sites directly:" << whole.size() << "networks by the tunnel itself";
+        }
+#else
+        m_vpnConfiguration.insert(config_key::directNetworks, QJsonArray::fromStringList(whole));
+        qDebug() << "Russian sites directly:" << whole.size() << "networks by the tunnel itself";
+#endif
+    } else if (m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed && sortsItself) {
+        const QStringList whole = DirectNetworks::whole(*m_settings);
+        QJsonObject xrayConfig = m_vpnConfiguration.value(xrayKey).toObject();
+        if (addRussiaDirectRule(xrayConfig, whole)) {
+            m_vpnConfiguration.insert(xrayKey, xrayConfig);
+            qDebug() << "Russian sites directly:" << whole.size() << "networks by the Xray rule";
+        }
+    } else if (m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed) {
+        QStringList taken;
+        for (const auto &value : excludeSitesJsonArray) {
+            taken.append(value.toString());
+        }
+        QSet<QString> seen(taken.begin(), taken.end());
+        int added = 0;
+        for (const QString &net : DirectNetworks::forThisSystem(DirectNetworks::ordered(*m_settings), taken)) {
+            if (!seen.contains(net)) {
+                seen.insert(net);
+                excludeSitesJsonArray.append(net);
+                ++added;
+            }
+        }
+        qDebug() << "Russian sites directly:" << added << "networks past the VPN";
+    }
+
+    // What the lists come to: only the listed through the VPN, everything but the
+    // exceptions through it, or simply everything (the lists empty or off).
+    if (onlyListed) {
+        routeMode = Settings::VpnOnlyForwardSites;
+        // the DNS through the VPN as well (the user's own list adds them itself)
+        for (const QString &dns : { m_vpnConfiguration.value(config_key::dns1).toString(),
+                                    m_vpnConfiguration.value(config_key::dns2).toString() }) {
+            if (!dns.isEmpty() && !includeSitesJsonArray.contains(dns)) {
+                includeSitesJsonArray.append(dns);
+            }
+        }
+    } else {
+        includeSitesJsonArray = QJsonArray();
+        routeMode = excludeSitesJsonArray.isEmpty() ? Settings::VpnAllSites : Settings::VpnAllExceptSites;
+    }
+    m_vpnConfiguration.insert(config_key::splitTunnelType, routeMode);
     m_vpnConfiguration.insert(config_key::splitTunnelIncludeSites, includeSitesJsonArray);
     m_vpnConfiguration.insert(config_key::splitTunnelExcludeSites, excludeSitesJsonArray);
 
@@ -866,6 +1019,7 @@ void VpnConnection::appendSplitTunnelingConfig()
 void VpnConnection::restoreConnection()
 {
     createAndroidConnections();
+    androidVpnProtocol->countFromNextStatistics();
 
     m_vpnProtocol.reset(androidVpnProtocol);
 
@@ -878,7 +1032,11 @@ void VpnConnection::createAndroidConnections()
 
     connect(AndroidController::instance(), &AndroidController::connectionStateChanged, androidVpnProtocol,
             &AndroidVpnProtocol::setConnectionState);
-    connect(AndroidController::instance(), &AndroidController::statisticsUpdated, androidVpnProtocol, &AndroidVpnProtocol::setBytesChanged);
+    connect(AndroidController::instance(), &AndroidController::statisticsUpdated, androidVpnProtocol, &AndroidVpnProtocol::onStatistics);
+    // the app away from the service (in the background): what it sends first on the way back
+    // is all the traffic of the time away
+    connect(AndroidController::instance(), &AndroidController::serviceDisconnected, androidVpnProtocol,
+            &AndroidVpnProtocol::countFromNextStatistics);
     connect(AndroidController::instance(), &AndroidController::serviceErrorCode, androidVpnProtocol,
             [this](ErrorCode error) { rememberError(error); });
 }

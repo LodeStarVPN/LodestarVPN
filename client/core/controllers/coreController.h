@@ -35,6 +35,7 @@
 #include "ui/models/servers_model.h"
 #include "ui/models/sites_model.h"
 #include "ui/models/splitPresetsModel.h"
+#include "core/directNetworks.h"
 
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     #include "ui/notificationhandler.h"
@@ -111,6 +112,7 @@ private:
     QSharedPointer<LanguageModel> m_languageModel;
     QSharedPointer<SitesModel> m_sitesModel;
     QSharedPointer<SplitPresetsModel> m_splitPresetsModel;
+    QSharedPointer<DirectNetworks> m_directNetworks;
     QSharedPointer<HealthCheckController> m_healthCheckController;
     QSharedPointer<AllowedDnsModel> m_allowedDnsModel;
     QSharedPointer<AppSplitTunnelingModel> m_appSplitTunnelingModel;

@@ -15,6 +15,10 @@ class DaemonLocalServer final : public QObject {
   ~DaemonLocalServer();
 
   bool initialize();
+#ifdef MZ_WINDOWS
+  // an instance of the daemon's pipe is still there (an old service's)
+  bool pipeLeftOver() const;
+#endif
 
  private:
   QString daemonPath() const;

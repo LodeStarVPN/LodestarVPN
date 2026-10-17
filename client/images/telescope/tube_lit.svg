@@ -1,0 +1,9 @@
+<!-- LodestarVPN home screen telescope (HomeScene.qml), from local-tools/design/home/telescope.html; units: the telescope's own, pivot at 0,0: the starlight on the tube -->
+<svg xmlns="http://www.w3.org/2000/svg" width="130" height="26" viewBox="-81 -24 130 26">
+<defs><linearGradient id="litG" x1="0" y1="-16.6" x2="0" y2="-3" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a9bdff" stop-opacity="0.55"/><stop offset="0.22" stop-color="#7f98ff" stop-opacity="0.16"/><stop offset="0.5" stop-color="#6f88f0" stop-opacity="0"/></linearGradient><linearGradient id="litX" x1="-82" y1="0" x2="48" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="0.55" stop-color="#fff" stop-opacity="0.75"/><stop offset="1" stop-color="#fff" stop-opacity="0.2"/></linearGradient><mask id="litMask" maskUnits="userSpaceOnUse" x="-90" y="-40" width="150" height="60"><rect x="-90" y="-40" width="150" height="60" fill="url(#litX)"/></mask></defs>
+<g mask="url(#litMask)">
+<rect x="-60" y="-15.6" width="84" height="12.2" rx="1.4" fill="url(#litG)"/>
+<rect x="-79" y="-16.6" width="21" height="14.2" rx="1.6" fill="url(#litG)"/>
+<rect x="-39.6" y="-22.4" width="28" height="2" rx="1" fill="#a9bdff" opacity="0.3"/>
+</g>
+</svg>

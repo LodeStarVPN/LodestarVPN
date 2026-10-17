@@ -112,12 +112,11 @@ PageType {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
-                defaultColor: DopamineStyle.color.transparent
-                hoveredColor: DopamineStyle.color.translucentWhite
-                pressedColor: DopamineStyle.color.sheerWhite
+                defaultColor: DopamineStyle.color.glassButton
+                hoveredColor: DopamineStyle.color.glassButtonHovered
+                pressedColor: DopamineStyle.color.glassButtonPressed
                 disabledColor: DopamineStyle.color.mutedGray
-                textColor: DopamineStyle.color.paleGray
-                borderWidth: 1
+                textColor: DopamineStyle.color.glassButtonText
 
                 text: qsTr("Restore default")
 

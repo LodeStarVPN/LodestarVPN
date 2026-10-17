@@ -12,8 +12,6 @@ import "../Config"
 PageType {
     id: root
 
-    property bool isAppSplitTinnelingEnabled: Qt.platform.os === "windows" || Qt.platform.os === "android"
-
     BackButtonType {
         id: backButton
 
@@ -48,11 +46,16 @@ PageType {
 
                 headerText: qsTr("Connection")
             }
+
+            Item {
+                Layout.preferredHeight: 8
+            }
         }
 
         model: 1 // fake model to force the ListView to be created without a model
 
-        delegate: ColumnLayout { // TODO(CyAn84): add DelegateChooser when have migrated to 6.9
+        // the switches in one glass card, the pages behind them in another
+        delegate: GlassColumn { // TODO(CyAn84): add DelegateChooser when have migrated to 6.9
 
             width: listView.width
 
@@ -62,7 +65,6 @@ PageType {
                 visible: false
 
                 Layout.fillWidth: true
-                Layout.margins: 16
 
                 text: qsTr("Use LodestarDNS")
                 descriptionText: qsTr("If LodestarDNS is installed on the server")
@@ -85,7 +87,6 @@ PageType {
                 visible: !GC.isMobile()
 
                 Layout.fillWidth: true
-                Layout.margins: 16
 
                 text: qsTr("Route local network through VPN")
                 descriptionText: qsTr("When off, devices in your local network (SSH, printers, shared folders) stay reachable while the VPN is on. Applies on the next connection.")
@@ -108,43 +109,31 @@ PageType {
 
             width: listView.width
 
-            LabelWithButtonType {
-                id: splitTunnelingButton2
-
-                visible: root.isAppSplitTinnelingEnabled
-
+            GlassColumn {
                 Layout.fillWidth: true
+                // under the switches' card where the platform has one
+                Layout.topMargin: !GC.isMobile() ? 16 : 0
 
-                text: qsTr("App-based split tunneling")
-                descriptionText: qsTr("Allows you to use the VPN only for certain Apps")
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
+                // split tunneling is its own entry in the settings, the home's sheet
 
-                clickedFunction: function() {
-                    PageController.goToPage(PageEnum.PageSettingsAppSplitTunneling)
+                LabelWithButtonType {
+                    id: killSwitchButton
+                    visible: !GC.isMobile()
+
+                    Layout.fillWidth: true
+
+                    text: qsTr("KillSwitch")
+                    descriptionText: qsTr("Blocks network connections without VPN")
+                    rightImageSource: "qrc:/images/controls/chevron-right.svg"
+
+                    clickedFunction: function() {
+                        PageController.goToPage(PageEnum.PageSettingsKillSwitch)
+                    }
                 }
-            }
 
-            DividerType {
-                visible: root.isAppSplitTinnelingEnabled
-            }
-
-            LabelWithButtonType {
-                id: killSwitchButton
-                visible: !GC.isMobile()
-
-                Layout.fillWidth: true
-
-                text: qsTr("KillSwitch")
-                descriptionText: qsTr("Blocks network connections without VPN")
-                rightImageSource: "qrc:/images/controls/chevron-right.svg"
-
-                clickedFunction: function() {
-                    PageController.goToPage(PageEnum.PageSettingsKillSwitch)
+                DividerType {
+                    visible: GC.isDesktop()
                 }
-            }
-
-            DividerType {
-                visible: GC.isDesktop()
             }
         }
     }

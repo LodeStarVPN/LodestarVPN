@@ -49,7 +49,14 @@ namespace PageLoader
 
         PageSettingsRuAppsHelp,
 
-        PageDevMenu
+        PageDevMenu,
+
+        // a device without our app (an iPhone): its place and its AmneziaWG files
+        PageSettingsApiOtherDevice,
+
+        // split tunneling as a whole (Russian sites, sites and services, apps): the home button's
+        // and the settings entry's page
+        PageSettingsSplit
     };
     Q_ENUM_NS(PageEnum)
 
@@ -76,6 +83,8 @@ public slots:
 
     unsigned int getInitialPageNavigationBarColor();
     void updateNavigationBarColor(const int color);
+    // the colour last given to the navigation bar: a sheet puts it back when it closes
+    unsigned int navigationBarColor() const;
 
     void showOnStartup();
 
@@ -135,6 +144,7 @@ private:
     bool m_isTriggeredByConnectButton;
 
     int m_drawerDepth = 0;
+    unsigned int m_navigationBarColor = 0;
 };
 
 #endif // PAGECONTROLLER_H

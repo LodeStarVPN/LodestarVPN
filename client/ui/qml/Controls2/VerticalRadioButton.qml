@@ -34,7 +34,9 @@ RadioButton {
 
     property bool isFocusable: true
 
-    
+    // no circle: the row is chosen another way (a glass card's row lit by the lodestar)
+    property bool bare: false
+
     property string radioButtonInnerCirclePressedSource: "qrc:/images/controls/radio-button-inner-circle-pressed.png"
     property string radioButtonInnerCircleSource: "qrc:/images/controls/radio-button-inner-circle.png"
     property string radioButtonPressedSource: "qrc:/images/controls/radio-button-pressed.svg"
@@ -74,8 +76,9 @@ RadioButton {
         border.color: root.focus ? root.borderFocusedColor : DopamineStyle.color.transparent
         border.width: root.focus ? root.borderFocusedWidth : 0
 
-        implicitWidth: 56
-        implicitHeight: 56
+        visible: !root.bare
+        implicitWidth: root.bare ? 0 : 56
+        implicitHeight: root.bare ? 0 : 56
         radius: 16
 
         color: {
@@ -141,7 +144,7 @@ RadioButton {
     contentItem: Item {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: 8 + background.width
+        anchors.leftMargin: root.bare ? 0 : 8 + background.width
 
         implicitHeight: content.implicitHeight
 

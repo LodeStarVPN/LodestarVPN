@@ -36,6 +36,9 @@ Button {
     // and still; while connecting the orbiting star lights the sky around
     // it; on landing a soft wave of light runs out from the star and
     // ignites the background stars, which then twinkle on slow sines.
+    // On the home screen it is the eye of the telescope on the hill
+    // (HomeScene): its sky is what the tube points at and slides by as the
+    // tube turns - at rest the mountain it looks at.
     readonly property real skyRadius: 92        // under the ring's stroke
     property real skyLit: 0                     // 0 idle .. 1 connected
     property real field: 0                      // background stars on/off
@@ -52,9 +55,23 @@ Button {
         NumberAnimation { duration: 1000; easing.type: Easing.InOutSine }
     }
 
+    // the telescope's eye (PageHome gives it from HomeScene): where the tube
+    // points, degrees above level, where it points when on the landing point
+    // and when at rest, how fast it turns; the star lands only once the tube
+    // is near (eyeReady). On its own the button looks at the landing point
+    property real eyeAngle: 52
+    property real eyeAim: 52
+    property real eyeRest: 16
+    property real eyeRate: 0
+    property bool eyeReady: true
+
     // desktop easter egg: right-click the button; on mobile PageHome
     // triggers the same trip on a shake
     signal rightClicked()
+
+    // the star has landed and its wave of light runs out (with ignition the
+    // stars light up): the home screen's sky and telescope go with it
+    signal landed(bool ignition)
 
     // ------------------------------------------------------------------
     // The lodestar. Its state is the angle and angular speed on the ring,
@@ -76,7 +93,7 @@ Button {
     // a FrameAnimation, in step with rendering, only while something moves.
 
     readonly property real orbitRadius: 80      // inside the sky, rays touching the ring
-    readonly property real orbitSpeed: 2 * Math.PI / 1.6   // rad/s, a lap in 1.6 s
+    readonly property real orbitSpeed: 2 * Math.PI / 2.2   // rad/s, a lap in 2.2 s
     readonly property real landY: -22           // landed star, from the button centre
     readonly property real orbitStarSize: 32
     readonly property real landedStarSize: 46
@@ -100,7 +117,9 @@ Button {
     property bool burstPending: false
     // a quick connection still gets its orbit: the landing, and with it the
     // button's "connected" look and text, waits until the star has lit up
-    // and gone about once round
+    // and gone about once round - and on the home screen until the
+    // telescope is near the landing point (eyeReady), so that it is on the
+    // star as it touches down
     readonly property real minOrbit: 2000       // ms from the start of the orbit
     property real orbitSince: 0
     property bool holdingLand: false
@@ -114,6 +133,8 @@ Button {
     readonly property point starPos: Qt.point(orbitRadius * reach * Math.cos(angle),
                                               landY * (1 - reach) + orbitRadius * reach * Math.sin(angle))
     readonly property real starSize: (orbitStarSize + (landedStarSize - orbitStarSize) * (1 - reach)) * (0.7 + 0.3 * shine)
+    // the landed star's slow breath (0.94 .. 1.08), for the glint in the home screen's telescope
+    readonly property real starTwinkle: star.twinkleScale
     // how far the state text has slid down (0..1)
     readonly property real textLift: 1 - reach
 
@@ -176,7 +197,7 @@ Button {
         let targetReach = 1, targetSpin = dir * orbitSpeed, targetShine = 1
         let lReach = 4.5, lSpin = 4.0, lShine = 6.0
         if (intent === "land") {
-            targetReach = 0; targetSpin = 0; lSpin = 4.5
+            targetReach = 0; targetSpin = 0; lReach = 3.0; lSpin = 3.0
         } else if (intent === "trip") {
             targetSpin = tripDirection * orbitSpeed * 1.3; lSpin = 4.5
         } else if (intent === "leave") {
@@ -184,7 +205,7 @@ Button {
                 leaveStage = "glide"
             }
             if (leaveStage === "glide") {
-                targetSpin = 0; targetShine = 0; lSpin = 3.2; lShine = 3.5
+                targetSpin = 0; targetShine = 0; lSpin = 2.4; lShine = 2.6
             }
         }
         const spin0 = spin
@@ -223,7 +244,7 @@ Button {
         }
         trailPts = pts
 
-        if (holdingLand && clock - orbitSince >= minOrbit) {
+        if (holdingLand && clock - orbitSince >= minOrbit && eyeReady) {
             holdingLand = false
             syncStar()
         }
@@ -257,8 +278,8 @@ Button {
             setIntent("orbit")
             showState("connecting")
         } else if (ConnectionController.isConnected) {
-            if (starShown && intent === "orbit" && clock - orbitSince < minOrbit) {
-                holdingLand = true      // step() calls back once the orbit has had its time
+            if (starShown && intent === "orbit" && (clock - orbitSince < minOrbit || !eyeReady)) {
+                holdingLand = true      // step() calls back once the orbit has had its time and the tube is near
                 return
             }
             setIntent("land")
@@ -331,6 +352,7 @@ Button {
             starsLit = true
             igniteAnimation.restart()
         }
+        landed(ignition)
     }
 
     readonly property real waveReach: 150       // past the far edge of the sky from the landing point
@@ -428,6 +450,10 @@ Button {
             property real waveAmount: root.waveAmount
             property real ignite: root.ignite
             property real field: root.field
+            property real eyeAngle: root.eyeAngle
+            property real eyeAim: root.eyeAim
+            property real eyeRest: root.eyeRest
+            property real eyeRate: root.eyeRate
 
             fragmentShader: "qrc:/shaders/nightsky.frag.qsb"
         }

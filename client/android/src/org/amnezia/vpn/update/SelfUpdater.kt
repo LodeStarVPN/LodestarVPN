@@ -32,6 +32,8 @@ private const val TAG = "SelfUpdater"
 
 // whether the VPN was on when an update was committed: PackageReplacedReceiver brings it back
 const val PREFS_UPDATE_RECONNECT = "UPDATE_RECONNECT"
+// the app turned the VPN off itself for that update: its «off» is not the user's
+const val PREFS_UPDATE_TURNED_OFF = "UPDATE_TURNED_OFF"
 // the install session the app waits for: one abandoned for a newer attempt still sends its
 // result. In the prefs, as a result may come to a process started just for it
 private const val PREFS_UPDATE_SESSION = "UPDATE_SESSION"
@@ -158,17 +160,18 @@ object SelfUpdater {
      * Returns at once: the copy into the session runs on a background thread, the result
      * comes to UpdateInstallReceiver and from there to Qt (report)
      */
-    fun install(ctx: Context, path: String) {
+    fun install(ctx: Context, path: String, turnedOff: Boolean) {
         val app = ctx.applicationContext
         if (!canInstall(app)) {
             Log.i(TAG, "Install: no permission to install apps yet")
             report(PERMISSION_NEEDED)
             return
         }
-        executor.execute { installNow(app, path) }
+        executor.execute { installNow(app, path, turnedOff) }
     }
 
-    private fun installNow(app: Context, path: String) {
+    // turnedOff: the app turned the VPN off for this update (UpdateController), it comes back after it
+    private fun installNow(app: Context, path: String, turnedOff: Boolean) {
         val installer = app.packageManager.packageInstaller
         var sessionId = -1
         try {
@@ -212,7 +215,10 @@ object SelfUpdater {
                     }
                 }
                 // commit(), not apply(): the update kills this process soon after
-                Prefs.prefs.edit().putBoolean(PREFS_UPDATE_RECONNECT, isVpnOn(app)).commit()
+                Prefs.prefs.edit()
+                    .putBoolean(PREFS_UPDATE_RECONNECT, turnedOff || isVpnOn(app))
+                    .putBoolean(PREFS_UPDATE_TURNED_OFF, turnedOff)
+                    .commit()
                 val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
                 val pendingIntent = PendingIntent.getBroadcast(
                     app,

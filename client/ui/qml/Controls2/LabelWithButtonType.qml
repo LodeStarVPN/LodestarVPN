@@ -47,6 +47,12 @@ Item {
     property bool descriptionOnTop: false
     property bool hideDescription: true
 
+    // its place in a glass card (GlassSegment, GlassColumn): "" none, "single", "first",
+    // "middle", "last"; the content then stands 16 px further in
+    property string glass: ""
+    // lit by the lodestar, which stands at the row's end (the chosen one in a list, this device)
+    property bool glassLit: false
+
     property bool isFocusable: !(eyeImage.visible || rightImage.visible) // TODO: this component already has focusable items
 
     Keys.onTabPressed: {
@@ -73,8 +79,10 @@ Item {
         FocusController.nextKeyRightItem()
     }
     
-    implicitWidth: content.implicitWidth + content.anchors.topMargin + content.anchors.bottomMargin
-    implicitHeight: content.implicitHeight + content.anchors.leftMargin + content.anchors.rightMargin
+    // (upstream added the side margins to the height and the top and bottom ones to the width: the
+    // same 16 then, but a glass row's sides are 32)
+    implicitWidth: content.implicitWidth + content.anchors.leftMargin + content.anchors.rightMargin
+    implicitHeight: content.implicitHeight + content.anchors.topMargin + content.anchors.bottomMargin
 
     MouseArea {
         id: mouseArea
@@ -117,13 +125,23 @@ Item {
         }
     }
 
+    GlassSegment {
+        anchors.fill: parent
+
+        visible: root.glass !== ""
+        position: root.glass !== "" ? root.glass : "single"
+        pressed: mouseArea.pressed
+        lit: root.glassLit
+    }
+
     RowLayout {
         id: content
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
-        anchors.topMargin: 16
-        anchors.bottomMargin: 16
+        anchors.leftMargin: root.glass !== "" ? 32 : 16
+        anchors.rightMargin: root.glass !== "" ? 32 : 16
+        // a card's rows a little closer, as in the design (64 with an icon)
+        anchors.topMargin: root.glass !== "" ? 12 : 16
+        anchors.bottomMargin: root.glass !== "" ? 12 : 16
 
         Rectangle {
             id: leftImageBackground
@@ -224,6 +242,10 @@ Item {
                     return '*'.repeat(input.length)
                 }
             }
+        }
+
+        LodestarMark {
+            visible: root.glassLit
         }
 
         ImageButtonType {

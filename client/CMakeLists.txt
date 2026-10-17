@@ -115,10 +115,18 @@ endif()
 
 qt6_add_resources(QRC ${QRC} ${CMAKE_CURRENT_LIST_DIR}/resources.qrc)
 
-# connect button's night sky (qrc:/shaders/nightsky.frag.qsb, all RHI backends)
+# connect button's night sky (qrc:/shaders/nightsky.frag.qsb, all RHI backends), the
+# in-app update's (updatesky.frag: its sheet and its home card), the home screen's
+# sky and land round the button (homesky.frag, homeland.frag, the sky's own stars drawn
+# once by homestars.frag) and the night behind the other pages and the sheets (pagesky.frag)
 qt_add_shaders(${PROJECT} "shaders"
     PREFIX "/"
     FILES shaders/nightsky.frag
+          shaders/updatesky.frag
+          shaders/homesky.frag
+          shaders/homeland.frag
+          shaders/homestars.frag
+          shaders/pagesky.frag
 )
 
 # -- i18n begin

@@ -50,8 +50,10 @@ if("${TARGET_ABIS}" STREQUAL "")
     set(TARGET_ABIS ${CMAKE_ANDROID_ARCH_ABI})
 endif()
 foreach(abi IN ITEMS ${TARGET_ABIS})
+    # the AmneziaWG tunnel is our own build (tunnel/awg: the sorter that opens the Russian sites
+    # directly), not the one of the prebuilt set
     set_property(TARGET ${PROJECT} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
-        ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/amneziawg/android/${abi}/libwg-go.so
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd-lodestar/amneziawg/android/${abi}/libwg-go.so
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/openssl/android/${abi}/libcrypto_3.so
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd-prebuilt/3rd-prebuilt/openssl/android/${abi}/libssl_3.so
     )

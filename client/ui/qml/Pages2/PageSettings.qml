@@ -48,6 +48,7 @@ PageType {
 
         model: settingsEntries
 
+        // the entries in glass cards: the settings in one, about and the dev console in another
         delegate: ColumnLayout {
             width: listView.width
 
@@ -55,6 +56,7 @@ PageType {
 
             LabelWithButtonType {
                 Layout.fillWidth: true
+                Layout.topMargin: isVisible && index === root.firstVisible(card) && card > 0 ? 16 : 0
 
                 visible: isVisible
 
@@ -62,11 +64,14 @@ PageType {
                 rightImageSource: "qrc:/images/controls/chevron-right.svg"
                 leftImageSource: leftImagePath
 
-                clickedFunction: clickedHandler
-            }
+                glass: {
+                    const first = root.firstVisible(card)
+                    const last = root.lastVisible(card)
+                    return index === first && index === last ? "single" : index === first ? "first"
+                         : index === last ? "last" : "middle"
+                }
 
-            DividerType {
-                visible: isVisible
+                clickedFunction: clickedHandler
             }
         }
 
@@ -78,22 +83,16 @@ PageType {
 
                 visible: GC.isDesktop()
                 Layout.fillWidth: true
+                Layout.topMargin: 16
 
                 text: qsTr("Close application")
                 leftImageSource: "qrc:/images/controls/x-circle.svg"
                 isLeftImageHoverEnabled: false
+                glass: "single"
 
                 clickedFunction: function() {
                     PageController.closeApplication()
                 }
-            }
-
-            DividerType {
-                Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-
-                visible: GC.isDesktop()
             }
 
             Text {
@@ -112,14 +111,36 @@ PageType {
     property list<QtObject> settingsEntries: [
         subscription,
         servers,
+        splitTunneling,
         connection,
         application,
         about,
         devConsole
     ]
 
+    // the first and the last entry shown in a card (an entry's card property)
+    function firstVisible(card) {
+        for (let i = 0; i < settingsEntries.length; i++) {
+            if (settingsEntries[i].card === card && settingsEntries[i].isVisible) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    function lastVisible(card) {
+        for (let i = settingsEntries.length - 1; i >= 0; i--) {
+            if (settingsEntries[i].card === card && settingsEntries[i].isVisible) {
+                return i
+            }
+        }
+        return -1
+    }
+
     QtObject {
         id: subscription
+
+        readonly property int card: 0
 
         // our subscription: its status and end date, devices, support - the
         // page the info button of the home screen's card opens too
@@ -153,6 +174,8 @@ PageType {
     QtObject {
         id: servers
 
+        readonly property int card: 0
+
         property string title: qsTr("Connections")
         readonly property string leftImagePath: "qrc:/images/controls/server.svg"
         property bool isVisible: true
@@ -162,13 +185,30 @@ PageType {
     }
 
     QtObject {
+        id: splitTunneling
+
+        readonly property int card: 0
+
+        // the very page of the button under the home card, under its name (the owner, 2026-10-17:
+        // the Connection page held only the apps' part of it, named its own way; then «должна быть
+        // отдельной вкладкой а не выплывающей менюшкой» - it was a sheet over the settings)
+        property string title: qsTr("Split tunneling")
+        readonly property string leftImagePath: "qrc:/images/controls/split.svg"
+        property bool isVisible: true
+        readonly property var clickedHandler: function() {
+            PageController.goToPage(PageEnum.PageSettingsSplit)
+        }
+    }
+
+    QtObject {
         id: connection
+
+        readonly property int card: 0
 
         property string title: qsTr("Connection")
         readonly property string leftImagePath: "qrc:/images/controls/radio.svg"
-        // the page is empty on iOS: LAN routing and KillSwitch are desktop-only,
-        // app split tunneling is Windows/Android - hide the entry there
-        property bool isVisible: GC.isDesktop() || Qt.platform.os === "android"
+        // LAN routing and KillSwitch: both desktop-only, the page is empty elsewhere
+        property bool isVisible: GC.isDesktop()
         readonly property var clickedHandler: function() {
             PageController.goToPage(PageEnum.PageSettingsConnection)
         }
@@ -176,6 +216,8 @@ PageType {
 
     QtObject {
         id: application
+
+        readonly property int card: 0
 
         property string title: qsTr("Application")
         readonly property string leftImagePath: "qrc:/images/controls/app.svg"
@@ -188,6 +230,8 @@ PageType {
     QtObject {
         id: about
 
+        readonly property int card: 1
+
         property string title: qsTr("About LodestarVPN")
         readonly property string leftImagePath: "qrc:/images/controls/info.svg"
         property bool isVisible: true
@@ -198,6 +242,8 @@ PageType {
 
     QtObject {
         id: devConsole
+
+        readonly property int card: 1
 
         property string title: qsTr("Dev console")
         readonly property string leftImagePath: "qrc:/images/controls/bug.svg"
