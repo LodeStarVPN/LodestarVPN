@@ -10,18 +10,24 @@ import "TextTypes"
 Button {
     id: root
 
-    // by default the update sheet's starlight button (the night's main action); the soft glass
-    // one is glassButton* with glassButtonText
-    property string hoveredColor: DopamineStyle.color.starlightHovered
-    property string defaultColor: DopamineStyle.color.starlight
-    property string disabledColor: DopamineStyle.color.charcoalGray
-    property string pressedColor: DopamineStyle.color.starlightPressed
+    // by default the main action of a page or a sheet: glass lit by the connected ring's blue, with
+    // the ring's light at its edge and around it (DopamineStyle ringButton*; the owner, 2026-10-22:
+    // the white starlight one «не в нашей стилистике», then «дизайн приложения должен соответствовать
+    // приложению полностью»). The soft glass one is glassButton* with glassButtonText
+    property string hoveredColor: DopamineStyle.color.ringButtonHovered
+    property string defaultColor: DopamineStyle.color.ringButton
+    // under the busy spinner a page is disabled: the button stays in its own colours, not a grey slab
+    property string disabledColor: defaultColor
+    property string pressedColor: DopamineStyle.color.ringButtonPressed
 
-    property string textColor: DopamineStyle.color.starlightText
+    property string textColor: DopamineStyle.color.ringButtonText
 
-    property string borderColor: DopamineStyle.color.paleGray
+    // the edge and the glow belong to the main action's own colours; a button in other colours has
+    // neither unless it asks
+    readonly property bool lit: Qt.colorEqual(defaultColor, DopamineStyle.color.ringButton)
+    property string borderColor: lit ? DopamineStyle.color.ringButtonBorder : DopamineStyle.color.paleGray
     property string borderFocusedColor: DopamineStyle.color.paleGray
-    property int borderWidth: 0
+    property int borderWidth: lit ? 1 : 0
     property int borderFocusedWidth: 1
 
     property string leftImageSource
@@ -31,6 +37,8 @@ Button {
 
     property bool squareLeftSide: false
     property int cornerRadius: 16
+    // a light around it, as around the switch that is on: the main action's own
+    property string glowColor: lit ? DopamineStyle.color.ringButtonGlow : ""
 
     property var clickedFunc
 
@@ -76,6 +84,17 @@ Button {
         anchors.fill: parent
 
         radius: root.cornerRadius
+
+        RectangularGlow {
+            z: -1
+            anchors.fill: background
+
+            visible: root.glowColor !== "" && root.enabled
+            glowRadius: 12
+            spread: 0.1
+            cornerRadius: background.radius + glowRadius
+            color: root.glowColor !== "" ? root.glowColor : DopamineStyle.color.transparent
+        }
 
         Rectangle {
             id: background

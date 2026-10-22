@@ -18,8 +18,7 @@ PageType {
 
     Component.onCompleted: {
         if (ImportController.hasPendingSubscription) {
-            subscriptionDrawer.configCount = ImportController.subscriptionConfigsCount()
-            subscriptionDrawer.openTriggered()
+            subscriptionDrawer.ask(ImportController.subscriptionConfigsCount())
         }
     }
 
@@ -32,8 +31,7 @@ PageType {
 
         function onSubscriptionConfigsReady(count) {
             PageController.showBusyIndicator(false)
-            subscriptionDrawer.configCount = count
-            subscriptionDrawer.openTriggered()
+            subscriptionDrawer.ask(count)
         }
 
         function onSubscriptionErrorOccurred(message) {
@@ -220,6 +218,42 @@ PageType {
                 // everything the field accepts, see onUnknownFormatDetected
                 hintText: qsTr("Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config")
                 multiline: true
+
+                // putting it in without typing (the owner, 2026-10-22: «нету кнопки чтобы вставить
+                // конфиг»): from the clipboard (in place of what is there) or from a config's file,
+                // the field's strip shared between them; with something in, a cross at its end
+                // clears it
+                actions: [
+                    FieldActionType {
+                        iconSource: "qrc:/images/controls/clipboard.svg"
+                        text: qsTr("Paste")
+
+                        clickedFunc: function() {
+                            textKey.insertFromClipboard()
+                        }
+                    },
+                    FieldActionType {
+                        divider: true
+                        iconSource: "qrc:/images/controls/folder-open.svg"
+                        text: qsTr("From file")
+
+                        clickedFunc: function() {
+                            fileOpen.handler()
+                        }
+                    },
+                    FieldActionType {
+                        visible: textKey.inputText !== ""
+                        Layout.fillWidth: false
+                        Layout.preferredWidth: 56
+
+                        divider: true
+                        iconSource: "qrc:/images/controls/close.svg"
+
+                        clickedFunc: function() {
+                            textKey.textArea.text = ""
+                        }
+                    }
+                ]
             }
 
             BasicButtonType {
@@ -379,6 +413,7 @@ PageType {
         }
     }
 
+    // not a row of the options: the field's «From file» opens it
     QtObject {
         id: fileOpen
 
@@ -443,6 +478,17 @@ PageType {
         id: subscriptionDrawer
 
         property int configCount: 0
+        // what the app holds when asked: the configs added before (the checkbox takes them away)
+        // and whether a subscription is among them (it stays)
+        property int otherConfigs: 0
+        property bool holdsSubscription: false
+
+        function ask(count) {
+            configCount = count
+            otherConfigs = ServersModel.otherServersCount()
+            holdsSubscription = ApiConfigsController.installedSubscriptionKey() !== ""
+            openTriggered()
+        }
 
         parent: root
         anchors.fill: parent
@@ -493,8 +539,11 @@ PageType {
                 Layout.bottomMargin: 16
 
                 text: qsTr("Delete previous configurations")
+                // only the configs added before: the subscription stays (the app keeps one,
+                // replaced only by another one's key)
+                descriptionText: subscriptionDrawer.holdsSubscription ? qsTr("The subscription stays") : ""
                 checked: false
-                visible: ServersModel.getServersCount() > 0
+                visible: subscriptionDrawer.otherConfigs > 0
             }
 
             BasicButtonType {

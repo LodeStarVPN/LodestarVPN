@@ -330,7 +330,9 @@ QStringList Settings::getVpnIps(RouteMode mode) const
     for (auto i = m.constBegin(); i != m.constEnd(); ++i) {
         if (NetworkUtilities::checkIpSubnetFormat(i.key())) {
             ips.append(i.key());
-        } else if (NetworkUtilities::checkIpSubnetFormat(i.value().toString())) {
+        } else if (NetworkUtilities::checkIpSubnetFormat(i.value().toString())
+                   && !NetworkUtilities::isStubAddress(i.value().toString())) {
+            // the address the name was found at (a stub one stored before is left out)
             ips.append(i.value().toString());
         }
     }

@@ -63,6 +63,7 @@ void VpnProtocol::setBytesChanged(quint64 receivedBytes, quint64 sentBytes)
     quint64 rxDiff = receivedBytes - m_receivedBytes;
     quint64 txDiff = sentBytes - m_sentBytes;
 
+    emitSampleTimed();
     emit bytesChanged(rxDiff, txDiff);
 
     m_receivedBytes = receivedBytes;
@@ -73,6 +74,31 @@ void VpnProtocol::setBytesBaseline(quint64 receivedBytes, quint64 sentBytes)
 {
     m_receivedBytes = receivedBytes;
     m_sentBytes = sentBytes;
+}
+
+void VpnProtocol::emitSampleTimed()
+{
+    if (m_sampleNs > 0) {
+        emit sampleTimed(m_sampleNs);
+        m_sampleNs = 0;
+    }
+}
+
+void VpnProtocol::setDataBytesChanged(quint64 receivedBytes, quint64 sentBytes)
+{
+    // a tunnel made anew counts from nothing: its total then is the difference
+    const quint64 rxDiff = receivedBytes >= m_dataReceivedBytes ? receivedBytes - m_dataReceivedBytes : receivedBytes;
+    const quint64 txDiff = sentBytes >= m_dataSentBytes ? sentBytes - m_dataSentBytes : sentBytes;
+    m_dataReceivedBytes = receivedBytes;
+    m_dataSentBytes = sentBytes;
+    // nothing too: the speed then goes by these counts, not by the VPN's
+    emit dataBytesChanged(rxDiff, txDiff);
+}
+
+void VpnProtocol::setDataBytesBaseline(quint64 receivedBytes, quint64 sentBytes)
+{
+    m_dataReceivedBytes = receivedBytes;
+    m_dataSentBytes = sentBytes;
 }
 
 void VpnProtocol::setConnectionState(Vpn::ConnectionState state)
@@ -90,6 +116,8 @@ void VpnProtocol::setConnectionState(Vpn::ConnectionState state)
     if (m_connectionState == Vpn::ConnectionState::Disconnected) {
         m_receivedBytes = 0;
         m_sentBytes = 0;
+        m_dataReceivedBytes = 0;
+        m_dataSentBytes = 0;
     }
 
     qDebug().noquote() << QString("Connection state: '%1'").arg(textConnectionState());

@@ -654,6 +654,14 @@ QJsonObject Daemon::getStatus() {
     json.insert("date", connection.m_date.toString());
     json.insert("txBytes", QJsonValue(status.m_txBytes));
     json.insert("rxBytes", QJsonValue(status.m_rxBytes));
+    // the apps' data by the tunnel's count, and when the counts were read: the speed in the app
+    if (status.m_dataTxBytes >= 0 && status.m_dataRxBytes >= 0) {
+      json.insert("dataTxBytes", QJsonValue(status.m_dataTxBytes));
+      json.insert("dataRxBytes", QJsonValue(status.m_dataRxBytes));
+    }
+    if (status.m_sampleNs > 0) {
+      json.insert("sampleNs", QJsonValue(status.m_sampleNs));
+    }
     return json;
   }
 

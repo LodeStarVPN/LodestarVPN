@@ -428,10 +428,12 @@ open class AmneziaVpnService : VpnService() {
                     // the app process needs live byte counters for the multi-IP
                     // failover traffic check and the server-card speed meter
                     if (clientMessengers.isEmpty()) break
+                    // read once, with the moment it was read: the speed goes by that moment
+                    val statistics = vpnProto?.protocol?.statistics ?: Statistics.EMPTY_STATISTICS
                     clientMessengers.values.forEach { clientMessenger ->
                         clientMessenger.send {
                             ServiceEvent.STATISTICS_UPDATE.packToMessage {
-                                putStatistics(vpnProto?.protocol?.statistics ?: Statistics.EMPTY_STATISTICS)
+                                putStatistics(statistics)
                             }
                         }
                     }
@@ -475,11 +477,14 @@ open class AmneziaVpnService : VpnService() {
 
     @MainThread
     private fun startTrafficStatsUpdateJob() {
-        if (trafficStatsUpdateJob == null && trafficStats.isSupported()) {
+        if (trafficStatsUpdateJob == null) {
             Log.d(TAG, "Start traffic stats update")
             trafficStatsUpdateJob = mainScope.launch {
                 while (true) {
-                    trafficStats.getSpeed().let { speed ->
+                    // the same counts as the app's server card: the apps' data by the tunnel's
+                    // count (the VPN's bytes where it keeps none), timed where they were read
+                    val statistics = vpnProto?.protocol?.statistics ?: Statistics.EMPTY_STATISTICS
+                    trafficStats.add(statistics.shownRxBytes, statistics.shownTxBytes, statistics.sampleNanos).let { speed ->
                         if (isConnected) {
                             serviceNotification.updateSpeed(speed)
                         }

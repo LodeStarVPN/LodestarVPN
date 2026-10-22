@@ -128,8 +128,6 @@ DrawerType2 {
             anchors.rightMargin: 16
             anchors.leftMargin: 16
 
-            backgroundColor: DopamineStyle.color.slateGray
-
             textField.placeholderText: qsTr("application name")
         }
 

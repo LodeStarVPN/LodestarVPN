@@ -20,6 +20,17 @@ namespace
     }
 
     const int requestTimeoutMsecs = 12 * 1000; // 12 secs
+
+    // the subscription key a row's account info is asked with (as getAccountInfo finds it)
+    QString subscriptionKeyOf(const QJsonObject &serverConfig)
+    {
+        QJsonObject authData = serverConfig.value(configKey::apiConfig).toObject().value(configKey::authData).toObject();
+        if (authData.isEmpty()) {
+            authData = serverConfig.value(configKey::authData).toObject();
+        }
+        const QString key = authData.value(apiDefs::key::apiKey).toString();
+        return key.isEmpty() ? authData.value(apiDefs::key::id).toString() : key;
+    }
 }
 
 ApiSettingsController::ApiSettingsController(const QSharedPointer<ServersModel> &serversModel,
@@ -78,24 +89,6 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
         return true;
     }
 
-    // serve a fresh-enough cached response instead of an API round-trip
-    if (!forceRefresh) {
-        auto infoIt = m_accountInfoCache.constFind(processedIndex);
-        auto timeIt = m_accountInfoCacheTime.constFind(processedIndex);
-        if (infoIt != m_accountInfoCache.constEnd() && timeIt != m_accountInfoCacheTime.constEnd()
-            && timeIt->secsTo(QDateTime::currentDateTime()) < kAccountInfoCacheTtlSecs) {
-            m_apiAccountInfoModel->updateModel(infoIt.value(), serverConfig);
-            updateApiCountryModel();
-            updateApiDevicesModel();
-            return true;
-        }
-        // several warm-up triggers fire together at startup - fetch once
-        if (m_accountInfoInFlight.contains(processedIndex)) {
-            return true;
-        }
-    }
-    m_accountInfoInFlight.insert(processedIndex);
-
     auto rootAuthData = serverConfig.value(configKey::authData).toObject();
 
     // keys only: auth data holds the subscription id
@@ -119,9 +112,31 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
     // of sending empty auth_data and getting a 400 "Missing subscription id".
     if (!authData.contains(apiDefs::key::apiKey) && !authData.contains(QStringLiteral("share_token"))) {
         qWarning().noquote() << "[ACCOUNT INFO] no auth data (serverIndex:" << processedIndex << ") — skipping request";
-        m_accountInfoInFlight.remove(processedIndex);
         return false;
     }
+
+    // the subscription's info, not the row's: rows come and go, and a replaced subscription's
+    // took the old one's places in the list - its page showed the old one's devices and unlink
+    // time for up to an hour
+    const QString cacheKey = authData.value(apiDefs::key::apiKey).toString();
+
+    // serve a fresh-enough cached response instead of an API round-trip
+    if (!forceRefresh) {
+        auto infoIt = m_accountInfoCache.constFind(cacheKey);
+        auto timeIt = m_accountInfoCacheTime.constFind(cacheKey);
+        if (infoIt != m_accountInfoCache.constEnd() && timeIt != m_accountInfoCacheTime.constEnd()
+            && timeIt->secsTo(QDateTime::currentDateTime()) < kAccountInfoCacheTtlSecs) {
+            m_apiAccountInfoModel->updateModel(infoIt.value(), serverConfig);
+            updateApiCountryModel();
+            updateApiDevicesModel();
+            return true;
+        }
+        // several warm-up triggers fire together at startup - fetch once
+        if (m_accountInfoInFlight.contains(cacheKey)) {
+            return true;
+        }
+    }
+    m_accountInfoInFlight.insert(cacheKey);
 
     bool isTestPurchase = apiConfig.value(apiDefs::key::isTestPurchase).toBool(false);
     auto gatewayController = QSharedPointer<GatewayController>::create(
@@ -140,9 +155,9 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
     // async: the UI thread must not block on the gateway round-trip; the result
     // is applied from the continuation (cache/inFlight bookkeeping lives there)
     auto future = gatewayController->postAsync(QString("%1v1/account_info"), apiPayload);
-    future.then(this, [this, gatewayController, processedIndex, serverConfig, reload, forceRefresh](QPair<ErrorCode, QByteArray> result) {
+    future.then(this, [this, gatewayController, processedIndex, cacheKey, serverConfig, reload, forceRefresh](QPair<ErrorCode, QByteArray> result) {
         const auto [errorCode, responseBody] = result;
-        m_accountInfoInFlight.remove(processedIndex);
+        m_accountInfoInFlight.remove(cacheKey);
         if (errorCode != ErrorCode::NoError) {
             if (forceRefresh) {
                 emit errorOccurred(errorCode);
@@ -151,16 +166,17 @@ bool ApiSettingsController::getAccountInfo(bool reload, bool forceRefresh)
             }
             return;
         }
+        QJsonObject accountInfo = QJsonDocument::fromJson(responseBody).object();
+        m_accountInfoCache[cacheKey] = accountInfo;
+        m_accountInfoCacheTime[cacheKey] = QDateTime::currentDateTime();
         // the user may have switched to another server while the request was in
-        // flight - applying the stale response would poison the wrong server card
-        if (m_serversModel->getProcessedServerIndex() != processedIndex) {
+        // flight (or the subscription was replaced under the same row) - applying
+        // the stale response would poison the wrong server card
+        if (m_serversModel->getProcessedServerIndex() != processedIndex
+            || subscriptionKeyOf(m_serversModel->getServerConfig(processedIndex)) != cacheKey) {
             qDebug() << "[ACCOUNT INFO] dropping stale response for serverIndex:" << processedIndex;
             return;
         }
-
-        QJsonObject accountInfo = QJsonDocument::fromJson(responseBody).object();
-        m_accountInfoCache[processedIndex] = accountInfo;
-        m_accountInfoCacheTime[processedIndex] = QDateTime::currentDateTime();
         m_apiAccountInfoModel->updateModel(accountInfo, serverConfig);
 
         if (reload) {

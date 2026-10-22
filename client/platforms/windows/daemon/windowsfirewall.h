@@ -46,6 +46,18 @@ class WindowsFirewall final : public QObject {
   bool allowAllTraffic();
   bool allowTrafficRange(const QStringList& ranges);
 
+  // Lets the tunnel's direct connections to these IPv4 networks (tunnel/awg, "Russian sites
+  // directly") through the kill switch whichever program the system names as their maker.
+  // They are the service's own sockets, which the permit by program covers, until another
+  // program takes their packets and sends them again - a packet filter such as zapret's
+  // WinDivert, an antivirus's connection redirector: the system then sees a new connection of
+  // the System process, and a permit by program alone cuts it. An empty list takes the permit
+  // away. Not for DNS: the block of port 53 is stronger.
+  bool allowDirectNetworks(const QStringList& networks);
+  // the networks other adapters lead to (Radmin VPN, Hamachi, Tailscale, ...), as LAN is; a
+  // failure leaves the rest of the kill switch as it is
+  bool allowOtherNetworks(const QList<IPAddress>& ranges);
+
  private:
   static bool initSublayer();
   WindowsFirewall(HANDLE session, QObject* parent);

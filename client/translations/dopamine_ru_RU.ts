@@ -271,6 +271,10 @@ for the best server...</source>
         <source>%1 MB/s</source>
         <translation>%1 МБ/с</translation>
     </message>
+    <message>
+        <source>%1 GB/s</source>
+        <translation>%1 ГБ/с</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionTypeSelectionDrawer</name>
@@ -316,6 +320,22 @@ for the best server...</source>
         <location filename="../core/controllers/coreController.cpp" line="167"/>
         <source>Imported %1 configurations</source>
         <translation>Импортировано конфигураций: %1</translation>
+    </message>
+    <message>
+        <source>This subscription is already in the app</source>
+        <translation>Эта подписка уже в приложении</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced</source>
+        <translation>Подписка заменена</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced. This device stays in the previous one for now: a device was unlinked from it today already. It can be unlinked tomorrow in Active devices on another device with that subscription.</source>
+        <translation>Подписка заменена. Это устройство пока осталось в прежней подписке: сегодня с неё уже отвязывали устройство. Отвязать его можно завтра в «Активных устройствах» на другом устройстве с той подпиской.</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced. This device could not be unlinked from the previous one: it can be unlinked in Active devices on another device with that subscription.</source>
+        <translation>Подписка заменена. Отвязать это устройство от прежней подписки не удалось: его можно отвязать в «Активных устройствах» на другом устройстве с той подпиской.</translation>
     </message>
 </context>
 <context>
@@ -3509,6 +3529,11 @@ Already installed containers were found on the server. All installed containers 
         <translation>Открываются без VPN: быстрее, а банки и госуслуги работают как обычно</translation>
     </message>
     <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="163"/>
+        <source>Not needed here: with «via VPN» everything that is not in the lists opens without the VPN anyway</source>
+        <translation>Здесь не нужно: в режиме «через VPN» всё, чего нет в списках, и так открывается без VPN</translation>
+    </message>
+    <message>
         <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="120"/>
         <source>Split tunneling</source>
         <translation>Раздельное туннелирование</translation>
@@ -3897,6 +3922,14 @@ Can&apos;t be disabled for current server</source>
         <source>Enter your subscription ID</source>
         <translation>Введите ID подписки</translation>
     </message>
+    <message>
+        <source>The app already has a subscription, and it keeps one: this one can be added in place of it.</source>
+        <translation>В приложении уже есть подписка, а она может быть одна: эту можно добавить вместо неё.</translation>
+    </message>
+    <message>
+        <source>Replace the subscription</source>
+        <translation>Заменить подписку</translation>
+    </message>
 </context>
 <context>
     <name>PageSetupWizardConfigSource</name>
@@ -4134,12 +4167,24 @@ Can&apos;t be disabled for current server</source>
         <translation>Вставьте ID или ссылку подписки LodestarVPN, ключ подключения или конфиг AmneziaWG/WireGuard</translation>
     </message>
     <message>
+        <source>Paste</source>
+        <translation>Вставить</translation>
+    </message>
+    <message>
+        <source>From file</source>
+        <translation>Из файла</translation>
+    </message>
+    <message>
         <source>Add this connection?</source>
         <translation>Добавить подключение?</translation>
     </message>
     <message>
         <source>Add</source>
         <translation>Добавить</translation>
+    </message>
+    <message>
+        <source>The subscription stays</source>
+        <translation>Подписка останется</translation>
     </message>
 </context>
 <context>
@@ -6595,6 +6640,22 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <source>LodestarVPN is updated to %1</source>
         <translation>LodestarVPN обновлён до %1</translation>
+    </message>
+    <message>
+        <source>Replace the subscription?</source>
+        <translation>Заменить подписку?</translation>
+    </message>
+    <message>
+        <source>LodestarVPN keeps one subscription. The servers of the current one leave the app, and this device is unlinked from it: its place there is freed, and it can come back to it only after a day.</source>
+        <translation>В приложении может быть одна подписка. Серверы текущей уберутся из приложения, а это устройство отвяжется от неё: место в ней освободится, а вернуть её сюда можно будет только через сутки.</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>Заменить</translation>
+    </message>
+    <message>
+        <source>LodestarVPN keeps one subscription. The servers of the current one leave the app, but this device cannot be unlinked from it today: a device was unlinked from it today already. The device stays in it and takes a place there until it is unlinked in Active devices on another device with that subscription, after %1.</source>
+        <translation>В приложении может быть одна подписка. Серверы текущей уберутся из приложения, но отвязать от неё это устройство сегодня нельзя: сегодня с неё уже отвязывали устройство. Оно останется в ней и будет занимать место, пока его не отвяжут в «Активных устройствах» на другом устройстве с той подпиской — после %1.</translation>
     </message>
 </context>
 <context>

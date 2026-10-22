@@ -21,16 +21,21 @@ CheckBox {
     property string defaultColor: DopamineStyle.color.transparent
     property string pressedColor: DopamineStyle.color.barelyTranslucentWhite
 
-    property string defaultBorderColor: DopamineStyle.color.paleGray
-    property string checkedBorderColor: DopamineStyle.color.goldenApricot
+    // the box as the switch (SwitcherType): a dim glass with a faint edge, and when checked the
+    // ring's blue lit with its glow and a light tick (a grey outline was out of the app's look,
+    // the owner, 2026-10-22: «дизайн приложения должен соответствовать приложению полностью»)
+    property string boxColor: "#1A7892FF"
+    property string checkedBoxColor: DopamineStyle.color.richBrown
+    property string defaultBorderColor: "#4DA9C1FF"
+    property string checkedBorderColor: "#5996B4FF"
     property string checkedBorderDisabledColor: DopamineStyle.color.deepBrown
 
     property string borderFocusedColor: DopamineStyle.color.paleGray
 
-    property string checkedImageColor: DopamineStyle.color.goldenApricot
-    property string pressedImageColor: DopamineStyle.color.burntOrange
+    property string checkedImageColor: "#F3F6FF"
+    property string pressedImageColor: DopamineStyle.color.link
     property string defaultImageColor: DopamineStyle.color.transparent
-    property string checkedDisabledImageColor: DopamineStyle.color.mutedBrown
+    property string checkedDisabledImageColor: DopamineStyle.color.mutedGray
 
     property string imageSource: "qrc:/images/controls/check.svg"
 
@@ -96,17 +101,42 @@ CheckBox {
             anchors.centerIn: parent
             width: 24
             height: 24
-            color: DopamineStyle.color.transparent
+            color: root.checked ? root.checkedBoxColor : root.boxColor
             border.color: root.checked ?
                               (root.enabled ?
                                    checkedBorderColor :
                                    checkedBorderDisabledColor) :
                               defaultBorderColor
             border.width: 1
-            radius: 4
+            radius: 6
+
+            Behavior on color {
+                PropertyAnimation { duration: 200 }
+            }
+
+            RectangularGlow {
+                z: -1
+                anchors.fill: parent
+
+                glowRadius: 6
+                spread: 0.15
+                cornerRadius: parent.radius + glowRadius
+                color: "#6B2757FF"
+
+                opacity: root.checked && root.enabled ? 1 : 0
+                visible: opacity > 0
+
+                Behavior on opacity {
+                    PropertyAnimation { duration: 200 }
+                }
+            }
 
             Image {
                 anchors.centerIn: parent
+                // inside the lit box, clear of its edge
+                width: 18
+                height: 18
+                sourceSize: Qt.size(18, 18)
 
                 source: root.pressed ? imageSource : root.checked ? imageSource : ""
                 layer {

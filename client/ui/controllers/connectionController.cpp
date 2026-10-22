@@ -347,7 +347,8 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
             }
             return;
         }
-        m_speedTimer.invalidate();
+        // away, the counts came late or not at all: the figure begins afresh
+        m_speedSamples.clear();
         if (m_pingRunning) {
             m_pingRunning = false;
             startLivePing();
@@ -355,36 +356,39 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
     });
 #endif
 
+    // the apps' data by the tunnel's own count (AmneziaWG: what went through the VPN and what its
+    // sorter opened directly) comes right before the VPN's counts of the same reading: the speed shown
+    // goes by it, and only that - the traffic proofs and the watchdog below go by the VPN's bytes
+    connect(m_vpnConnection.get(), &VpnConnection::dataBytesChanged, this, [this](quint64 receivedBytes, quint64 sentBytes) {
+        m_dataRxPending += receivedBytes;
+        m_dataTxPending += sentBytes;
+        m_dataPending = true;
+    });
+    // when the counts that follow were read, where the service tells it; they come in order
+    connect(m_vpnConnection.get(), &VpnConnection::sampleTimed, this, [this](qint64 sampleNs) {
+        m_pendingSampleNs = sampleNs;
+    });
+
     // traffic proof: bytes must move. Used by auto selection for probe-unconfirmed
     // candidates and by the address pool for every pooled connect (multi-IP, and
     // single-address xray on desktop, whose bytes come from XrayProtocol's probe)
     connect(m_vpnConnection.get(), &VpnConnection::bytesChanged, this, [this](quint64 receivedBytes, quint64 sentBytes) {
-        // live speed meter for the server card: bytesChanged carries per-interval
-        // deltas on all platforms, so speed = delta / elapsed
+        // The speed shown (server card, subscription page): the apps' data, both ways it went, by the
+        // tunnel's count where it keeps one - the VPN's bytes left out what its sorter opened directly
+        // (a game from a Russian CDN showed 12 of 60 MB/s), and count the tunnel's own additions (some
+        // 4 % on a download, a download's acknowledgements twice over on the way up); the VPN's bytes
+        // where the tunnel keeps none (Xray) - each count timed where it was read (addSpeedSample)
+        const quint64 shownDown = m_dataPending ? m_dataRxPending : receivedBytes;
+        const quint64 shownUp = m_dataPending ? m_dataTxPending : sentBytes;
+        m_dataPending = false;
+        m_dataRxPending = 0;
+        m_dataTxPending = 0;
+        const qint64 sampleNs = m_pendingSampleNs;
+        m_pendingSampleNs = 0;
         if (m_isConnected) {
             m_stallRxCurrent += receivedBytes;
-            const qint64 elapsedMs = m_speedTimer.isValid() ? m_speedTimer.restart() : 0;
-            if (!m_speedTimer.isValid()) {
-                m_speedTimer.start();
-            }
-            // counters come about once a second: two within a moment are a backlog let through at
-            // once (Android holds the app's events while it is away, the shade pulled down too) -
-            // a second's bytes over a few milliseconds put thousands of MB/s on the card
-            constexpr qint64 kMinIntervalMs = 300;
-            if (elapsedMs >= kMinIntervalMs && elapsedMs <= 5000) {
-                const quint64 downBps = receivedBytes * 1000 / static_cast<quint64>(elapsedMs);
-                const quint64 upBps = sentBytes * 1000 / static_cast<quint64>(elapsedMs);
-                constexpr quint64 kMaxBps = 10ull * 1024 * 1024 * 1024;
-                if (downBps <= kMaxBps && upBps <= kMaxBps) {
-                    const QString down = formatSpeed(static_cast<qint64>(downBps));
-                    const QString up = formatSpeed(static_cast<qint64>(upBps));
-                    if (down != m_downloadSpeed || up != m_uploadSpeed) {
-                        m_downloadSpeed = down;
-                        m_uploadSpeed = up;
-                        emit speedChanged();
-                    }
-                }
-            }
+            m_rxSinceConnected += receivedBytes;
+            addSpeedSample(shownDown, shownUp, sampleNs);
         }
 
         if (m_autoPhase == AutoPhase::Connecting && m_autoAwaitingTraffic) {
@@ -409,19 +413,99 @@ ConnectionController::ConnectionController(const QSharedPointer<ServersModel> &s
     m_state = Vpn::ConnectionState::Disconnected;
 }
 
-QString ConnectionController::formatSpeed(qint64 bytesPerSec)
+// Speed in bytes a second (the owner, 2026-10-22, after Mbit/s for a day: «сделай в байтах»), decimal kilo,
+// mega, giga - 1 MB is 1,000,000 bytes, a speed test's Mbit/s divided by 8 - each figure with its own unit
+int ConnectionController::speedUnit(quint64 bytesPerSec)
 {
-    // at most "999 KB/s" or "99.9 MB/s": a decimal only below 100, the next
-    // unit from 1000, so both directions fit the server card side by side
-    if (bytesPerSec < 1000) {
+    return bytesPerSec >= 1'000'000'000ull ? 3 : bytesPerSec >= 1'000'000ull ? 2 : bytesPerSec >= 1'000ull ? 1 : 0;
+}
+
+// in the app's language (its decimal comma), a decimal only below 10: «↓ 81 МБ/с  ↑ 1,2 МБ/с» fits the card's
+// line next to the ping in Windows' narrow window, a decimal on 81,3 did not
+QString ConnectionController::formatSpeed(quint64 bytesPerSec) const
+{
+    const int unit = speedUnit(bytesPerSec);
+    if (unit == 0) {
         return tr("%1 B/s").arg(bytesPerSec);
     }
-    const double kilobytes = bytesPerSec / 1024.0;
-    if (kilobytes < 1000) {
-        return tr("%1 KB/s").arg(kilobytes, 0, 'f', kilobytes < 100 ? 1 : 0);
+    const double value = bytesPerSec / (unit == 3 ? 1e9 : unit == 2 ? 1e6 : 1e3);
+    const QString number = m_settings->getAppLanguage().toString(value, 'f', value < 10 ? 1 : 0);
+    return (unit == 3 ? tr("%1 GB/s") : unit == 2 ? tr("%1 MB/s") : tr("%1 KB/s")).arg(number);
+}
+
+void ConnectionController::showSpeed(quint64 downBytesPerSec, quint64 upBytesPerSec, qint64 spanNs, qint64 endNs)
+{
+    // a figure no network gives (100 Gbit/s) is a fault of the counts, not a speed
+    constexpr quint64 kMaxBytesPerSec = 12'500'000'000ull;
+    if (downBytesPerSec > kMaxBytesPerSec || upBytesPerSec > kMaxBytesPerSec) {
+        return;
     }
-    const double megabytes = kilobytes / 1024.0;
-    return tr("%1 MB/s").arg(megabytes, 0, 'f', megabytes < 100 ? 1 : 0);
+    // each figure with its own unit (the owner, 2026-10-22: one unit at the end left the first unclear)
+    const QString downText = formatSpeed(downBytesPerSec);
+    const QString upText = formatSpeed(upBytesPerSec);
+    const QString line = QStringLiteral("↓ %1  ↑ %2").arg(downText, upText);
+    if (downText != m_downloadSpeed || upText != m_uploadSpeed || line != m_speedLine) {
+        m_downloadSpeed = downText;
+        m_uploadSpeed = upText;
+        m_speedLine = line;
+        emit speedChanged();
+    }
+    // now and then in the log, exact and with its window: the figure can be checked against the
+    // system's own counts over the same seconds
+    if (!m_speedLogTimer.isValid() || m_speedLogTimer.elapsed() >= 30000) {
+        m_speedLogTimer.start();
+        qDebug().noquote() << "[SPEED]" << line << "| down" << downBytesPerSec * 8 << "up" << upBytesPerSec * 8 << "bit/s over"
+                           << QString::number(spanNs / 1e9, 'f', 3) << "s to" << QString::number(endNs / 1e9, 'f', 3) << "s"
+                           << (m_speedSamplesFromSource ? "(timed by the VPN service)" : "(timed on arrival)");
+    }
+}
+
+// A count of what the apps got and sent since the one before, timed where it was read (sourceNs):
+// by Android's VPN service, the desktop service, desktop Xray's read of its adapter - the app's events
+// come late, on Android two at once while it is busy, and a figure by their arrival jumped between
+// half and double; by its arrival where nothing tells the moment. The figure is over about two
+// seconds of counts, none of them dropped.
+void ConnectionController::addSpeedSample(quint64 receivedBytes, quint64 sentBytes, qint64 sourceNs)
+{
+    if (!m_speedClock.isValid()) {
+        m_speedClock.start();
+    }
+    const bool fromSource = sourceNs > 0;
+    const qint64 now = fromSource ? sourceNs : m_speedClock.nsecsElapsed();
+    if (!m_speedSamples.isEmpty() && fromSource == m_speedSamplesFromSource && now == m_speedSamples.last().ns) {
+        // read at the same moment as the one before (Xray's counts on Android are the system's, renewed
+        // about once a second, and come again unchanged in between): nothing new
+        m_speedSamples.last().received += receivedBytes;
+        m_speedSamples.last().sent += sentBytes;
+        return;
+    }
+    if (!m_speedSamples.isEmpty()
+        && (fromSource != m_speedSamplesFromSource || now < m_speedSamples.last().ns
+            || now - m_speedSamples.last().ns > 5'000'000'000)) {
+        // another clock, one that went back (a service anew), or a gap (the app was away): afresh
+        m_speedSamples.clear();
+    }
+    m_speedSamplesFromSource = fromSource;
+    if (m_speedSamples.isEmpty()) {
+        // the first count's own interval is not known: where the figure starts from
+        m_speedSamples.append({ now, 0, 0 });
+        return;
+    }
+    const SpeedSample last = m_speedSamples.last();
+    m_speedSamples.append({ now, last.received + receivedBytes, last.sent + sentBytes });
+    // about two seconds: a steady figure that still shows a change within a second or two
+    constexpr qint64 kWindowNs = 2'100'000'000;
+    while (m_speedSamples.size() > 2 && now - m_speedSamples.first().ns > kWindowNs) {
+        m_speedSamples.removeFirst();
+    }
+    const SpeedSample first = m_speedSamples.first();
+    const SpeedSample newest = m_speedSamples.last();
+    const qint64 span = now - first.ns;
+    if (span < 900'000'000) {
+        return;
+    }
+    showSpeed((newest.received - first.received) * 1'000'000'000ull / static_cast<quint64>(span),
+              (newest.sent - first.sent) * 1'000'000'000ull / static_cast<quint64>(span), span, now);
 }
 
 void ConnectionController::startLivePing()
@@ -517,6 +601,7 @@ void ConnectionController::startStallWatch()
     m_stallWatching = true;
     m_stallArmed = false;
     m_stallFailures = 0;
+    m_stallTcpSeen = false;
     m_stallTimer->start(kStallRetryMs); // the first probe arms the watchdog
 #endif
 }
@@ -595,15 +680,20 @@ void ConnectionController::finishStallProbe(QSslSocket *socket, bool ok)
         }
         m_stallArmed = true;
         m_stallFailures = 0;
+        m_stallTcpSeen = false;
         m_stallTimer->start(kStallProbeIntervalMs);
         return;
     }
 
     ++m_stallFailures;
+    if (tcpConnected) {
+        m_stallTcpSeen = true;
+    }
     const quint64 received = m_stallRxPrevious + m_stallRxCurrent;
     qWarning().nospace() << "[WATCHDOG] TLS handshake through the tunnel failed "
                          << (tcpConnected ? "after the TCP connect" : "without a TCP connection") << " ("
-                         << m_stallFailures << " in a row), the tunnel received " << received << " bytes meanwhile";
+                         << m_stallFailures << " in a row), the tunnel received " << received << " bytes meanwhile, "
+                         << m_rxSinceConnected << " since it came up";
 
     if (m_stallFailures < 2) {
         m_stallTimer->start(kStallRetryMs); // confirm soon, with another host
@@ -611,17 +701,22 @@ void ConnectionController::finishStallProbe(QSslSocket *socket, bool ok)
     }
     m_stallTimer->start(kStallProbeIntervalMs);
     if (!m_stallArmed) {
-        // never passed on this connection: the probe hosts may be unreachable
-        // from this server, which says nothing about the tunnel
-        return;
-    }
-    if (received == 0) {
-        qInfo() << "[WATCHDOG] nothing arrives at all: the network is down, the tunnel resumes by itself";
-        return;
-    }
-    if (received > kStallBusyRxBytes) {
-        qInfo() << "[WATCHDOG] the tunnel carries traffic: leaving it";
-        return;
+        // never passed on this connection: mostly the probe hosts are unreachable from this
+        // server, which says nothing about the tunnel - unless it is dead from the start
+        // (nothing but its handshake has come back, no probe even got a TCP connection)
+        if (m_stallTcpSeen || m_rxSinceConnected >= kStallDeadStartRxBytes) {
+            return;
+        }
+        qWarning() << "[WATCHDOG] nothing has got through the tunnel since it came up";
+    } else {
+        if (received == 0) {
+            qInfo() << "[WATCHDOG] nothing arrives at all: the network is down, the tunnel resumes by itself";
+            return;
+        }
+        if (received > kStallBusyRxBytes) {
+            qInfo() << "[WATCHDOG] the tunnel carries traffic: leaving it";
+            return;
+        }
     }
     if (m_stallLastReconnect.isValid() && m_stallLastReconnect.elapsed() < kStallReconnectGapMs) {
         qInfo() << "[WATCHDOG] reconnected less than" << kStallReconnectGapMs / 60000 << "min ago: not again yet";
@@ -1607,12 +1702,16 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
 
     m_state = state;
 
+    const bool wasConnected = m_isConnected;
     m_isConnected = false;
     m_connectionStateText = tr("Connecting...");
     switch (state) {
     case Vpn::ConnectionState::Connected: {
         m_isConnectionInProgress = false;
         m_isConnected = true;
+        if (!wasConnected) {
+            m_rxSinceConnected = 0; // a tunnel just up (a repeat of the state, e.g. on a language change, is not)
+        }
         m_connectionStateText = tr("Connected");
         m_manualConnectTimer->stop(); // the traffic watchdogs take it from here
         checkDevice();
@@ -1696,6 +1795,14 @@ void ConnectionController::onConnectionStateChanged(Vpn::ConnectionState state)
     } else {
         stopLivePing();
         stopStallWatch();
+        m_speedSamples.clear();
+        // a figure of the connection that ended is not shown on the next one
+        if (!m_speedLine.isEmpty()) {
+            m_downloadSpeed.clear();
+            m_uploadSpeed.clear();
+            m_speedLine.clear();
+            emit speedChanged();
+        }
     }
     emit connectionStateChanged();
 }

@@ -267,6 +267,10 @@ for the best server...</source>
         <source>%1 MB/s</source>
         <translation>%1 МБ/с</translation>
     </message>
+    <message>
+        <source>%1 GB/s</source>
+        <translation>%1 ГБ/с</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionTypeSelectionDrawer</name>
@@ -312,6 +316,22 @@ for the best server...</source>
         <location filename="../core/controllers/coreController.cpp" line="167"/>
         <source>Imported %1 configurations</source>
         <translation>Імпортовано конфігурацій: %1</translation>
+    </message>
+    <message>
+        <source>This subscription is already in the app</source>
+        <translation>Ця підписка вже в застосунку</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced</source>
+        <translation>Підписку замінено</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced. This device stays in the previous one for now: a device was unlinked from it today already. It can be unlinked tomorrow in Active devices on another device with that subscription.</source>
+        <translation>Підписку замінено. Цей пристрій поки лишився в попередній підписці: сьогодні від неї вже відв’язували пристрій. Відв’язати його можна завтра в «Активних пристроях» на іншому пристрої з тією підпискою.</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced. This device could not be unlinked from the previous one: it can be unlinked in Active devices on another device with that subscription.</source>
+        <translation>Підписку замінено. Відв’язати цей пристрій від попередньої підписки не вдалося: його можна відв’язати в «Активних пристроях» на іншому пристрої з тією підпискою.</translation>
     </message>
 </context>
 <context>
@@ -3438,6 +3458,11 @@ Already installed containers were found on the server. All installed containers 
         <translation>Відкриваються без VPN: швидше, а банки й держпослуги працюють як зазвичай</translation>
     </message>
     <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="163"/>
+        <source>Not needed here: with «via VPN» everything that is not in the lists opens without the VPN anyway</source>
+        <translation>Тут не потрібно: у режимі «через VPN» усе, чого немає у списках, і так відкривається без VPN</translation>
+    </message>
+    <message>
         <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="120"/>
         <source>Split tunneling</source>
         <translation>Роздільне тунелювання</translation>
@@ -3826,6 +3851,14 @@ Can&apos;t be disabled for current server</source>
         <source>Enter your subscription ID</source>
         <translation>Введіть ID підписки</translation>
     </message>
+    <message>
+        <source>The app already has a subscription, and it keeps one: this one can be added in place of it.</source>
+        <translation>У застосунку вже є підписка, а вона може бути одна: цю можна додати замість неї.</translation>
+    </message>
+    <message>
+        <source>Replace the subscription</source>
+        <translation>Замінити підписку</translation>
+    </message>
 </context>
 <context>
     <name>PageSetupWizardConfigSource</name>
@@ -4063,12 +4096,24 @@ Can&apos;t be disabled for current server</source>
         <translation>Вставте ID або посилання підписки LodestarVPN, ключ підключення або конфіг AmneziaWG/WireGuard</translation>
     </message>
     <message>
+        <source>Paste</source>
+        <translation>Вставити</translation>
+    </message>
+    <message>
+        <source>From file</source>
+        <translation>З файлу</translation>
+    </message>
+    <message>
         <source>Add this connection?</source>
         <translation>Додати підключення?</translation>
     </message>
     <message>
         <source>Add</source>
         <translation>Додати</translation>
+    </message>
+    <message>
+        <source>The subscription stays</source>
+        <translation>Підписка залишиться</translation>
     </message>
 </context>
 <context>
@@ -6445,6 +6490,22 @@ This means that AmneziaWG keeps the fast performance of the original while addin
     <message>
         <source>LodestarVPN is updated to %1</source>
         <translation>LodestarVPN оновлено до %1</translation>
+    </message>
+    <message>
+        <source>Replace the subscription?</source>
+        <translation>Замінити підписку?</translation>
+    </message>
+    <message>
+        <source>LodestarVPN keeps one subscription. The servers of the current one leave the app, and this device is unlinked from it: its place there is freed, and it can come back to it only after a day.</source>
+        <translation>У застосунку може бути одна підписка. Сервери поточної приберуться із застосунку, а цей пристрій відв’яжеться від неї: місце в ній звільниться, а повернути її сюди можна буде лише за добу.</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>Замінити</translation>
+    </message>
+    <message>
+        <source>LodestarVPN keeps one subscription. The servers of the current one leave the app, but this device cannot be unlinked from it today: a device was unlinked from it today already. The device stays in it and takes a place there until it is unlinked in Active devices on another device with that subscription, after %1.</source>
+        <translation>У застосунку може бути одна підписка. Сервери поточної приберуться із застосунку, але відв’язати від неї цей пристрій сьогодні не можна: сьогодні від неї вже відв’язували пристрій. Він залишиться в ній і займатиме місце, доки його не відв’яжуть в «Активних пристроях» на іншому пристрої з тією підпискою — після %1.</translation>
     </message>
 </context>
 <context>

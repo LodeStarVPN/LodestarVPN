@@ -99,6 +99,9 @@ public slots:
     // Russian sites directly (DirectNetworks): applied at the next connection
     bool isRuDirectEnabled();
     void toggleRuDirect(bool enable);
+    // whether the switch changes anything now: not where only the listed sites and services go through the VPN (then everything
+    // else is direct anyway, VpnConnection::appendSplitTunnelingConfig)
+    Q_INVOKABLE bool ruDirectMatters() const;
 
     bool isStrictKillSwitchEnabled();
     void toggleStrictKillSwitch(bool enable);

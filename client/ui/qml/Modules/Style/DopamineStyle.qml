@@ -23,9 +23,10 @@ QtObject {
         readonly property color deepBrown: '#2757FF'
         readonly property color vibrantRed: '#F08A93'
         readonly property color darkCharcoal: '#121834'
-        readonly property color sheerWhite: Qt.rgba(201/255, 209/255, 234/255, 0.12)
-        readonly property color translucentWhite: Qt.rgba(201/255, 209/255, 234/255, 0.08)
-        readonly property color barelyTranslucentWhite: Qt.rgba(201/255, 209/255, 234/255, 0.05)
+        // pointed at and pressed: the rows' blue glass, as the soft buttons (were a grey-white one)
+        readonly property color sheerWhite: Qt.rgba(120/255, 146/255, 255/255, 0.17)
+        readonly property color translucentWhite: Qt.rgba(120/255, 146/255, 255/255, 0.10)
+        readonly property color barelyTranslucentWhite: Qt.rgba(120/255, 146/255, 255/255, 0.06)
         readonly property color translucentMidnightBlack: Qt.rgba(2/255, 4/255, 14/255, 0.7)
         readonly property color softGoldenApricot: Qt.rgba(39/255, 87/255, 255/255, 0.3)
         readonly property color mistyGray: Qt.rgba(211/255, 218/255, 240/255, 0.8)
@@ -35,15 +36,23 @@ QtObject {
         readonly property color translucentSlateGray: Qt.rgba(120/255, 146/255, 255/255, 0.10)
         readonly property color translucentOnyxBlack: Qt.rgba(12/255, 18/255, 48/255, 0.13)
 
-        // the update sheet's buttons: starlight for the main action, soft glass for the rest
-        readonly property color starlight: '#E6ECFF'
-        readonly property color starlightHovered: '#F1F4FF'
-        readonly property color starlightPressed: '#D2DCFA'
-        readonly property color starlightText: '#0C1433'
-        readonly property color glassButton: '#14C9D1EA'
-        readonly property color glassButtonHovered: '#1FC9D1EA'
-        readonly property color glassButtonPressed: '#29C9D1EA'
+        // buttons: soft glass for the second actions - the rows' blue glass, a grey one stood apart
+        // from everything else on the night (the owner, 2026-10-22: «дизайн приложения должен
+        // соответствовать приложению полностью») - and the main one below (ringButton*)
+        readonly property color glassButton: '#1F7892FF'
+        readonly property color glassButtonHovered: '#2B7892FF'
+        readonly property color glassButtonPressed: '#387892FF'
         readonly property color glassButtonText: '#C9D1EA'
+        // the main action, on pages and sheets alike (BasicButtonType's own): glass lit by the
+        // connected ring's blue, its edge and glow the ring's light (the owner, 2026-10-22, of the
+        // white starlight one: «не в нашей стилистике»; a solid blue was louder than anything else on
+        // the night page)
+        readonly property color ringButton: '#592757FF'
+        readonly property color ringButtonHovered: '#702757FF'
+        readonly property color ringButtonPressed: '#852757FF'
+        readonly property color ringButtonBorder: '#A66E91FF'
+        readonly property color ringButtonText: '#E6ECFF'
+        readonly property color ringButtonGlow: '#4D2757FF'
         // a link: the connected text's blue (the ring's own is too deep on the night)
         readonly property color link: '#A3BEFF'
     }

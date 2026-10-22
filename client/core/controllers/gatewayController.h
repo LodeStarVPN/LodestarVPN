@@ -41,6 +41,11 @@ public:
     static void setEndpointsListener(std::function<void(const QStringList &known, const QString &current)> listener);
     // the address the gateway answered at last (fallback while none has)
     static QString currentEndpoint(const QString &fallback);
+    // every address the app may ask the gateway at, as IPv4 networks ("a.b.c.d/32"): builtIn (the
+    // ones the app was built with, comma-separated lists allowed) and the relays the gateway named.
+    // The tunnel opens them directly (VpnConnection), so the app reaches its gateway whatever its
+    // tunnel carries
+    static QStringList directHosts(const QStringList &builtIn);
 
 private:
     struct EncryptedRequestData

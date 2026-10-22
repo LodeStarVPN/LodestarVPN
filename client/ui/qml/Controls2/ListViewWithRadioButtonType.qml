@@ -79,7 +79,7 @@ ListViewType {
             indicator: Rectangle {
                 width: parent.width - 1
                 height: parent.height
-                color: radioButton.hovered ? DopamineStyle.color.slateGray : DopamineStyle.color.onyxBlack
+                color: radioButton.hovered ? DopamineStyle.color.translucentSlateGray : DopamineStyle.color.onyxBlack
                 border.color: radioButton.focus ? DopamineStyle.color.paleGray : DopamineStyle.color.transparent
                 border.width: radioButton.focus ? 1 : 0
 

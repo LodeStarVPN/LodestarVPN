@@ -1,6 +1,7 @@
 package org.amnezia.vpn.protocol.wireguard
 
 import android.net.VpnService.Builder
+import android.os.SystemClock
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
@@ -39,18 +40,24 @@ open class Wireguard : Protocol() {
     override val statistics: Statistics
         get() {
             if (tunnelHandle == -1) return Statistics.EMPTY_STATISTICS
+            // the counts are the tunnel's own, live: read in the middle of the call
+            val before = SystemClock.elapsedRealtimeNanos()
             val config = GoBackend.awgGetConfig(tunnelHandle) ?: return Statistics.EMPTY_STATISTICS
+            val after = SystemClock.elapsedRealtimeNanos()
             return Statistics.build {
-                var optsCount = 0
+                setSampleNanos(before + (after - before) / 2)
+                // the peer's counts, and before them the device's of the apps' data both ways it went,
+                // through the VPN and past it (data_rx_bytes / data_tx_bytes, tunnel/awg): the speed
                 config.splitToSequence("\n").forEach { line ->
                     with(line) {
                         when {
-                            startsWith("rx_bytes=") -> setRxBytes(substring(9).toLong()).also { ++optsCount }
-                            startsWith("tx_bytes=") -> setTxBytes(substring(9).toLong()).also { ++optsCount }
+                            startsWith("rx_bytes=") -> setRxBytes(substring(9).toLong())
+                            startsWith("tx_bytes=") -> setTxBytes(substring(9).toLong())
+                            startsWith("data_rx_bytes=") -> setDataRxBytes(substring(14).toLong())
+                            startsWith("data_tx_bytes=") -> setDataTxBytes(substring(14).toLong())
                             else -> {}
                         }
                     }
-                    if (optsCount == 2) return@forEach
                 }
             }
         }

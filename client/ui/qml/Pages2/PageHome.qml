@@ -259,8 +259,8 @@ PageType {
                                 elide: Text.ElideRight
                                 maximumLineCount: 1
 
-                                text: "↓ " + ConnectionController.downloadSpeed
-                                      + "  ↑ " + ConnectionController.uploadSpeed
+                                // each figure with its unit: "↓ 81 МБ/с  ↑ 1,9 МБ/с"
+                                text: ConnectionController.speedLine
                             }
 
                             Rectangle {

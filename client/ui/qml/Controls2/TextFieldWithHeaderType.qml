@@ -25,6 +25,7 @@ Item {
     property var clickedFunc
 
     property alias textField: textField
+    property alias textArea: textArea
     property string textFieldTextColor: DopamineStyle.color.paleGray
     property string textFieldTextDisabledColor: DopamineStyle.color.mutedGray
 
@@ -32,13 +33,21 @@ Item {
     property bool multiline: false
     readonly property string inputText: multiline ? textArea.text : textField.text
 
-    // glass, as the home's server card; the ring's blue at its edge while typed in
-    property string borderColor: "#24A9C1FF"
-    property string borderFocusedColor: "#BF6E91FF"
+    // what the field can do with its text besides typing (paste it, take it from a file): its
+    // FieldActionType items in a strip along the bottom of its frame, under the text
+    property alias actions: actionsRow.data
 
-    property string backgroundColor: DopamineStyle.color.onyxBlack
+    // a well in the night with the ring's blue at its edge, not the glass of the rows: in the
+    // rows' glass with their faint edge it read as a card of text, not a place to put text in
+    // (the owner, 2026-10-22: «сливается и походит больше на текст»); brighter blue at the edge
+    // and a glow around it while typed in
+    property string borderColor: "#596E91FF"
+    property string borderFocusedColor: "#BF6E91FF"
+    property string glowFocusedColor: "#332757FF"
+
+    property string backgroundColor: "#66020410"
     property string backgroundDisabledColor: DopamineStyle.color.transparent
-    property string bgBorderHoveredColor: "#40A9C1FF"
+    property string bgBorderHoveredColor: "#806E91FF"
 
     implicitWidth: content.implicitWidth
     implicitHeight: content.implicitHeight
@@ -76,6 +85,25 @@ Item {
                 PropertyAnimation { duration: 200 }
             }
 
+            // the glow around the edge while typed in
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -3
+                z: -1
+
+                radius: parent.radius + 3
+                color: DopamineStyle.color.transparent
+                border.width: 3
+                border.color: root.glowFocusedColor
+
+                // when the edge is the focused one (getBackgroundBorderColor)
+                opacity: (root.multiline ? textArea.focus : textField.focus) ? 1 : 0
+
+                Behavior on opacity {
+                    PropertyAnimation { duration: 200 }
+                }
+            }
+
             RowLayout {
                 id: input
                 anchors.fill: backgroud
@@ -83,6 +111,8 @@ Item {
                     Layout.margins: 16
                     // keep the text clear of the button inside the field
                     Layout.rightMargin: insertButton.visible ? insertButton.width + 20 : 16
+                    // and of the actions' strip under it
+                    Layout.bottomMargin: actionsRow.implicitHeight > 0 ? actionsRow.implicitHeight + 14 : 16
                     LabelTextType {
                         text: root.headerText
                         color: root.enabled ? root.headerTextColor : root.headerTextDisabledColor
@@ -181,7 +211,9 @@ Item {
                             selectionColor: DopamineStyle.color.richBrown
                             selectedTextColor: DopamineStyle.color.paleGray
 
-                            font.pixelSize: 16
+                            // what goes in here is long (a link, a key, a config): smaller than a
+                            // line's text, so more of it shows
+                            font.pixelSize: 14
                             font.weight: 400
                             font.family: "IBM Plex Mono"
 
@@ -195,7 +227,7 @@ Item {
                                 color: root.backgroundDisabledColor
                             }
 
-                            // right click: paste, copy, cut (the field has no paste button)
+                            // right click: paste, copy, cut (a page may add buttons of its own: actions)
                             ContextMenu.menu: ContextMenuType {
                                 textObj: textArea
                             }
@@ -210,7 +242,9 @@ Item {
 
                                 text: root.hintText
                                 wrapMode: Text.WordWrap
-                                color: DopamineStyle.color.mutedGray
+                                // dimmer than any text on the page, so it reads as a hint and not
+                                // as a paragraph
+                                color: DopamineStyle.color.charcoalGray
                                 font: textArea.font
                             }
 
@@ -284,17 +318,54 @@ Item {
         y: root.multiline ? inset : (backgroud.height - height) / 2
         cornerRadius: 16 - inset
 
-        // secondary look: an action on the field, not the page's main button
-        defaultColor: DopamineStyle.color.slateGray
-        hoveredColor: DopamineStyle.color.charcoalGray
-        pressedColor: DopamineStyle.color.mutedGray
-        textColor: DopamineStyle.color.paleGray
+        // an action on the field, as those of its strip (FieldActionType): the connected text's
+        // blue, the rows' glass under it only while pointed at or pressed (a grey square was out
+        // of the app's look, the owner, 2026-10-22)
+        defaultColor: DopamineStyle.color.transparent
+        hoveredColor: DopamineStyle.color.translucentSlateGray
+        pressedColor: "#2E7892FF"
+        textColor: DopamineStyle.color.link
 
         clickedFunc: function() {
             if (root.clickedFunc && typeof root.clickedFunc === "function") {
                 root.clickedFunc()
             }
         }
+    }
+
+    // a hairline between a one-line field's text and its button, as between the strip's actions
+    Rectangle {
+        visible: insertButton.visible && !root.multiline
+
+        x: insertButton.x - 4
+        width: 1
+        height: backgroud.height - 20
+        y: 10
+
+        color: "#2E6E91FF"
+    }
+
+    // the actions' strip along the bottom of the frame, under a hairline, its actions
+    // (FieldActionType) side by side across it; over the field's mouse area, so pressing one does
+    // not put the cursor in the text (on a phone that would bring up the keyboard)
+    Rectangle {
+        visible: actionsRow.implicitHeight > 0
+
+        x: 1
+        y: actionsRow.y - 1
+        width: backgroud.width - 2
+        height: 1
+
+        color: "#2E6E91FF"
+    }
+
+    RowLayout {
+        id: actionsRow
+
+        x: 1
+        y: backgroud.height - height - 1
+        width: backgroud.width - 2
+        spacing: 0
     }
 
     function insertFromClipboard() {

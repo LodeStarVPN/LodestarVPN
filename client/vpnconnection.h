@@ -55,7 +55,11 @@ public slots:
     void disconnectSlots();
 
 signals:
+    // when the counts of the bytesChanged right after were read (VpnProtocol::sampleTimed)
+    void sampleTimed(qint64 sampleNs);
     void bytesChanged(quint64 receivedBytes, quint64 sentBytes);
+    // the apps' data by the tunnel's count (VpnProtocol::dataBytesChanged): for the speed shown only
+    void dataBytesChanged(quint64 receivedBytes, quint64 sentBytes);
     void connectionStateChanged(Vpn::ConnectionState state);
     void vpnProtocolError(amnezia::ErrorCode error);
 

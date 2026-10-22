@@ -130,6 +130,17 @@ Window  {
                                     function() {})
         }
 
+        // the key of another subscription than the one the app holds: the app keeps one
+        // (the owner, 2026-10-22), so it asks before the gateway is (that takes a place on it).
+        // First whether this device can be unlinked from the held one today: a subscription
+        // unlinks one device a day, and the question must not promise what will not happen
+        function onAskToReplaceSubscription(key) {
+            root.replaceKey = key
+            PageController.showBusyIndicator(true)
+            replaceCheckTimer.restart()
+            ApiConfigsController.checkHeldSubscriptionUnlink()
+        }
+
         function onShowNotificationMessage(message) {
             popupNotificationMessage.text = message
             popupNotificationMessage.closeButtonVisible = false
@@ -157,6 +168,43 @@ Window  {
         function onChangeSettingsFinished(finishedMessage) {
             PageController.showNotificationMessage(finishedMessage)
         }
+    }
+
+    // the subscription key waiting for the question about replacing the held one
+    property string replaceKey: ""
+
+    Connections {
+        target: ApiConfigsController
+
+        function onHeldSubscriptionUnlinkChecked(unlinkAt) {
+            root.askToReplace(unlinkAt)
+        }
+    }
+
+    // the gateway not answering soon: the question as when the unlink can go
+    Timer {
+        id: replaceCheckTimer
+
+        interval: 4000
+        repeat: false
+        onTriggered: root.askToReplace("")
+    }
+
+    function askToReplace(unlinkAt) {
+        if (root.replaceKey === "") {
+            return
+        }
+        const key = root.replaceKey
+        root.replaceKey = ""
+        replaceCheckTimer.stop()
+        PageController.showBusyIndicator(false)
+        root.showQuestionDrawer(qsTr("Replace the subscription?"),
+                                unlinkAt === ""
+                                ? qsTr("LodestarVPN keeps one subscription. The servers of the current one leave the app, and this device is unlinked from it: its place there is freed, and it can come back to it only after a day.")
+                                : qsTr("LodestarVPN keeps one subscription. The servers of the current one leave the app, but this device cannot be unlinked from it today: a device was unlinked from it today already. The device stays in it and takes a place there until it is unlinked in Active devices on another device with that subscription, after %1.").arg(unlinkAt),
+                                qsTr("Replace"), qsTr("Cancel"),
+                                function() { PageController.subscriptionReplaceConfirmed(key) },
+                                function() {})
     }
 
     // the night behind every page but the home one, which draws its own (HomeScene): the home's

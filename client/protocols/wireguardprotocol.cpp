@@ -47,7 +47,16 @@ WireguardProtocol::WireguardProtocol(const QJsonObject &configuration, QObject *
                 m_lastRxBytes = rxBytes;
                 m_lastTxBytes = txBytes;
 
+                emitSampleTimed();
                 emit bytesChanged(rxDelta, txDelta);
+            });
+
+    // the apps' data and the moment of the reading come right before the peer's counts in each
+    // status: the speed shown goes by them
+    connect(m_impl.get(), &ControllerImpl::dataBytesUpdated, this,
+            [this](uint64_t txBytes, uint64_t rxBytes, qint64 sampleNs) {
+                setSampleNs(sampleNs);
+                setDataBytesChanged(rxBytes, txBytes);
             });
 
     connect(m_impl.get(), &ControllerImpl::disconnected, this,

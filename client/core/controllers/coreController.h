@@ -80,6 +80,9 @@ private:
     void initPrepareConfigHandler();
     void initStrictKillSwitchHandler();
 
+    // the app keeps one subscription: the one it holds is replaced by the key's (the user said yes)
+    void replaceSubscription(const QString &key);
+
     QQmlApplicationEngine *m_engine {}; // TODO use parent child system here?
     std::shared_ptr<Settings> m_settings;
     QSharedPointer<VpnConnection> m_vpnConnection;

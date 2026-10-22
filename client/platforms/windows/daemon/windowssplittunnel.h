@@ -72,6 +72,8 @@ class WindowsSplitTunnel final {
  private:
   // Installes the Kernel Driver as Driver Service
   static SC_HANDLE installDriver();
+  // Fixes a registration that names another install's driver file
+  static void updateDriverRegistration();
   static bool uninstallDriver();
   static bool isInstalled();
   static bool initDriver(HANDLE driverIO);

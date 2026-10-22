@@ -6,6 +6,7 @@
 
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -255,6 +256,30 @@ QString GatewayController::currentEndpoint(const QString &fallback)
 {
     QMutexLocker lock(&s_endpointsMutex);
     return s_currentEndpoint.isEmpty() ? fallback : s_currentEndpoint;
+}
+
+QStringList GatewayController::directHosts(const QStringList &builtIn)
+{
+    QStringList endpoints = builtIn;
+    {
+        QMutexLocker lock(&s_endpointsMutex);
+        endpoints += s_knownEndpoints;
+        endpoints.append(s_currentEndpoint);
+    }
+    QStringList hosts;
+    for (const QString &list : std::as_const(endpoints)) {
+        for (const QString &endpoint : list.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            const QHostAddress address(QUrl(endpoint.trimmed()).host());
+            if (address.protocol() != QAbstractSocket::IPv4Protocol || address.isLoopback()) {
+                continue;
+            }
+            const QString network = address.toString() + QStringLiteral("/32");
+            if (!hosts.contains(network)) {
+                hosts.append(network);
+            }
+        }
+    }
+    return hosts;
 }
 
 // the order a request tries the gateway's addresses in: the one that answered

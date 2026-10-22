@@ -383,7 +383,7 @@ DrawerType2 {
                 text: qsTr("If Google Play is locked with App lock, open Google Play and unlock it first — otherwise the lock screen hides this window and the update is cancelled.")
             }
 
-            // the main step: in starlight
+            // the main step: the app's main button, glass lit by the ring's blue
             BasicButtonType {
                 Layout.fillWidth: true
                 Layout.topMargin: 24
@@ -391,12 +391,6 @@ DrawerType2 {
                 Layout.rightMargin: 16
 
                 visible: root.buttonText !== ""
-
-                defaultColor: "#E6ECFF"
-                hoveredColor: "#F1F4FF"
-                pressedColor: "#D2DCFA"
-                disabledColor: "#8A93B2"
-                textColor: "#0C1433"
 
                 text: root.buttonText
 
@@ -411,11 +405,10 @@ DrawerType2 {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
-                defaultColor: "#14C9D1EA"
-                hoveredColor: "#1FC9D1EA"
-                pressedColor: "#29C9D1EA"
-                disabledColor: "#14C9D1EA"
-                textColor: "#C9D1EA"
+                defaultColor: DopamineStyle.color.glassButton
+                hoveredColor: DopamineStyle.color.glassButtonHovered
+                pressedColor: DopamineStyle.color.glassButtonPressed
+                textColor: DopamineStyle.color.glassButtonText
 
                 visible: root.updateState === UpdateEnum.Downloading
 

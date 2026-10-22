@@ -1,7 +1,9 @@
 package org.amnezia.vpn.protocol.xray
 
 import android.content.Context
+import android.net.TrafficStats
 import android.net.VpnService.Builder
+import android.os.SystemClock
 import java.io.File
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -28,6 +30,7 @@ import org.amnezia.vpn.util.Log
 import org.amnezia.vpn.util.net.InetNetwork
 import org.amnezia.vpn.util.net.ip
 import org.amnezia.vpn.util.net.parseInetAddress
+import kotlin.concurrent.thread
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -46,20 +49,17 @@ class Xray : Protocol() {
 
     // libXray exposes no byte counters, so read the VpnService tun interface
     // stats instead — Android allows only one active VPN, "tun0" is ours while
-    // connected (same interface name the notification TrafficStats helper uses)
+    // connected
+    private val counts = InterfaceCounts("tun0")
+
     override val statistics: Statistics
         get() {
             if (!isRunning) return Statistics.EMPTY_STATISTICS
-            val rx = android.net.TrafficStats.getRxBytes("tun0")
-            val tx = android.net.TrafficStats.getTxBytes("tun0")
-            if (rx == android.net.TrafficStats.UNSUPPORTED.toLong() ||
-                tx == android.net.TrafficStats.UNSUPPORTED.toLong()
-            ) {
-                return Statistics.EMPTY_STATISTICS
-            }
+            val reading = counts.latest() ?: return Statistics.EMPTY_STATISTICS
             return Statistics.build {
-                setRxBytes(rx)
-                setTxBytes(tx)
+                setRxBytes(reading.rx)
+                setTxBytes(reading.tx)
+                setSampleNanos(reading.nanos)
             }
         }
 
@@ -268,6 +268,7 @@ class Xray : Protocol() {
         }
 
         isRunning = false
+        counts.stop()
         state.value = DISCONNECTED
     }
 
@@ -289,6 +290,114 @@ class Xray : Protocol() {
 
     companion object {
         val instance: Xray by lazy { Xray() }
+    }
+}
+
+/**
+ * The system's counts of an interface, each with the moment it stood so. Android renews them about
+ * once a second, whenever they are asked, and gives the same in between: a speed from them read
+ * once a second jumped between half and double. Asked every 50 ms while they are wanted (read in the
+ * last 3 s), a reading that changed is the counts at that moment, to within that; one that stays the
+ * same is still so a renewal ago (the shortest time between changes seen, at least a second and a
+ * half): the speed falls to nothing when the traffic stops.
+ */
+private class InterfaceCounts(private val iface: String) {
+
+    class Reading(val rx: Long, val tx: Long, val nanos: Long)
+
+    // the newest reading, and since when it stands (0: not known yet); the watcher's own, under the lock
+    private var rx = -1L
+    private var tx = -1L
+    private var changedNanos = 0L
+    private var renewalNanos = 0L
+    private var watcher: Thread? = null
+    @Volatile
+    private var askedNanos = 0L
+
+    /** The counts, with the moment they are known to have stood so (0 when not known); null if none. */
+    fun latest(): Reading? {
+        val now = SystemClock.elapsedRealtimeNanos()
+        askedNanos = now
+        synchronized(this) {
+            if (watcher == null) {
+                // after a rest the moment of a change is not known: the watcher sees the next one
+                if (!read()) return null
+                changedNanos = 0L
+                watcher = thread(name = "xray-counts", isDaemon = true) { watch() }
+            }
+            if (changedNanos == 0L) return Reading(rx, tx, 0L)
+            val proof = maxOf(MIN_RENEWAL_PROOF_NANOS, renewalNanos + renewalNanos / 2)
+            return Reading(rx, tx, maxOf(changedNanos, now - proof))
+        }
+    }
+
+    fun stop() {
+        synchronized(this) {
+            watcher?.interrupt()
+            watcher = null
+            rx = -1L
+            tx = -1L
+            changedNanos = 0L
+            renewalNanos = 0L
+        }
+    }
+
+    private fun read(): Boolean {
+        val newRx = TrafficStats.getRxBytes(iface)
+        val newTx = TrafficStats.getTxBytes(iface)
+        if (newRx == TrafficStats.UNSUPPORTED.toLong() || newTx == TrafficStats.UNSUPPORTED.toLong()) return false
+        rx = newRx
+        tx = newTx
+        return true
+    }
+
+    private fun watch() {
+        val me = Thread.currentThread()
+        var lastChange = 0L
+        var gaps = 0
+        try {
+            while (true) {
+                Thread.sleep(POLL_MS)
+                synchronized(this) {
+                    if (watcher !== me) return
+                    if (SystemClock.elapsedRealtimeNanos() - askedNanos > WANTED_NANOS) {
+                        watcher = null
+                        return
+                    }
+                }
+                val (oldRx, oldTx) = synchronized(this) { rx to tx }
+                val before = SystemClock.elapsedRealtimeNanos()
+                val newRx = TrafficStats.getRxBytes(iface)
+                val newTx = TrafficStats.getTxBytes(iface)
+                val at = before + (SystemClock.elapsedRealtimeNanos() - before) / 2
+                if (newRx == TrafficStats.UNSUPPORTED.toLong() || newTx == TrafficStats.UNSUPPORTED.toLong()) continue
+                if (newRx == oldRx && newTx == oldTx) continue
+                synchronized(this) {
+                    if (watcher !== me) return
+                    rx = newRx
+                    tx = newTx
+                    changedNanos = at
+                    if (lastChange > 0L) {
+                        // the system's renewal: the shortest time between changes seen
+                        val gap = at - lastChange
+                        if (renewalNanos == 0L || gap < renewalNanos) renewalNanos = gap
+                        if (++gaps == RENEWAL_LOG_AFTER) {
+                            Log.i(TAG, "Interface counts renewed every ${renewalNanos / 1_000_000} ms or so")
+                        }
+                    }
+                }
+                lastChange = at
+            }
+        } catch (e: InterruptedException) {
+            // stopped
+        }
+    }
+
+    private companion object {
+        const val POLL_MS = 50L
+        const val WANTED_NANOS = 3_000_000_000L
+        const val MIN_RENEWAL_PROOF_NANOS = 1_500_000_000L
+        const val RENEWAL_LOG_AFTER = 20
     }
 }
 

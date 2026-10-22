@@ -257,6 +257,10 @@ for the best server...</translation>
         <source>%1 MB/s</source>
         <translation>%1 MB/s</translation>
     </message>
+    <message>
+        <source>%1 GB/s</source>
+        <translation>%1 GB/s</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionTypeSelectionDrawer</name>
@@ -302,6 +306,22 @@ for the best server...</translation>
         <location filename="../core/controllers/coreController.cpp" line="167"/>
         <source>Imported %1 configurations</source>
         <translation>Imported %1 configurations</translation>
+    </message>
+    <message>
+        <source>This subscription is already in the app</source>
+        <translation>This subscription is already in the app</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced</source>
+        <translation>The subscription is replaced</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced. This device stays in the previous one for now: a device was unlinked from it today already. It can be unlinked tomorrow in Active devices on another device with that subscription.</source>
+        <translation>The subscription is replaced. This device stays in the previous one for now: a device was unlinked from it today already. It can be unlinked tomorrow in Active devices on another device with that subscription.</translation>
+    </message>
+    <message>
+        <source>The subscription is replaced. This device could not be unlinked from the previous one: it can be unlinked in Active devices on another device with that subscription.</source>
+        <translation>The subscription is replaced. This device could not be unlinked from the previous one: it can be unlinked in Active devices on another device with that subscription.</translation>
     </message>
 </context>
 <context>
@@ -3359,6 +3379,11 @@ Already installed containers were found on the server. All installed containers 
         <translation>They open without the VPN: faster, and banks and public services work as usual</translation>
     </message>
     <message>
+        <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="163"/>
+        <source>Not needed here: with «via VPN» everything that is not in the lists opens without the VPN anyway</source>
+        <translation>Not needed here: with «via VPN» everything that is not in the lists opens without the VPN anyway</translation>
+    </message>
+    <message>
         <location filename="../ui/qml/Pages2/PageSettingsSplit.qml" line="120"/>
         <source>Split tunneling</source>
         <translation>Split tunneling</translation>
@@ -3743,6 +3768,14 @@ Can&apos;t be disabled for current server</translation>
         <source>Enter your subscription ID</source>
         <translation>Enter your subscription ID</translation>
     </message>
+    <message>
+        <source>The app already has a subscription, and it keeps one: this one can be added in place of it.</source>
+        <translation>The app already has a subscription, and it keeps one: this one can be added in place of it.</translation>
+    </message>
+    <message>
+        <source>Replace the subscription</source>
+        <translation>Replace the subscription</translation>
+    </message>
 </context>
 <context>
     <name>PageSetupWizardConfigSource</name>
@@ -3976,12 +4009,24 @@ Can&apos;t be disabled for current server</translation>
         <translation>Paste your LodestarVPN subscription ID or link, a connection key or an AmneziaWG/WireGuard config</translation>
     </message>
     <message>
+        <source>Paste</source>
+        <translation>Paste</translation>
+    </message>
+    <message>
+        <source>From file</source>
+        <translation>From file</translation>
+    </message>
+    <message>
         <source>Add this connection?</source>
         <translation>Add this connection?</translation>
     </message>
     <message>
         <source>Add</source>
         <translation>Add</translation>
+    </message>
+    <message>
+        <source>The subscription stays</source>
+        <translation>The subscription stays</translation>
     </message>
 </context>
 <context>
@@ -6297,6 +6342,22 @@ For more detailed information, you can
     <message>
         <source>LodestarVPN is updated to %1</source>
         <translation>LodestarVPN is updated to %1</translation>
+    </message>
+    <message>
+        <source>Replace the subscription?</source>
+        <translation>Replace the subscription?</translation>
+    </message>
+    <message>
+        <source>LodestarVPN keeps one subscription. The servers of the current one leave the app, and this device is unlinked from it: its place there is freed, and it can come back to it only after a day.</source>
+        <translation>LodestarVPN keeps one subscription. The servers of the current one leave the app, and this device is unlinked from it: its place there is freed, and it can come back to it only after a day.</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>Replace</translation>
+    </message>
+    <message>
+        <source>LodestarVPN keeps one subscription. The servers of the current one leave the app, but this device cannot be unlinked from it today: a device was unlinked from it today already. The device stays in it and takes a place there until it is unlinked in Active devices on another device with that subscription, after %1.</source>
+        <translation>LodestarVPN keeps one subscription. The servers of the current one leave the app, but this device cannot be unlinked from it today: a device was unlinked from it today already. The device stays in it and takes a place there until it is unlinked in Active devices on another device with that subscription, after %1.</translation>
     </message>
 </context>
 <context>

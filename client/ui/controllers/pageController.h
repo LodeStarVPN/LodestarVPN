@@ -136,6 +136,12 @@ signals:
     void askToAddSubscriptionLink(const QString &link);
     void subscriptionLinkConfirmed(const QString &link);
 
+    // the key of another subscription than the one the app holds: the app keeps
+    // one, so the user is asked whether to replace it, and a yes comes back as
+    // subscriptionReplaceConfirmed (CoreController::replaceSubscription)
+    void askToReplaceSubscription(const QString &key);
+    void subscriptionReplaceConfirmed(const QString &key);
+
 private:
     QSharedPointer<ServersModel> m_serversModel;
 

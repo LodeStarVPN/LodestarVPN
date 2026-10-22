@@ -28,6 +28,7 @@
         <file>images/controls/chevron-down.svg</file>
         <file>images/controls/chevron-right.svg</file>
         <file>images/controls/chevron-up.svg</file>
+        <file>images/controls/clipboard.svg</file>
         <file>images/controls/close.svg</file>
         <file>images/controls/copy.svg</file>
         <file>images/controls/delete.svg</file>
@@ -149,6 +150,7 @@
         <file>ui/qml/Controls2/LodestarMark.qml</file>
         <file>ui/qml/Controls2/DrawerType2.qml</file>
         <file>ui/qml/Controls2/DropDownType.qml</file>
+        <file>ui/qml/Controls2/FieldActionType.qml</file>
         <file>ui/qml/Controls2/FlickableType.qml</file>
         <file>ui/qml/Controls2/Header2Type.qml</file>
         <file>ui/qml/Controls2/BaseHeaderType.qml</file>

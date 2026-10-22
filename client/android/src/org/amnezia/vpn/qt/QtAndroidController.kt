@@ -23,7 +23,9 @@ object QtAndroidController {
     external fun onVpnPermissionPending(pending: Boolean)
     external fun onNotificationStateChanged()
     external fun onVpnStateChanged(stateCode: Int)
-    external fun onStatisticsUpdate(rxBytes: Long, txBytes: Long)
+    // dataRx/dataTx: the apps' data by the tunnel's count, -1 where it keeps none; sampleNanos: when the
+    // service read them (SystemClock.elapsedRealtimeNanos), 0 when not known
+    external fun onStatisticsUpdate(rxBytes: Long, txBytes: Long, dataRxBytes: Long, dataTxBytes: Long, sampleNanos: Long)
 
     external fun onFileOpened(uri: String)
 

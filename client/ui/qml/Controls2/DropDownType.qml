@@ -33,9 +33,10 @@ Item {
     property string borderFocusedColor: DopamineStyle.color.paleGray
     property int borderFocusedWidth: 1
 
-    property string rootButtonHoveredBorderColor: DopamineStyle.color.charcoalGray
-    property string rootButtonDefaultBorderColor: DopamineStyle.color.slateGray
-    property string rootButtonPressedBorderColor: DopamineStyle.color.paleGray
+    // the rows' light edge, brighter pointed at, a field's typed-in edge pressed
+    property string rootButtonHoveredBorderColor: "#4DA9C1FF"
+    property string rootButtonDefaultBorderColor: "#2EA9C1FF"
+    property string rootButtonPressedBorderColor: "#BF6E91FF"
 
     property int rootButtonTextLeftMargins: 16
     property int rootButtonTextTopMargin: 16

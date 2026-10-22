@@ -29,6 +29,12 @@ class WireguardUtils : public QObject {
     qint64 m_handshake = 0;
     qint64 m_rxBytes = 0;
     qint64 m_txBytes = 0;
+    // the tunnel's, not the peer's: the apps' data both ways it went, through the VPN and past it
+    // (data_rx_bytes, data_tx_bytes of our AmneziaWG; -1 where the tunnel keeps none)
+    qint64 m_dataRxBytes = -1;
+    qint64 m_dataTxBytes = -1;
+    // when they were read: nanoseconds of the steady clock (QDeadlineTimer), the same in every process
+    qint64 m_sampleNs = 0;
   };
 
   explicit WireguardUtils(QObject* parent) : QObject(parent){};

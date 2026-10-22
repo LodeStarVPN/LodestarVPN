@@ -409,6 +409,25 @@ bool SettingsController::isRuDirectEnabled()
     return m_settings->isRuDirectEnabled();
 }
 
+bool SettingsController::ruDirectMatters() const
+{
+    // "only the listed through the VPN" with something listed (the user's sites, or a service that goes through the VPN: the
+    // Russian services and banking are the exceptions that go direct, they list nothing here)
+    if (!m_settings->isSitesSplitTunnelingEnabled() || m_settings->routeMode() != Settings::VpnOnlyForwardSites) {
+        return true;
+    }
+    if (!m_settings->vpnSites(Settings::VpnOnlyForwardSites).isEmpty()) {
+        return false;
+    }
+    const QStringList presets = m_settings->splitPresetsEnabled();
+    for (const QString &id : presets) {
+        if (id != QLatin1String("builtin-ru-direct") && id != QLatin1String("builtin-ru-banking")) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void SettingsController::toggleRuDirect(bool enable)
 {
     if (m_settings->isRuDirectEnabled() == enable) {

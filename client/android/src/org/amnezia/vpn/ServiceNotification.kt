@@ -56,9 +56,7 @@ class ServiceNotification(private val context: Context) {
             )
         )
 
-    private val zeroSpeed: String = with(TrafficData.ZERO) {
-        formatSpeedString(rxString, txString)
-    }
+    private val zeroSpeed: String = formatSpeed(TrafficData.ZERO)
 
     // the speed line as it stands in the shade: the same line is not posted again
     private var shownSpeed: String? = null
@@ -123,9 +121,27 @@ class ServiceNotification(private val context: Context) {
 
     private fun getSpeedString(traffic: TrafficData) =
         if (traffic == TrafficData.ZERO) zeroSpeed
-        else formatSpeedString(traffic.rxString, traffic.txString)
+        else formatSpeed(traffic)
 
-    private fun formatSpeedString(rx: String, tx: String) = with(upDownSymbols) { "$first $rx  $second $tx" }
+    // The app's server card shows the same (connectionController.cpp): bytes a second, decimal kilo,
+    // mega, giga (1 MB = 1,000,000 bytes, a speed test's Mbit/s divided by 8), each figure with its own
+    // unit, a decimal only below 10
+    private fun formatSpeed(traffic: TrafficData): String {
+        val locale = context.resources.configuration.locales[0]
+        fun figure(bytesPerSecond: Long): String {
+            val bytes = bytesPerSecond.toDouble()
+            val (divider, unit) = when {
+                bytes >= 1e9 -> 1e9 to R.string.speedGB
+                bytes >= 1e6 -> 1e6 to R.string.speedMB
+                bytes >= 1e3 -> 1e3 to R.string.speedKB
+                else -> 1.0 to R.string.speedB
+            }
+            val value = bytes / divider
+            val number = String.format(locale, if (divider > 1.0 && value < 10) "%.1f" else "%.0f", value)
+            return "$number ${context.getString(unit)}"
+        }
+        return with(upDownSymbols) { "$first ${figure(traffic.rx)}  $second ${figure(traffic.tx)}" }
+    }
 
     private fun getAction(state: ProtocolState): Action? {
         return when (state) {

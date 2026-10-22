@@ -35,7 +35,9 @@ void SitesController::addSite(QString hostname)
     const auto &resolveCallback = [this](const QHostInfo &hostInfo) {
         const QList<QHostAddress> &addresses = hostInfo.addresses();
         for (const QHostAddress &addr : hostInfo.addresses()) {
-            if (addr.protocol() == QAbstractSocket::NetworkLayerProtocol::IPv4Protocol) {
+            // not a stub one (a blocked site's answer): the site waits for its real address
+            if (addr.protocol() == QAbstractSocket::NetworkLayerProtocol::IPv4Protocol
+                && !NetworkUtilities::isStubAddress(addr)) {
                 m_sitesModel->addSite(hostInfo.hostName(), addr.toString());
                 break;
             }

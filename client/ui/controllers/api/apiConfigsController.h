@@ -85,6 +85,10 @@ public slots:
     // is added by entering it. Empty for anything that is not a subscription of
     // our gateway (a shared connection has no key of its own)
     Q_INVOKABLE QString processedSubscriptionKey() const;
+    // the key of the subscription the app holds, empty when it holds none. The
+    // app keeps one subscription (the owner, 2026-10-22): another one's key
+    // replaces it, after a question (swapSubscription)
+    Q_INVOKABLE QString installedSubscriptionKey() const;
 
     QString getSelectedServerCountryCode() const;
     void setSelectedServerCountryCode(const QString &countryCode);
@@ -156,6 +160,16 @@ public slots:
     // installs every fetched subscription config at once (we no longer show the
     // protocol selection screen - users were confused by it); returns the count
     int installAllSubscriptionConfigs();
+    // the second half of replacing the subscription, once the new one's configs
+    // are fetched (a refused fetch leaves the old one as it is): this device is
+    // unlinked from the old one (its place freed), the old one's servers leave
+    // and the new one's come, the same country and protocol chosen. The callback
+    // gets the unlink's result (NoError: unlinked, or no such device there any
+    // more) and how many servers came
+    void swapSubscription(const QString &oldKey, const std::function<void(ErrorCode unlinkError, int imported)> &callback);
+    // before the question about replacing the held subscription: whether this device can be
+    // unlinked from it today (one device a day). Answers heldSubscriptionUnlinkChecked
+    Q_INVOKABLE void checkHeldSubscriptionUnlink();
     Q_INVOKABLE void reloadSubscriptionConfigs();
 
     // FRKN connection sharing (frkn://conn/<share_token>): the recipient imports a single
@@ -188,6 +202,12 @@ signals:
     // completion of the async fetch/reload flows above
     void fetchSubscriptionConfigsFinished(bool success);
     void reloadSubscriptionConfigsFinished(bool success);
+    // the gateway offered nothing to fetch of a subscription and said why, for people (no free
+    // place, this device taken off it less than a day ago and when it may come back, no such one)
+    void subscriptionRefused(const QString &message);
+    // "" when this device can be unlinked from the held subscription now (or nothing is known),
+    // else when it can be ("2 October, 15:40" in the app's language)
+    void heldSubscriptionUnlinkChecked(const QString &unlinkAt);
 
     void installServerFromApiFinished(const QString &message);
     void changeApiCountryFinished(const QString &message);
@@ -223,7 +243,7 @@ private:
     // entry for it (its id pins the country on later refreshes), may be empty
     bool importServiceForCountry(const QString &serverCountryCode, const QString &protocol, const QJsonObject &connection);
 
-    // m_subscriptionId, or recovered from an already imported gateway server
+    // the subscription the app holds, else the ID typed on the services page
     QString resolveSubscriptionId() const;
 
     void processNextSubscriptionRefresh();

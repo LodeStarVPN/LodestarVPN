@@ -946,7 +946,13 @@ void ImportController::importSubscriptionConfigs(bool replaceExisting)
         return;
 
     if (replaceExisting) {
-        m_serversModel->removeAllServers();
+        // the configs added before go, the subscription stays: the app keeps one, and only
+        // another one's key replaces it, after a question (the owner, 2026-10-22)
+        for (int i = m_serversModel->getServersCount() - 1; i >= 0; --i) {
+            if (!m_serversModel->isSubscriptionServer(i)) {
+                m_serversModel->removeServer(i);
+            }
+        }
     }
     m_serversModel->addServers(m_subscriptionConfigs);
     m_subscriptionConfigs = QJsonArray();

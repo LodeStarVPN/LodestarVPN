@@ -37,11 +37,16 @@ Popup {
         FocusController.dropRootObject(root)
     }
 
+    // a card of the night, opaque over the page under it, with the rows' light edge (a grey slab
+    // was out of the app's look, the owner, 2026-10-22: «дизайн приложения должен соответствовать
+    // приложению полностью»)
     background: Rectangle {
         anchors.fill: parent
 
-        color: DopamineStyle.color.charcoalGray
-        radius: 12
+        color: DopamineStyle.color.darkCharcoal
+        radius: 16
+        border.width: 1
+        border.color: "#2EA9C1FF"
     }
 
     Timer {
@@ -102,13 +107,17 @@ Popup {
                 leftPadding: 16
                 rightPadding: 16
 
-                defaultColor: DopamineStyle.color.mutedGray
-                hoveredColor: DopamineStyle.color.lightGray
-                pressedColor: DopamineStyle.color.lightGray
-                disabledColor: DopamineStyle.color.charcoalGray
+                // the soft glass of the second actions
+                cornerRadius: 10
+                defaultColor: DopamineStyle.color.glassButton
+                hoveredColor: DopamineStyle.color.glassButtonHovered
+                pressedColor: DopamineStyle.color.glassButtonPressed
 
-                textColor: DopamineStyle.color.midnightBlack
-                borderWidth: 0
+                textColor: DopamineStyle.color.glassButtonText
+
+                buttonTextLabel.lineHeight: 20
+                buttonTextLabel.font.pixelSize: 14
+                buttonTextLabel.font.weight: 500
 
                 text: qsTr("Close")
 

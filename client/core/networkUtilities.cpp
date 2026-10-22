@@ -175,6 +175,47 @@ bool NetworkUtilities::checkIpSubnetFormat(const QString &ip)
         return false;
 }
 
+static const QList<QPair<QHostAddress, int>> &stubRanges()
+{
+    static const QList<QPair<QHostAddress, int>> ranges = {
+        QHostAddress::parseSubnet("0.0.0.0/8"),
+        QHostAddress::parseSubnet("127.0.0.0/8"),
+        QHostAddress::parseSubnet("169.254.0.0/16"),
+        QHostAddress::parseSubnet("198.18.0.0/15"),
+        QHostAddress::parseSubnet("224.0.0.0/3"), // multicast and the reserved rest up to 255.255.255.255
+    };
+    return ranges;
+}
+
+bool NetworkUtilities::isStubAddress(const QHostAddress &address)
+{
+    if (address.protocol() != QAbstractSocket::IPv4Protocol)
+        return false;
+    for (const auto &range : stubRanges()) {
+        if (address.isInSubnet(range))
+            return true;
+    }
+    return false;
+}
+
+bool NetworkUtilities::isStubAddress(const QString &address)
+{
+    return isStubAddress(QHostAddress(address));
+}
+
+bool NetworkUtilities::isStubNetwork(const QString &entry)
+{
+    if (!checkIpSubnetFormat(entry))
+        return false;
+    const auto network = entry.contains('/') ? QHostAddress::parseSubnet(entry)
+                                             : qMakePair(QHostAddress(entry), 32);
+    for (const auto &range : stubRanges()) {
+        if (network.second >= range.second && network.first.isInSubnet(range))
+            return true;
+    }
+    return false;
+}
+
 // static
 int NetworkUtilities::AdapterIndexTo(const QHostAddress& dst) {
 #ifdef Q_OS_WIN

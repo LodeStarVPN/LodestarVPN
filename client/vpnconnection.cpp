@@ -36,6 +36,8 @@
 #endif
 
 #include "core/builtinSplitPresets.h"
+#include "core/nameResolver.h"
+#include "core/controllers/gatewayController.h"
 #include "core/directNetworks.h"
 #include "core/networkUtilities.h"
 #include "vpnconnection.h"
@@ -46,6 +48,38 @@
 constexpr int kSplitRefreshFirstDelayMs = 60 * 1000;
 constexpr int kSplitRefreshIntervalMs = 5 * 60 * 1000;
 #endif
+
+namespace
+{
+// The addresses of the user's own list for a direction: its networks and addresses as they stand, and for each name what it
+// resolves to now (NameResolver: the computer's own resolver and Cloudflare's), with the address found when the name was added
+// kept as well - the provider's resolver, asked then, may have lied about a blocked site, and a name of a big site has many.
+QStringList ownSiteAddresses(const Settings &settings, Settings::RouteMode mode)
+{
+    QStringList out;
+    QStringList names;
+    const QVariantMap sites = settings.vpnSites(mode);
+    for (auto i = sites.constBegin(); i != sites.constEnd(); ++i) {
+        if (NetworkUtilities::checkIpSubnetFormat(i.key())) {
+            out.append(i.key());
+            continue;
+        }
+        names.append(i.key());
+        const QString stored = i.value().toString();
+        if (NetworkUtilities::checkIpSubnetFormat(stored) && !NetworkUtilities::isStubAddress(stored)) {
+            out.append(stored);
+        }
+    }
+    if (!names.isEmpty()) {
+        const QHash<QString, QStringList> resolved = NameResolver::resolve(names, qMin(8000, 2500 + names.size() * 12));
+        for (const QString &name : names) {
+            out.append(resolved.value(name));
+        }
+    }
+    out.removeDuplicates();
+    return out;
+}
+}
 
 #ifdef Q_OS_WIN
     #include <QDir>
@@ -322,7 +356,8 @@ void VpnConnection::addSitesRoutes(const QString &gw, Settings::RouteMode mode)
         if (NetworkUtilities::checkIpSubnetFormat(i.key())) {
             ips.append(i.key());
         } else {
-            if (NetworkUtilities::checkIpSubnetFormat(i.value().toString())) {
+            if (NetworkUtilities::checkIpSubnetFormat(i.value().toString())
+                && !NetworkUtilities::isStubAddress(i.value().toString())) {
                 ips.append(i.value().toString());
             }
             sites.append(i.key());
@@ -341,7 +376,8 @@ void VpnConnection::addSitesRoutes(const QString &gw, Settings::RouteMode mode)
             const QList<QHostAddress> &addresses = hostInfo.addresses();
             QString ipv4Addr;
             for (const QHostAddress &addr : hostInfo.addresses()) {
-                if (addr.protocol() == QAbstractSocket::NetworkLayerProtocol::IPv4Protocol) {
+                if (addr.protocol() == QAbstractSocket::NetworkLayerProtocol::IPv4Protocol
+                    && !NetworkUtilities::isStubAddress(addr)) {
                     const QString &ip = addr.toString();
                     // qDebug() << "VpnConnection::addSitesRoutes updating site" << site << ip;
                     if (!ips.contains(ip)) {
@@ -411,7 +447,8 @@ void VpnConnection::refreshSitesRoutes()
 
             QString ip;
             for (const QHostAddress &addr : hostInfo.addresses()) {
-                if (addr.protocol() == QAbstractSocket::NetworkLayerProtocol::IPv4Protocol) {
+                if (addr.protocol() == QAbstractSocket::NetworkLayerProtocol::IPv4Protocol
+                    && !NetworkUtilities::isStubAddress(addr)) {
                     ip = addr.toString();
                     break;
                 }
@@ -419,7 +456,8 @@ void VpnConnection::refreshSitesRoutes()
             if (!ip.isEmpty()) {
                 m_splitRefreshResolved.insert(ip);
                 m_settings->addVpnSite(m_splitRefreshMode, domain, ip);
-            } else if (NetworkUtilities::checkIpSubnetFormat(lastKnownIp)) {
+            } else if (NetworkUtilities::checkIpSubnetFormat(lastKnownIp)
+                       && !NetworkUtilities::isStubAddress(lastKnownIp)) {
                 // transient DNS failure: keep the last known route rather
                 // than tearing it down
                 m_splitRefreshResolved.insert(lastKnownIp);
@@ -564,6 +602,8 @@ void VpnConnection::createProtocolConnections()
     connect(m_vpnProtocol.data(), &VpnProtocol::protocolError, this, &VpnConnection::vpnProtocolError);
     connect(m_vpnProtocol.data(), &VpnProtocol::connectionStateChanged, this, &VpnConnection::setConnectionState);
     connect(m_vpnProtocol.data(), SIGNAL(bytesChanged(quint64, quint64)), this, SLOT(onBytesChanged(quint64, quint64)));
+    connect(m_vpnProtocol.data(), &VpnProtocol::dataBytesChanged, this, &VpnConnection::dataBytesChanged);
+    connect(m_vpnProtocol.data(), &VpnProtocol::sampleTimed, this, &VpnConnection::sampleTimed);
 
 #ifdef AMNEZIA_DESKTOP
     // UniqueConnection: this runs on every connect; without it each connect
@@ -691,23 +731,44 @@ void VpnConnection::appendSplitTunnelingConfig()
     const Settings::RouteMode chosenMode =
             m_settings->isSitesSplitTunnelingEnabled() ? m_settings->routeMode() : Settings::VpnAllSites;
 
+    // a stub address (a blocked site's 127.0.0.1, a DNS on this computer) is never routed into
+    // the VPN or around it, nor guarded: NetworkUtilities::isStubNetwork
+    const auto withoutStubs = [](const QJsonArray &list) {
+        QJsonArray out;
+        for (const auto &value : list) {
+            if (!NetworkUtilities::isStubNetwork(value.toString())) {
+                out.append(value);
+            }
+        }
+        return out;
+    };
+
     Settings::RouteMode routeMode = Settings::RouteMode::VpnAllSites;
     QJsonArray sitesJsonArray;
     if (m_settings->isSitesSplitTunnelingEnabled()) {
         routeMode = m_settings->routeMode();
 
         if (allowSiteBasedSplitTunneling) {
-            auto sites = m_settings->getVpnIps(routeMode);
+            // the networks and addresses as they stand, and for each name what it resolves to now - not only the one
+            // address it had when it was added (the provider's resolver, asked then, may have lied about it, and a
+            // name of a big site has many)
+            const QStringList sites = ownSiteAddresses(*m_settings, routeMode);
             for (const auto &site : sites) {
-                sitesJsonArray.append(site);
+                if (!NetworkUtilities::isStubNetwork(site)) {
+                    sitesJsonArray.append(site);
+                }
             }
 
             if (sitesJsonArray.isEmpty()) {
                 routeMode = Settings::RouteMode::VpnAllSites;
             } else if (routeMode == Settings::VpnOnlyForwardSites) {
                 // Allow traffic to Amnezia DNS
-                sitesJsonArray.append(m_vpnConfiguration.value(config_key::dns1).toString());
-                sitesJsonArray.append(m_vpnConfiguration.value(config_key::dns2).toString());
+                for (const QString &dns : { m_vpnConfiguration.value(config_key::dns1).toString(),
+                                            m_vpnConfiguration.value(config_key::dns2).toString() }) {
+                    if (!NetworkUtilities::isStubNetwork(dns)) {
+                        sitesJsonArray.append(dns);
+                    }
+                }
             }
         }
     }
@@ -780,7 +841,13 @@ void VpnConnection::appendSplitTunnelingConfig()
             auto flattenBucket = [&](const PresetBucket &bucket) -> QJsonArray {
                 QJsonArray out;
                 QList<QPair<QHostAddress, int>> nets;
+                // the services of one company share their networks (Instagram, Facebook, WhatsApp: Meta's)
+                QSet<QString> listed;
                 for (const QString &cidr : bucket.cidrs) {
+                    if (listed.contains(cidr)) {
+                        continue;
+                    }
+                    listed.insert(cidr);
                     out.append(cidr);
                     const auto net = parseSubnet(cidr);
                     if (net.second >= 0) {
@@ -788,29 +855,16 @@ void VpnConnection::appendSplitTunnelingConfig()
                     }
                 }
 
-                QStringList domainsToResolve = bucket.hosts;
+                const QStringList domainsToResolve = bucket.hosts;
                 if (!domainsToResolve.isEmpty()) {
-                    QVector<QHostInfo> resolvedInfos(domainsToResolve.size());
-                    QEventLoop loop;
-                    int remaining = domainsToResolve.size();
-                    const int resolveTimeoutMs =
-                            qMin(12000, 2500 + domainsToResolve.size() * 12);
-                    QTimer::singleShot(resolveTimeoutMs, &loop, &QEventLoop::quit);
-                    for (int i = 0; i < domainsToResolve.size(); ++i) {
-                        QHostInfo::lookupHost(domainsToResolve.at(i), &loop,
-                                [&resolvedInfos, &remaining, &loop, i](const QHostInfo &info) {
-                                    resolvedInfos[i] = info;
-                                    if (--remaining == 0) {
-                                        loop.quit();
-                                    }
-                                });
-                    }
-                    loop.exec();
-                    for (const QHostInfo &hostInfo : resolvedInfos) {
-                        for (const auto &addr : hostInfo.addresses()) {
-                            if (addr.protocol() != QAbstractSocket::IPv4Protocol) {
-                                continue;
-                            }
+                    // every address a name has (a name of a big service answers with several, and the program may be
+                    // given any of them later) from the computer's own resolver and from Cloudflare's, over HTTPS:
+                    // the provider's answers are false for what it blocks (NameResolver)
+                    const QHash<QString, QStringList> resolved =
+                            NameResolver::resolve(domainsToResolve, qMin(8000, 2500 + domainsToResolve.size() * 12));
+                    for (const QString &host : domainsToResolve) {
+                        for (const QString &address : resolved.value(host)) {
+                            const QHostAddress addr(address);
                             bool covered = false;
                             for (const auto &net : nets) {
                                 if (addr.isInSubnet(net.first, net.second)) {
@@ -818,10 +872,10 @@ void VpnConnection::appendSplitTunnelingConfig()
                                     break;
                                 }
                             }
-                            if (!covered) {
-                                out.append(addr.toString());
+                            if (!covered && !listed.contains(address)) {
+                                listed.insert(address);
+                                out.append(address);
                             }
-                            break;
                         }
                     }
                 }
@@ -906,6 +960,8 @@ void VpnConnection::appendSplitTunnelingConfig()
     // and the rest of Russia goes through the VPN abroad (no entry sends it out by itself any
     // more). Nothing to add where only the listed sites go through the VPN: everything else
     // is direct anyway.
+    includeSitesJsonArray = withoutStubs(includeSitesJsonArray);
+    excludeSitesJsonArray = withoutStubs(excludeSitesJsonArray);
     const bool onlyListed = chosenMode == Settings::VpnOnlyForwardSites && !includeSitesJsonArray.isEmpty();
     // VLESS: the whole list, as a rule of its Xray (each connection sorted there, no routes)
     const QString xrayKey = ProtocolProps::key_proto_config_data(Proto::Xray);
@@ -916,28 +972,39 @@ void VpnConnection::appendSplitTunnelingConfig()
 #else
     const bool tunnelSorts = false;
 #endif
-    if (m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed && tunnelSorts) {
-        const QStringList whole = DirectNetworks::whole(*m_settings);
+    // The gateway's own addresses go past the VPN the same way, whatever the switch says: the app
+    // must reach its gateway while its tunnel carries nothing. An unlinked device's keys go from the
+    // servers at once, and its device check, sent through the dead tunnel, never came back: the app
+    // showed "Connected" with nothing passing and never learnt why (the owner's phone, 2026-10-21).
+    // Only the listed through the VPN: they go past it anyway.
+    const bool ruDirect = m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed;
+    const QStringList gatewayHosts = (tunnelSorts || sortsItself) && !onlyListed
+            ? GatewayController::directHosts({ m_settings->getGatewayEndpoint(), m_settings->getGatewayEndpointFallback() })
+            : QStringList();
+    if ((ruDirect || !gatewayHosts.isEmpty()) && tunnelSorts) {
+        QStringList whole = ruDirect ? DirectNetworks::whole(*m_settings) : QStringList();
+        whole += gatewayHosts;
 #ifdef Q_OS_ANDROID
         // the config reaches the VPN service in one system message: the list goes by a file
         // the service reads itself (Wireguard.kt)
         const QString file = DirectNetworks::saveForService(whole);
         if (!file.isEmpty()) {
             m_vpnConfiguration.insert(config_key::directNetworksFile, file);
-            qDebug() << "Russian sites directly:" << whole.size() << "networks by the tunnel itself";
+            qDebug() << "Directly by the tunnel itself:" << whole.size() << "networks," << gatewayHosts.size() << "of them the gateway's";
         }
 #else
         m_vpnConfiguration.insert(config_key::directNetworks, QJsonArray::fromStringList(whole));
-        qDebug() << "Russian sites directly:" << whole.size() << "networks by the tunnel itself";
+        qDebug() << "Directly by the tunnel itself:" << whole.size() << "networks," << gatewayHosts.size() << "of them the gateway's";
 #endif
-    } else if (m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed && sortsItself) {
-        const QStringList whole = DirectNetworks::whole(*m_settings);
+    } else if ((ruDirect || !gatewayHosts.isEmpty()) && sortsItself) {
+        QStringList whole = ruDirect ? DirectNetworks::whole(*m_settings) : QStringList();
+        whole += gatewayHosts;
         QJsonObject xrayConfig = m_vpnConfiguration.value(xrayKey).toObject();
         if (addRussiaDirectRule(xrayConfig, whole)) {
             m_vpnConfiguration.insert(xrayKey, xrayConfig);
-            qDebug() << "Russian sites directly:" << whole.size() << "networks by the Xray rule";
+            qDebug() << "Directly by the Xray rule:" << whole.size() << "networks," << gatewayHosts.size() << "of them the gateway's";
         }
-    } else if (m_settings->isRuDirectEnabled() && allowSiteBasedSplitTunneling && !onlyListed) {
+    } else if (ruDirect) {
         QStringList taken;
         for (const auto &value : excludeSitesJsonArray) {
             taken.append(value.toString());
@@ -961,7 +1028,7 @@ void VpnConnection::appendSplitTunnelingConfig()
         // the DNS through the VPN as well (the user's own list adds them itself)
         for (const QString &dns : { m_vpnConfiguration.value(config_key::dns1).toString(),
                                     m_vpnConfiguration.value(config_key::dns2).toString() }) {
-            if (!dns.isEmpty() && !includeSitesJsonArray.contains(dns)) {
+            if (!dns.isEmpty() && !NetworkUtilities::isStubNetwork(dns) && !includeSitesJsonArray.contains(dns)) {
                 includeSitesJsonArray.append(dns);
             }
         }

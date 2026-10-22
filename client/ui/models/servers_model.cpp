@@ -519,22 +519,40 @@ bool ServersModel::isDefaultServerHasWriteAccess()
 
 void ServersModel::addServer(const QJsonObject &server)
 {
+    const int countBefore = m_settings->serversCount();
     beginResetModel();
     m_settings->addServer(server);
     m_servers = m_settings->serversArray();
     recomputeAvailableProtocols();
     recomputeAvailableEnvs();
     endResetModel();
+    chooseAddedIfNoneChosen(countBefore);
 }
 
 void ServersModel::addServers(const QJsonArray &servers)
 {
+    const int countBefore = m_settings->serversCount();
     beginResetModel();
     m_settings->addServers(servers);
     m_servers = m_settings->serversArray();
     recomputeAvailableProtocols();
     recomputeAvailableEnvs();
     endResetModel();
+    chooseAddedIfNoneChosen(countBefore);
+}
+
+// The chosen server stays as it is, unless there is none to stay: then the first one just added is
+// chosen, as on a fresh install. Without this, a key entered again after the app had removed the
+// servers of a subscription that refused the device (the choice is -1 once none are left), or after
+// a reinstall whose restored settings point past the list, left the home card "Not installed" and
+// Connect failing with error 902 until a server was picked by hand - an app restart kept it so.
+void ServersModel::chooseAddedIfNoneChosen(int countBefore)
+{
+    const int chosen = m_settings->defaultServerIndex();
+    if ((chosen < 0 || chosen >= countBefore) && m_settings->serversCount() > countBefore) {
+        setDefaultServerIndex(countBefore);
+        setProcessedServerIndex(m_defaultServerIndex);
+    }
 }
 
 void ServersModel::removeAllServers()
@@ -905,6 +923,31 @@ bool ServersModel::isServerFromApiAlreadyExists(const QString &name, const QStri
         }
     }
     return false;
+}
+
+bool ServersModel::isSubscriptionServer(const int serverIndex) const
+{
+    if (serverIndex < 0 || serverIndex >= m_servers.size()) {
+        return false;
+    }
+    const QJsonObject server = m_servers.at(serverIndex).toObject();
+    const QJsonObject apiConfig = server.value(configKey::apiConfig).toObject();
+    if (apiConfig.value(QStringLiteral("connection_uuid")).toString().isEmpty() || apiConfig.value(QStringLiteral("shared")).toBool()) {
+        return false;
+    }
+    return !apiConfig.value(QLatin1String("auth_data")).toObject().value(apiDefs::key::apiKey).toString().isEmpty()
+            || !server.value(QLatin1String("auth_data")).toObject().value(apiDefs::key::apiKey).toString().isEmpty();
+}
+
+int ServersModel::otherServersCount() const
+{
+    int count = 0;
+    for (int i = 0; i < m_servers.size(); ++i) {
+        if (!isSubscriptionServer(i)) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 bool ServersModel::hasServerWithVpnKey(const QString &vpnKey) const

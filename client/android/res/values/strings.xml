@@ -8,6 +8,10 @@
     <string name="reconnecting">Reconnecting…</string>
     <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
+    <string name="speedB">B/s</string>
+    <string name="speedKB">KB/s</string>
+    <string name="speedMB">MB/s</string>
+    <string name="speedGB">GB/s</string>
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
     <string name="yes">Yes</string>

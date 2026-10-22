@@ -161,16 +161,20 @@ void CoreController::initControllers()
         // the fetch is async now: navigate when it reports completion
         // (one-shot connection - reloadSubscriptionConfigs has its own signal)
         auto connection = QSharedPointer<QMetaObject::Connection>::create();
+        const bool held = m_apiConfigsController->installedSubscriptionKey() == subscriptionId;
         *connection = connect(m_apiConfigsController.get(), &ApiConfigsController::fetchSubscriptionConfigsFinished, this,
-                              [this, connection](bool success) {
+                              [this, connection, held](bool success) {
                                   disconnect(*connection);
                                   m_pageController->showBusyIndicator(false);
                                   qDebug() << "[CORE] fetch subscription configs result:" << success;
                                   if (success) {
                                       const int importedCount = m_apiConfigsController->installAllSubscriptionConfigs();
                                       qDebug() << "[CORE] imported all subscription configs:" << importedCount;
+                                      // the key of the subscription the app already holds, entered again: no new
+                                      // country came with it
                                       emit m_pageController->showNotificationMessage(
-                                              tr("Imported %1 configurations").arg(importedCount));
+                                              held && importedCount == 0 ? tr("This subscription is already in the app")
+                                                                         : tr("Imported %1 configurations").arg(importedCount));
                                       emit m_pageController->goToPageHome();
                                   }
                               });
@@ -181,8 +185,19 @@ void CoreController::initControllers()
             [this, fetchSubscriptionConfigs](const QString &subscriptionId) {
                 // the id is the subscription's key: not in the log
                 qDebug() << "[CORE] subscription link detected";
+                // the app keeps one subscription: another one's key asks first, before the
+                // gateway is asked (that would take a place on it)
+                const QString installed = m_apiConfigsController->installedSubscriptionKey();
+                if (!installed.isEmpty() && installed != subscriptionId) {
+                    qDebug() << "[CORE] another subscription than the one held: asking to replace";
+                    emit m_pageController->askToReplaceSubscription(subscriptionId);
+                    return;
+                }
                 fetchSubscriptionConfigs(subscriptionId);
             });
+
+    connect(m_pageController.get(), &PageController::subscriptionReplaceConfirmed, this,
+            [this](const QString &key) { replaceSubscription(key); });
 
     // a subscription link from outside the app, after the user said yes to it
     connect(m_pageController.get(), &PageController::subscriptionLinkConfirmed, this,
@@ -427,6 +442,9 @@ void CoreController::initErrorMessagesHandler()
 
     connect(m_apiConfigsController.get(), &ApiConfigsController::errorOccurred, m_pageController.get(),
             qOverload<ErrorCode>(&PageController::showErrorMessage));
+    // the gateway's own words: no code, as for its other word on a device or a subscription
+    connect(m_apiConfigsController.get(), &ApiConfigsController::subscriptionRefused, m_pageController.get(),
+            qOverload<const QString &>(&PageController::showErrorMessage));
 }
 
 void CoreController::setQmlRoot()
@@ -482,6 +500,10 @@ void CoreController::initContainerModelUpdateHandler()
         }
         // at most twice a day (inside); taken at the next connect
         m_directNetworks->fetch();
+        // the service lists (YouTube, Telegram, ...): the gateway makes them again every day, and the app asked for them only at
+        // its start, so one left open for days in the tray kept the old ones. The answer to the version the app has is empty;
+        // a new list is taken at the next connect
+        m_splitPresetsModel->fetchPresets();
     });
     refreshTimer->start();
 }
@@ -567,4 +589,75 @@ void CoreController::importConfigFromData(const QString &data)
     } else {
         oneshot_sub_fetch(m_importController.get(), m_pageController.get(), this);
     }
+}
+
+void CoreController::replaceSubscription(const QString &key)
+{
+    const QString oldKey = m_apiConfigsController->installedSubscriptionKey();
+    if (oldKey.isEmpty() || oldKey == key) {
+        // none held any more, or the same one after all: an ordinary add
+        importConfigFromData(key);
+        return;
+    }
+    qDebug() << "[CORE] replacing the subscription";
+    m_pageController->showBusyIndicator(true);
+    // the new one first: a key it refuses (wrong, no free place, ended) leaves the old one as it is
+    auto connection = QSharedPointer<QMetaObject::Connection>::create();
+    *connection = connect(m_apiConfigsController.get(), &ApiConfigsController::fetchSubscriptionConfigsFinished, this,
+                          [this, connection, oldKey](bool fetched) {
+                              disconnect(*connection);
+                              if (!fetched) {
+                                  // the reason is shown by the controller's own error
+                                  m_pageController->showBusyIndicator(false);
+                                  return;
+                              }
+                              const bool wasOn = m_connectionController->isConnected()
+                                      || m_connectionController->isConnectionInProgress();
+                              auto swap = [this, oldKey, wasOn]() {
+                                  m_apiConfigsController->swapSubscription(oldKey, [this, wasOn](ErrorCode unlinkError, int imported) {
+                                      m_pageController->showBusyIndicator(false);
+                                      QString message = tr("The subscription is replaced");
+                                      if (unlinkError == ErrorCode::ApiUnlinkLimitError) {
+                                          message = tr("The subscription is replaced. This device stays in the previous one for now: a device was "
+                                                       "unlinked from it today already. It can be unlinked tomorrow in Active devices on another "
+                                                       "device with that subscription.");
+                                      } else if (unlinkError != ErrorCode::NoError) {
+                                          message = tr("The subscription is replaced. This device could not be unlinked from the previous one: it "
+                                                       "can be unlinked in Active devices on another device with that subscription.");
+                                      }
+                                      emit m_pageController->showNotificationMessage(message);
+                                      emit m_pageController->goToPageHome();
+                                      if (wasOn && imported > 0) {
+                                          m_connectionController->openConnection();
+                                      }
+                                  });
+                              };
+                              if (!wasOn) {
+                                  swap();
+                                  return;
+                              }
+                              // the old servers go, and the unlink takes their keys off them: the tunnel to one of
+                              // them is closed first, and the new one opened when the swap is done
+                              auto stateConnection = QSharedPointer<QMetaObject::Connection>::create();
+                              auto done = QSharedPointer<bool>::create(false);
+                              auto once = [swap, done, stateConnection]() {
+                                  if (*done) {
+                                      return;
+                                  }
+                                  *done = true;
+                                  QObject::disconnect(*stateConnection);
+                                  swap();
+                              };
+                              *stateConnection = connect(m_vpnConnection.get(), &VpnConnection::connectionStateChanged, this,
+                                                         [once](Vpn::ConnectionState state) {
+                                                             if (state == Vpn::ConnectionState::Disconnected
+                                                                 || state == Vpn::ConnectionState::Error) {
+                                                                 once();
+                                                             }
+                                                         });
+                              // a tunnel that never says it closed does not hold the swap up
+                              QTimer::singleShot(15000, this, once);
+                              m_connectionController->closeConnection();
+                          });
+    m_apiConfigsController->fetchSubscriptionConfigs(key);
 }

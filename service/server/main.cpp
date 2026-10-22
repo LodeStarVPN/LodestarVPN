@@ -30,8 +30,12 @@ int runApplication(int argc, char** argv)
         }
 
         if (!tokens.empty() && tokens[0] == "tunneldaemon") {
+            // A tunnel's own process: it ends with its tunnel. It went on below into a
+            // LocalServer of its own - after every disconnect a second service with an instance
+            // of the daemon's pipe, which after an upgrade left the app refusing the new service
+            // (localserver.cpp)
             WindowsDaemonTunnel *daemon = new WindowsDaemonTunnel();
-            daemon->run(tokens);
+            return daemon->run(tokens);
         }
     }
 #endif

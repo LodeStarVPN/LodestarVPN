@@ -1,5 +1,243 @@
+diff --git a/device/datacount.go b/device/datacount.go
+new file mode 100755
+index 0000000..c41b309
+--- /dev/null
++++ b/device/datacount.go
+@@ -0,0 +1,73 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package device
++
++import "encoding/binary"
++
++// The apps' data the device carries for them, each way: what the speed in the app counts
++// (data_rx_bytes and data_tx_bytes in uapi.go), as the sorter counts its connections' data. A
++// peer's rx_bytes and tx_bytes are its messages: the packets' headers and what the tunnel adds to
++// each - some 4 % more than the data on a download, and the download's acknowledgements on their way
++// back twice their own size, with no data in them at all.
++
++// dataLen is the data an IP packet carries: a TCP segment's or a UDP datagram's payload, a later
++// fragment whole, what follows the IP header for anything else; 0 for what is not a whole packet.
++func dataLen(packet []byte) int {
++	if len(packet) == 0 {
++		return 0
++	}
++	switch packet[0] >> 4 {
++	case 4:
++		if len(packet) < 20 {
++			return 0
++		}
++		headerLen := int(packet[0]&0x0f) * 4
++		total := int(binary.BigEndian.Uint16(packet[2:4]))
++		if total > len(packet) {
++			total = len(packet)
++		}
++		if headerLen < 20 || headerLen > total {
++			return 0
++		}
++		// a fragment after the first has no transport header in it
++		first := binary.BigEndian.Uint16(packet[6:8])&0x1fff == 0
++		return transportDataLen(packet[9], packet[headerLen:total], first)
++	case 6:
++		if len(packet) < 40 {
++			return 0
++		}
++		total := 40 + int(binary.BigEndian.Uint16(packet[4:6]))
++		if total > len(packet) {
++			total = len(packet)
++		}
++		// (extension headers, seldom seen here, count as data)
++		return transportDataLen(packet[6], packet[40:total], true)
++	}
++	return 0
++}
++
++func transportDataLen(protocol byte, segment []byte, first bool) int {
++	if !first {
++		return len(segment)
++	}
++	switch protocol {
++	case 6: // TCP
++		if len(segment) < 20 {
++			return 0
++		}
++		headerLen := int(segment[12]>>4) * 4
++		if headerLen < 20 || headerLen > len(segment) {
++			return 0
++		}
++		return len(segment) - headerLen
++	case 17: // UDP
++		if len(segment) < 8 {
++			return 0
++		}
++		return len(segment) - 8
++	}
++	return len(segment)
++}
+diff --git a/device/datacount_test.go b/device/datacount_test.go
+new file mode 100755
+index 0000000..fe4af5e
+--- /dev/null
++++ b/device/datacount_test.go
+@@ -0,0 +1,153 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package device
++
++import (
++	"bytes"
++	"encoding/binary"
++	"net/netip"
++	"strconv"
++	"strings"
++	"testing"
++	"time"
++)
++
++// an IPv4 packet: the given transport header and that much data after it
++func testIPv4(src, dst netip.Addr, protocol byte, transport []byte, data int) []byte {
++	p := make([]byte, 20+len(transport)+data)
++	p[0] = 0x45
++	binary.BigEndian.PutUint16(p[2:4], uint16(len(p)))
++	p[8] = 64
++	p[9] = protocol
++	copy(p[12:16], src.AsSlice())
++	copy(p[16:20], dst.AsSlice())
++	copy(p[20:], transport)
++	for i := 20 + len(transport); i < len(p); i++ {
++		p[i] = byte(i)
++	}
++	return p
++}
++
++// a TCP header of headerLen bytes (20, or more with options)
++func testTCP(headerLen int) []byte {
++	h := make([]byte, headerLen)
++	binary.BigEndian.PutUint16(h[0:2], 40000)
++	binary.BigEndian.PutUint16(h[2:4], 443)
++	h[12] = byte(headerLen/4) << 4
++	h[13] = 0x18 // PSH, ACK
++	return h
++}
++
++func testUDP(data int) []byte {
++	h := make([]byte, 8)
++	binary.BigEndian.PutUint16(h[0:2], 40000)
++	binary.BigEndian.PutUint16(h[2:4], 443)
++	binary.BigEndian.PutUint16(h[4:6], uint16(8+data))
++	return h
++}
++
++func TestDataLen(t *testing.T) {
++	a := netip.MustParseAddr("10.0.0.1")
++	b := netip.MustParseAddr("10.0.0.2")
++	fragment := testIPv4(a, b, 17, nil, 300)
++	binary.BigEndian.PutUint16(fragment[6:8], 185) // offset 185 × 8 bytes: a later fragment
++	ipv6 := func(next byte, transport []byte, data int) []byte {
++		p := make([]byte, 40+len(transport)+data)
++		p[0] = 0x60
++		binary.BigEndian.PutUint16(p[4:6], uint16(len(transport)+data))
++		p[6] = next
++		copy(p[40:], transport)
++		return p
++	}
++	withOptions := testIPv4(a, b, 6, testTCP(20), 100)
++	withOptions = append(withOptions[:20], append(make([]byte, 8), withOptions[20:]...)...) // IP options, 8 bytes
++	withOptions[0] = 0x47
++	binary.BigEndian.PutUint16(withOptions[2:4], uint16(len(withOptions)))
++	padded := append(testIPv4(a, b, 6, testTCP(20), 10), make([]byte, 6)...) // the tunnel's padding after it
++
++	for _, c := range []struct {
++		name   string
++		packet []byte
++		want   int
++	}{
++		{"tcp", testIPv4(a, b, 6, testTCP(20), 1360), 1360},
++		{"tcp with options", testIPv4(a, b, 6, testTCP(32), 1348), 1348},
++		{"a bare acknowledgement", testIPv4(a, b, 6, testTCP(32), 0), 0},
++		{"udp", testIPv4(a, b, 17, testUDP(1200), 1200), 1200},
++		{"icmp", testIPv4(a, b, 1, make([]byte, 8), 56), 64},
++		{"a later fragment", fragment, 300},
++		{"ip options", withOptions, 100},
++		{"padding after the packet", padded, 10},
++		{"tcp6", ipv6(6, testTCP(20), 1220), 1220},
++		{"udp6", ipv6(17, testUDP(1000), 1000), 1000},
++		{"short ip header", testIPv4(a, b, 6, nil, 0)[:19], 0},
++		{"tcp header cut", testIPv4(a, b, 6, nil, 10), 0},
++		{"tcp data offset too large", testIPv4(a, b, 6, append(testTCP(20)[:12], 0xf0, 0, 0, 0, 0, 0, 0, 0), 4), 0},
++		{"ip header length too small", append([]byte{0x44}, testIPv4(a, b, 6, testTCP(20), 5)[1:]...), 0},
++		{"no packet", nil, 0},
++		{"another version", []byte{0x50, 1, 2, 3}, 0},
++	} {
++		if got := dataLen(c.packet); got != c.want {
++			t.Errorf("%s: %d, want %d", c.name, got, c.want)
++		}
++	}
++}
++
++func testDataCounts(t *testing.T, dev *Device) (rx, tx uint64) {
++	t.Helper()
++	var get strings.Builder
++	if err := dev.IpcGetOperation(&get); err != nil {
++		t.Fatal(err)
++	}
++	seen := 0
++	for _, line := range strings.Split(get.String(), "\n") {
++		if v, ok := strings.CutPrefix(line, "data_rx_bytes="); ok {
++			rx, _ = strconv.ParseUint(v, 10, 64)
++			seen++
++		}
++		if v, ok := strings.CutPrefix(line, "data_tx_bytes="); ok {
++			tx, _ = strconv.ParseUint(v, 10, 64)
++			seen++
++		}
++	}
++	if seen != 2 {
++		t.Fatalf("data_rx_bytes and data_tx_bytes not told: %q", get.String())
++	}
++	return
++}
++
++// Through a peer: the sender counts the data it sends, the receiver the data it got, the headers
++// and what the tunnel adds not at all.
++func TestDataCountsThroughPeer(t *testing.T) {
++	pair := genTestPair(t, false)
++	// the handshake first, with a ping each way
++	pair.Send(t, Ping, nil)
++	pair.Send(t, Pong, nil)
++	rx0, _ := testDataCounts(t, pair[0].dev)
++	_, tx1 := testDataCounts(t, pair[1].dev)
++
++	packets := [][]byte{
++		testIPv4(pair[1].ip, pair[0].ip, 6, testTCP(32), 1000),
++		testIPv4(pair[1].ip, pair[0].ip, 6, testTCP(32), 0),
++		testIPv4(pair[1].ip, pair[0].ip, 17, testUDP(300), 300),
++	}
++	for _, p := range packets {
++		pair[1].tun.Outbound <- p
++		select {
++		case got := <-pair[0].tun.Inbound:
++			if !bytes.Equal(got, p) {
++				t.Fatalf("a packet did not transit whole")
++			}
++		case <-time.After(6 * time.Second):
++			t.Fatal("a packet did not transit")
++		}
++	}
++	rx, _ := testDataCounts(t, pair[0].dev)
++	_, tx := testDataCounts(t, pair[1].dev)
++	if rx-rx0 != 1300 || tx-tx1 != 1300 {
++		t.Errorf("received %d, sent %d of 1300 bytes of data", rx-rx0, tx-tx1)
++	}
++}
 diff --git a/device/device.go b/device/device.go
-index 781a899..d44a31c 100644
+index 781a899..c5b378c 100644
 --- a/device/device.go
 +++ b/device/device.go
 @@ -14,6 +14,7 @@ import (
@@ -10,17 +248,22 @@ index 781a899..d44a31c 100644
  	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
  )
  
-@@ -129,6 +130,9 @@ type Device struct {
+@@ -129,6 +130,14 @@ type Device struct {
  
  	randomTrailers atomic.Bool
  	disableCookies atomic.Bool
 +
 +	// the networks whose connections the device opens by its own network (sorter.go)
 +	direct atomic.Pointer[sorter.Sorter]
++
++	// the apps' data the peers carried each way, and what sorters closed since had carried
++	// (datacount.go)
++	dataRx atomic.Uint64
++	dataTx atomic.Uint64
  }
  
  // deviceState represents the state of a Device.
-@@ -430,6 +434,10 @@ func (device *Device) Close() {
+@@ -430,6 +439,10 @@ func (device *Device) Close() {
  	device.state.state.Store(uint32(deviceStateClosed))
  	device.log.Verbosef("Device closing")
  
@@ -31,8 +274,32 @@ index 781a899..d44a31c 100644
  	device.tun.device.Close()
  	device.downLocked()
  
+diff --git a/device/receive.go b/device/receive.go
+index ec29b1a..0943939 100644
+--- a/device/receive.go
++++ b/device/receive.go
+@@ -496,6 +496,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
+ 		validTailPacket := -1
+ 		dataPacketReceived := false
+ 		rxBytesLen := uint64(0)
++		rxDataLen := uint64(0)
+ 		for i, elem := range elemsContainer.elems {
+ 			if elem.packet == nil {
+ 				// decryption failed
+@@ -568,9 +569,11 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
+ 			}
+ 
+ 			bufs = append(bufs, elem.buffer[int(elem.padding):int(elem.padding)+MessageTransportHeaderSize+len(elem.packet)])
++			rxDataLen += uint64(dataLen(elem.packet))
+ 		}
+ 
+ 		peer.rxBytes.Add(rxBytesLen)
++		device.dataRx.Add(rxDataLen)
+ 		if validTailPacket >= 0 {
+ 			peer.SetEndpointFromPacket(elemsContainer.elems[validTailPacket].endpoint)
+ 			peer.keepKeyFreshReceiving()
 diff --git a/device/send.go b/device/send.go
-index 4a303d2..cc3022f 100644
+index 4a303d2..02dce09 100644
 --- a/device/send.go
 +++ b/device/send.go
 @@ -354,6 +354,12 @@ func (device *Device) RoutineReadFromTUN() {
@@ -48,12 +315,24 @@ index 4a303d2..cc3022f 100644
  				dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
  				peer = device.allowedips.Lookup(dst)
  
+@@ -383,6 +389,11 @@ func (device *Device) RoutineReadFromTUN() {
+ 
+ 		for peer, elemsForPeer := range elemsByPeer {
+ 			if peer.isRunning.Load() {
++				txDataLen := uint64(0)
++				for _, elem := range elemsForPeer.elems {
++					txDataLen += uint64(dataLen(elem.packet))
++				}
++				device.dataTx.Add(txDataLen)
+ 				peer.StagePackets(elemsForPeer)
+ 				peer.SendStagedPackets()
+ 			} else {
 diff --git a/device/sorter.go b/device/sorter.go
 new file mode 100644
-index 0000000..0458830
+index 0000000..79c9a12
 --- /dev/null
 +++ b/device/sorter.go
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,42 @@
 +/* SPDX-License-Identifier: MIT
 + *
 + * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
@@ -75,6 +354,10 @@ index 0000000..0458830
 +	if networks.Len() == 0 {
 +		if s := device.direct.Swap(nil); s != nil {
 +			s.Close()
++			// what it carried stays in the device's data counts (data_rx_bytes never goes back)
++			rx, tx := s.Bytes()
++			device.dataRx.Add(rx)
++			device.dataTx.Add(tx)
 +		}
 +		device.log.Verbosef("UAPI: No networks are opened directly")
 +		return
@@ -94,10 +377,10 @@ index 0000000..0458830
 +}
 diff --git a/device/sorter_test.go b/device/sorter_test.go
 new file mode 100644
-index 0000000..75da27b
+index 0000000..cdabc07
 --- /dev/null
 +++ b/device/sorter_test.go
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,203 @@
 +/* SPDX-License-Identifier: MIT
 + *
 + * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
@@ -111,6 +394,7 @@ index 0000000..75da27b
 +	"net"
 +	"net/netip"
 +	"strconv"
++	"strings"
 +	"syscall"
 +	"testing"
 +	"time"
@@ -255,6 +539,29 @@ index 0000000..75da27b
 +		t.Fatalf("echo %q, %v", got, err)
 +	}
 +
++	// the device tells what the sorter carried, next to the peers' counts
++	var get strings.Builder
++	if err := dev.IpcGetOperation(&get); err != nil {
++		t.Fatal(err)
++	}
++	var directRx, directTx uint64
++	for _, line := range strings.Split(get.String(), "\n") {
++		if v, ok := strings.CutPrefix(line, "direct_rx_bytes="); ok {
++			directRx, _ = strconv.ParseUint(v, 10, 64)
++		}
++		if v, ok := strings.CutPrefix(line, "direct_tx_bytes="); ok {
++			directTx, _ = strconv.ParseUint(v, 10, 64)
++		}
++	}
++	if directRx < uint64(len(msg)) || directTx < uint64(len(msg)) {
++		t.Errorf("direct_rx_bytes=%d direct_tx_bytes=%d after %d bytes each way", directRx, directTx, len(msg))
++	}
++	// the apps' data: here all of it went directly (datacount.go)
++	dataRx, dataTx := testDataCounts(t, dev)
++	if dataRx != directRx || dataTx != directTx {
++		t.Errorf("data_rx_bytes=%d data_tx_bytes=%d, the direct path's %d and %d", dataRx, dataTx, directRx, directTx)
++	}
++
 +	// settings: an IPv6 network is refused; replace_direct_networks alone stops the sorter
 +	if err := dev.IpcSet("direct_network=2001:db8::/32\n"); err == nil {
 +		t.Error("an IPv6 direct_network was taken")
@@ -271,13 +578,37 @@ index 0000000..75da27b
 +	if dev.direct.Load() != nil {
 +		t.Error("the sorter lives on after replace_direct_networks")
 +	}
++	// what the closed sorter carried stays counted
++	if rx, tx := testDataCounts(t, dev); rx < dataRx || tx < dataTx {
++		t.Errorf("data counts went back with the sorter closed: %d, %d after %d, %d", rx, tx, dataRx, dataTx)
++	}
 +	t.Logf("site %v:%s", site, strconv.Itoa(int(port)))
 +}
 diff --git a/device/uapi.go b/device/uapi.go
-index 4fc162e..619cb89 100644
+index 4fc162e..8f7dc2b 100644
 --- a/device/uapi.go
 +++ b/device/uapi.go
-@@ -543,6 +543,21 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string)
+@@ -188,6 +188,19 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
+ 		boolf("random_trailers", device.randomTrailers.Load())
+ 		boolf("disable_cookies", device.disableCookies.Load())
+ 
++		// what the sorter carried directly, past the peers (sorter.go), and the apps' data both ways
++		// it went, through the peers and directly (datacount.go): the speed the app shows
++		dataRx, dataTx := device.dataRx.Load(), device.dataTx.Load()
++		if direct := device.direct.Load(); direct != nil {
++			rx, tx := direct.Bytes()
++			sendf("direct_rx_bytes=%d", rx)
++			sendf("direct_tx_bytes=%d", tx)
++			dataRx += rx
++			dataTx += tx
++		}
++		sendf("data_rx_bytes=%d", dataRx)
++		sendf("data_tx_bytes=%d", dataTx)
++
+ 		for _, peer := range device.peers.keyMap {
+ 			// Serialize peer state.
+ 			peer.handshake.mutex.RLock()
+@@ -543,6 +556,21 @@ func (device *Device) handleDeviceLine(ipcDev *ipcSetDevice, key, value string)
  		device.log.Verbosef("UAPI: Updating disable cookies")
  		device.disableCookies.Store(val)
  
@@ -299,7 +630,7 @@ index 4fc162e..619cb89 100644
  	default:
  		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI device key: %v", key)
  	}
-@@ -802,6 +817,11 @@ type ipcSetDevice struct {
+@@ -802,6 +830,11 @@ type ipcSetDevice struct {
  		transport uint32
  	}
  	headerProtectionKey HeaderCipherKey
@@ -311,7 +642,7 @@ index 4fc162e..619cb89 100644
  }
  
  func (d *ipcSetDevice) fromDevice(device *Device) {
-@@ -873,5 +893,9 @@ func (d *ipcSetDevice) mergeWithDevice(device *Device) error {
+@@ -873,5 +906,9 @@ func (d *ipcSetDevice) mergeWithDevice(device *Device) error {
  	device.log.Verbosef("UAPI: Updating header protection key")
  	device.headerProtection.key = d.headerProtectionKey
  
@@ -379,6 +710,402 @@ index 0000000..f6a3b48
 +		return err
 +	}
 +	return serr
++}
+diff --git a/sorter/detour.go b/sorter/detour.go
+new file mode 100644
+index 0000000..202ab29
+--- /dev/null
++++ b/sorter/detour.go
+@@ -0,0 +1,390 @@
++/* SPDX-License-Identifier: MIT
++ *
++ * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
++ */
++
++package sorter
++
++import (
++	"encoding/binary"
++	"sort"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"gvisor.dev/gvisor/pkg/tcpip/header"
++	"gvisor.dev/gvisor/pkg/tcpip/stack"
++)
++
++const (
++	// so many addresses on one TCP port that did not open directly, with none on it that did:
++	// the computer itself keeps that port from opening directly (an antivirus that takes the
++	// connections to 80 and 443 over, zapret), and the whole port goes through the VPN
++	portFailures = 3
++	// so many addresses that did not open directly, with nothing at all that did: everything
++	// goes through the VPN
++	allFailures = 5
++
++	// addresses tried at once in the background while a TCP port, or everything, goes through the VPN
++	probeBatch = 3
++	// once one of them has opened, what kept them from opening is gone: the rest are tried at once
++	probeAfterHeal = 32
++
++	protoTCP = uint8(header.TCPProtocolNumber)
++	protoUDP = uint8(header.UDPProtocolNumber)
++)
++
++var (
++	// how long a TCP port, or everything, goes through the VPN before one new connection tries
++	// directly again: what kept it from opening directly may be gone (zapret turned off), or the
++	// addresses that did not open were only sites that were down. A UDP address waits as long.
++	retryDirect = 10 * time.Minute
++
++	// how often the sorter tries the TCP addresses that did not open directly again, in the
++	// background, with a plain connection closed at once (detour.probes): the one who turned
++	// zapret off, or answered the antivirus, should not have to wait for a connection of his own
++	healEvery = 10 * time.Second
++	// an address that goes through the VPN alone (nothing wider does) is tried less and less
++	// often: a site that is down is not worth a try every healEvery
++	maxProbeGap = 5 * time.Minute
++)
++
++// detour is what goes through the VPN instead because it did not open directly: an address
++// whose connection did not open (no answer, refused, or the computer kept it from opening), a
++// TCP port on which several addresses did not open and none did, or everything once nothing
++// opens directly at all. New connections there go to the peer; the ones the sorter carries
++// stay with it. What went through the VPN is tried directly again: the addresses in the
++// background (probes), a port or everything also by one new connection now and then
++// (retryDirect); UDP addresses simply after retryDirect.
++type detour struct {
++	on atomic.Bool // anything goes through the VPN instead: only then Takes looks further
++
++	mu        sync.Mutex
++	all       bool
++	allSince  time.Time              // since when everything goes through the VPN, or was last tried
++	addrs     map[uint32]*missedAddr // addresses whose TCP connection did not open directly
++	udpAddrs  map[uint32]time.Time   // addresses whose UDP flow got no answer: since when
++	ports     map[uint16]time.Time   // TCP ports that do not open directly here: since when, or the last try
++	tries     map[uint16]*portTries  // per TCP port: addresses opened and not opened on it
++	opens     int                    // flows that opened directly, any port or protocol
++	misses    int                    // addresses that did not open directly
++	flows     map[flowKey]struct{}   // the flows the sorter is opening or carries
++	flowsAddr map[uint32]int         // how many of them go to each address
++	trial     flowKey                // the connection that tries directly again, since trialAt
++	trialAt   time.Time
++}
++
++// missedAddr is an address whose TCP connection did not open directly
++type missedAddr struct {
++	port   uint16        // the port it did not open on: where the tries in the background go
++	since  time.Time     // when it did not open
++	probed time.Time     // when it was last tried in the background (zero: not yet)
++	gap    time.Duration // how long before the next try while only this address goes through the VPN
++}
++
++type portTries struct{ opened, missed int }
++
++// flowKey is a flow as the packets of the app's side name it: protocol, the app's address and
++// port, the site's address and port.
++type flowKey struct {
++	proto             uint8
++	app, site         uint32
++	appPort, sitePort uint16
++}
++
++// flowOf is the flow of a connection the stack hands over (its local side is the site's).
++func flowOf(proto uint8, id stack.TransportEndpointID) flowKey {
++	return flowKey{
++		proto:    proto,
++		app:      addr4(id.RemoteAddress.As4()),
++		appPort:  id.RemotePort,
++		site:     addr4(id.LocalAddress.As4()),
++		sitePort: id.LocalPort,
++	}
++}
++
++// takes reports whether a packet to one of the networks still goes to the sorter now that
++// something goes through the VPN instead: one of a flow the sorter carries does, a new one
++// does unless its address, its TCP port or everything goes through the VPN - or it is the one
++// that tries directly again.
++func (d *detour) takes(packet []byte) bool {
++	proto := packet[9]
++	site := binary.BigEndian.Uint32(packet[16:20])
++	ihl := int(packet[0]&0x0f) * 4
++	later := binary.BigEndian.Uint16(packet[6:8])&0x1fff != 0
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if later || ihl < header.IPv4MinimumSize || len(packet) < ihl+4 {
++		// no ports here (a fragment after the first): it follows the address
++		return d.flowsAddr[site] > 0 || !(d.all || d.missedLocked(site, proto))
++	}
++	flow := flowKey{
++		proto:    proto,
++		app:      binary.BigEndian.Uint32(packet[12:16]),
++		appPort:  binary.BigEndian.Uint16(packet[ihl:]),
++		site:     site,
++		sitePort: binary.BigEndian.Uint16(packet[ihl+2:]),
++	}
++	if _, ok := d.flows[flow]; ok {
++		return true
++	}
++	return !d.divertedLocked(flow) || d.tryAgainLocked(flow, isSYN(packet))
++}
++
++// missedLocked: an earlier flow of this protocol to the address did not open directly. A TCP
++// address stays so until it is tried in the background and opens; a UDP flow cannot be tried
++// without a site that answers, so its address goes through the VPN for retryDirect only.
++func (d *detour) missedLocked(site uint32, proto uint8) bool {
++	if proto == protoTCP {
++		_, ok := d.addrs[site]
++		return ok
++	}
++	since, ok := d.udpAddrs[site]
++	if ok && time.Since(since) >= retryDirect {
++		delete(d.udpAddrs, site)
++		d.refreshLocked()
++		return false
++	}
++	return ok
++}
++
++// refreshLocked sets whether anything goes through the VPN instead
++func (d *detour) refreshLocked() {
++	d.on.Store(d.all || len(d.addrs) > 0 || len(d.udpAddrs) > 0 || len(d.ports) > 0)
++}
++
++func (d *detour) divertedLocked(flow flowKey) bool {
++	if d.all || d.missedLocked(flow.site, flow.proto) {
++		return true
++	}
++	_, port := d.ports[flow.sitePort]
++	return port && flow.proto == protoTCP
++}
++
++// tryAgainLocked lets a new TCP connection (its SYN) that goes through the VPN for its port or
++// for everything, not for its address, try directly once retryDirect has passed: one at a time.
++func (d *detour) tryAgainLocked(flow flowKey, syn bool) bool {
++	if flow.proto != protoTCP || !syn || d.missedLocked(flow.site, protoTCP) {
++		return false
++	}
++	if !d.trialAt.IsZero() && time.Since(d.trialAt) < 2*openTimeout {
++		return false // one is trying
++	}
++	since := d.allSince
++	if !d.all {
++		since = d.ports[flow.sitePort]
++	}
++	if time.Since(since) < retryDirect {
++		return false
++	}
++	d.trial, d.trialAt = flow, time.Now()
++	return true
++}
++
++func (d *detour) trying(flow flowKey) bool {
++	return !d.trialAt.IsZero() && flow == d.trial
++}
++
++// carry makes a flow the sorter's while it opens and lives (release ends that). False: it
++// goes through the VPN instead, or the sorter has it already.
++func (d *detour) carry(flow flowKey) bool {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if _, ok := d.flows[flow]; ok {
++		return false
++	}
++	if d.divertedLocked(flow) && !d.trying(flow) {
++		return false
++	}
++	if d.flows == nil {
++		d.flows = make(map[flowKey]struct{})
++		d.flowsAddr = make(map[uint32]int)
++	}
++	d.flows[flow] = struct{}{}
++	d.flowsAddr[flow.site]++
++	return true
++}
++
++func (d *detour) release(flow flowKey) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if _, ok := d.flows[flow]; !ok {
++		return
++	}
++	delete(d.flows, flow)
++	if d.flowsAddr[flow.site]--; d.flowsAddr[flow.site] <= 0 {
++		delete(d.flowsAddr, flow.site)
++	}
++}
++
++// opened counts a flow that opened directly: a TCP connection, a UDP flow the site answered.
++// The one that tried directly again brings its port, or everything, back: then it tells which
++// (all: everything), and the counts start over, so the computer that keeps them from opening
++// again is found as at the start.
++func (d *detour) opened(flow flowKey) (again, all bool) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	d.opens++
++	if flow.proto == protoTCP {
++		d.port(flow.sitePort).opened++
++	}
++	if !d.trying(flow) {
++		return
++	}
++	d.trialAt = time.Time{}
++	_, port := d.ports[flow.sitePort]
++	if !d.all && !port {
++		return
++	}
++	again, all = true, d.all
++	d.all = false
++	delete(d.ports, flow.sitePort)
++	d.tries[flow.sitePort] = &portTries{}
++	d.opens, d.misses = 0, 0
++	d.refreshLocked()
++	return
++}
++
++// failed sends the address of a flow that did not open directly through the VPN from now on,
++// and its TCP port, or everything, once nothing opens directly there. It tells whether this was
++// the first address, and whether the port or everything went through the VPN by it.
++func (d *detour) failed(flow flowKey) (first, port, all bool) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if d.trying(flow) {
++		// the try directly again did not open either: the next one in retryDirect
++		d.trialAt = time.Time{}
++		if d.all {
++			d.allSince = time.Now()
++		} else if _, ok := d.ports[flow.sitePort]; ok {
++			d.ports[flow.sitePort] = time.Now()
++		}
++	}
++	if d.missedLocked(flow.site, flow.proto) {
++		return // a connection beside it said so already
++	}
++	now := time.Now()
++	if flow.proto == protoTCP {
++		if d.addrs == nil {
++			d.addrs = make(map[uint32]*missedAddr)
++		}
++		d.addrs[flow.site] = &missedAddr{port: flow.sitePort, since: now, gap: healEvery}
++	} else {
++		if d.udpAddrs == nil {
++			d.udpAddrs = make(map[uint32]time.Time)
++		}
++		d.udpAddrs[flow.site] = now
++	}
++	if d.ports == nil {
++		d.ports = make(map[uint16]time.Time)
++	}
++	d.misses++
++	first = d.misses == 1 && len(d.addrs)+len(d.udpAddrs) == 1
++	if flow.proto == protoTCP {
++		p := d.port(flow.sitePort)
++		p.missed++
++		if _, gone := d.ports[flow.sitePort]; !gone && p.opened == 0 && p.missed >= portFailures {
++			d.ports[flow.sitePort] = now
++			port = true
++		}
++	}
++	if !d.all && d.opens == 0 && d.misses >= allFailures {
++		d.all, d.allSince = true, now
++		all = true
++	}
++	d.refreshLocked()
++	return
++}
++
++// probes picks the TCP addresses to try directly in the background now, at most limit of them:
++// the ones never tried first, then the ones tried longest ago, the newest failures first. While
++// a port or everything goes through the VPN every address is due (the cause may be gone, and
++// any one that opens brings that back); an address that goes through the VPN alone is due
++// when its gap has passed, unless force asks for all.
++func (d *detour) probes(limit int, force bool) []flowKey {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if len(d.addrs) == 0 {
++		return nil
++	}
++	wide := force || d.all || len(d.ports) > 0
++	now := time.Now()
++	due := make([]uint32, 0, len(d.addrs))
++	for addr, m := range d.addrs {
++		if wide || now.Sub(m.probed) >= m.gap {
++			due = append(due, addr)
++		}
++	}
++	sort.Slice(due, func(i, j int) bool {
++		a, b := d.addrs[due[i]], d.addrs[due[j]]
++		if !a.probed.Equal(b.probed) {
++			return a.probed.Before(b.probed)
++		}
++		return a.since.After(b.since)
++	})
++	if len(due) > limit {
++		due = due[:limit]
++	}
++	picked := make([]flowKey, 0, len(due))
++	for _, addr := range due {
++		m := d.addrs[addr]
++		m.probed = now
++		picked = append(picked, flowKey{proto: protoTCP, site: addr, sitePort: m.port})
++	}
++	return picked
++}
++
++// probeFailed: a try in the background did not open. An address that goes through the VPN alone
++// is tried less often from now on.
++func (d *detour) probeFailed(flow flowKey) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if m := d.addrs[flow.site]; m != nil {
++		if m.gap *= 2; m.gap > maxProbeGap {
++			m.gap = maxProbeGap
++		}
++	}
++}
++
++// healed: a try in the background opened directly. The address comes back, and so do its TCP
++// port, or everything, if they went through the VPN because nothing opened; the counts start
++// over as in opened.
++func (d *detour) healed(flow flowKey) (again, all bool) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	delete(d.addrs, flow.site)
++	d.opens++
++	d.port(flow.sitePort).opened++
++	_, port := d.ports[flow.sitePort]
++	if d.all || port {
++		again, all = true, d.all
++		d.all = false
++		delete(d.ports, flow.sitePort)
++		d.tries[flow.sitePort] = &portTries{}
++		d.opens, d.misses = 0, 0
++	}
++	d.refreshLocked()
++	return
++}
++
++func (d *detour) port(n uint16) *portTries {
++	if d.tries == nil {
++		d.tries = make(map[uint16]*portTries)
++	}
++	p := d.tries[n]
++	if p == nil {
++		p = &portTries{}
++		d.tries[n] = p
++	}
++	return p
++}
++
++// isSYN reports whether an IPv4 packet is a TCP SYN that opens a connection (no ACK).
++func isSYN(packet []byte) bool {
++	ihl := int(packet[0]&0x0f) * 4
++	if packet[9] != protoTCP || ihl < header.IPv4MinimumSize || len(packet) < ihl+14 ||
++		binary.BigEndian.Uint16(packet[6:8])&0x1fff != 0 {
++		return false
++	}
++	return header.TCPFlags(packet[ihl+13])&(header.TCPFlagSyn|header.TCPFlagAck) == header.TCPFlagSyn
 +}
 diff --git a/sorter/set.go b/sorter/set.go
 new file mode 100644
@@ -454,10 +1181,10 @@ index 0000000..306d627
 +}
 diff --git a/sorter/sorter.go b/sorter/sorter.go
 new file mode 100644
-index 0000000..9a5d4a9
+index 0000000..ece7a01
 --- /dev/null
 +++ b/sorter/sorter.go
-@@ -0,0 +1,458 @@
+@@ -0,0 +1,647 @@
 +/* SPDX-License-Identifier: MIT
 + *
 + * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
@@ -469,11 +1196,14 @@ index 0000000..9a5d4a9
 +// packet never reaches a peer. A user-space TCP/IP stack (gVisor) plays the far side of the
 +// app's connection, and the sorter carries the data over an ordinary socket that the platform
 +// keeps out of the VPN (SetDialControl). Everything else goes to the peers as before, and no
-+// route of the system is needed, however many networks there are.
++// route of the system is needed, however many networks there are. What the computer does not
++// let open directly (an antivirus that takes connections over, zapret, a firewall) goes to the
++// peer instead, through the VPN (detour.go).
 +package sorter
 +
 +import (
 +	"context"
++	"encoding/binary"
 +	"errors"
 +	"fmt"
 +	"io"
@@ -496,11 +1226,18 @@ index 0000000..9a5d4a9
 +	"gvisor.dev/gvisor/pkg/waiter"
 +)
 +
++var (
++	// how long the direct socket of a TCP connection may take to open; one that does not open
++	// by then goes through the VPN. A site answers in well under a second, and the app sends
++	// its SYN again 1 and 3 s after the first (Windows, Android): the one at 3 s goes there.
++	openTimeout = 2500 * time.Millisecond
++	// how long a UDP flow (a QUIC handshake, a DNS query) may wait for the site's first answer;
++	// one that has none by then ends, and the app's next datagrams go through the VPN
++	answerTimeout = 2500 * time.Millisecond
++)
++
 +const (
 +	nicID = 1
-+	// how long the direct socket of a TCP connection may take to open: the app's SYN waits for
-+	// it, so a site that refuses or does not answer looks the same to the app
-+	dialTimeout = 15 * time.Second
 +	// TCP connections that may wait for their direct socket at once (more SYNs are dropped
 +	// and come again)
 +	maxPendingTCP = 512
@@ -567,8 +1304,17 @@ index 0000000..9a5d4a9
 +	open   map[io.Closer]struct{} // every live connection: closed with the sorter
 +	closed bool
 +
++	// the flows the sorter carries, and what goes through the VPN instead (detour.go)
++	detour detour
++
 +	tcpOpened, udpOpened, failed atomic.Uint64
++	viaVPN                       atomic.Uint64 // TCP connections that went through the VPN instead
 +	writeErrors                  atomic.Uint64
++
++	// the data the direct connections carried, each byte once: what the sites sent the apps (rx) and
++	// the apps the sites (tx). Not the packets: the stack sends again what the tunnel device dropped
++	// (a full ring on Windows drops without an error), and counting those showed 2-3 times the speed
++	rxBytes, txBytes atomic.Uint64
 +}
 +
 +// New starts a sorter that hands the packets of the connections it plays to write - the tunnel
@@ -626,10 +1372,19 @@ index 0000000..9a5d4a9
 +	udpForwarder := udp.NewForwarder(s.stack, s.handleUDP)
 +	s.stack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 +
-+	s.wg.Add(2)
++	s.wg.Add(3)
 +	go s.toTunnel()
 +	go s.report()
++	go s.heal()
 +	return s, nil
++}
++
++// Bytes tells the data the direct connections carried so far: rx what the sites sent the apps, tx
++// what the apps sent them. With a peer's rx_bytes and tx_bytes (its packets: a few per cent more
++// for the headers) it is what the device's apps get and send: the speed the app shows (the peer's
++// alone left out every site the device opened directly).
++func (s *Sorter) Bytes() (rx, tx uint64) {
++	return s.rxBytes.Load(), s.txBytes.Load()
 +}
 +
 +// SetNetworks makes networks the ones whose connections the sorter opens itself.
@@ -638,7 +1393,9 @@ index 0000000..9a5d4a9
 +}
 +
 +// Takes reports whether an IPv4 packet read from the tunnel device is the sorter's: TCP or UDP
-+// to one of its networks. Any other protocol (ICMP: a ping) goes to the peer as before.
++// to one of its networks, unless the computer kept such a connection from opening directly
++// (then new ones go to the peer, and the ones the sorter carries stay with it). Any other
++// protocol (ICMP: a ping) goes to the peer as before.
 +func (s *Sorter) Takes(packet []byte) bool {
 +	if len(packet) < header.IPv4MinimumSize {
 +		return false
@@ -647,7 +1404,16 @@ index 0000000..9a5d4a9
 +		return false
 +	}
 +	networks := s.networks.Load()
-+	return networks != nil && networks.Contains(packet[16:20])
++	if networks == nil || !networks.Contains(packet[16:20]) {
++		return false
++	}
++	if s.detour.on.Load() && !s.detour.takes(packet) {
++		if isSYN(packet) {
++			s.viaVPN.Add(1)
++		}
++		return false
++	}
++	return true
 +}
 +
 +// Deliver hands the sorter a packet it takes. The packet is copied: its buffer may be reused.
@@ -730,20 +1496,86 @@ index 0000000..9a5d4a9
 +	defer s.wg.Done()
 +	ticker := time.NewTicker(time.Minute)
 +	defer ticker.Stop()
-+	var last [4]uint64
++	var last [5]uint64
 +	for {
 +		select {
 +		case <-s.ctx.Done():
 +			return
 +		case <-ticker.C:
 +		}
-+		now := [4]uint64{s.tcpOpened.Load(), s.udpOpened.Load(), s.failed.Load(), s.writeErrors.Load()}
++		now := [5]uint64{s.tcpOpened.Load(), s.udpOpened.Load(), s.failed.Load(), s.viaVPN.Load(), s.writeErrors.Load()}
 +		if now != last {
-+			s.logf("Sorter: opened directly %d TCP connections and %d UDP flows so far, %d did not open, %d writes into the tunnel failed",
-+				now[0], now[1], now[2], now[3])
++			s.logf("Sorter: opened directly %d TCP connections and %d UDP flows so far, %d did not open, %d TCP connections went through the VPN instead, %d writes into the tunnel failed",
++				now[0], now[1], now[2], now[3], now[4])
 +			last = now
 +		}
 +	}
++}
++
++// heal tries the TCP addresses that did not open directly again now and then (detour.probes):
++// a plain connection, closed at once. What kept them from opening may be gone - zapret turned
++// off, an antivirus that waited for an answer given - and nobody should have to wait at a site
++// for the sorter to find out: the next connection of the app simply goes directly. When one
++// opens, the rest are tried at once.
++func (s *Sorter) heal() {
++	defer s.wg.Done()
++	ticker := time.NewTicker(healEvery)
++	defer ticker.Stop()
++	for {
++		select {
++		case <-s.ctx.Done():
++			return
++		case <-ticker.C:
++		}
++		if !s.detour.on.Load() {
++			continue
++		}
++		if s.probe(s.detour.probes(probeBatch, false)) > 0 && s.ctx.Err() == nil {
++			s.probe(s.detour.probes(probeAfterHeal, true))
++		}
++	}
++}
++
++// probe tries these addresses directly, together, and tells how many opened. Nothing about them
++// is logged but how many came back, and what that brought back with them.
++func (s *Sorter) probe(targets []flowKey) int {
++	var wg sync.WaitGroup
++	var opened atomic.Int64
++	var port, all atomic.Bool
++	var portNumber atomic.Uint32
++	for _, target := range targets {
++		wg.Add(1)
++		go func(t flowKey) {
++			defer wg.Done()
++			ctx, cancel := context.WithTimeout(s.ctx, openTimeout)
++			c, err := dial(ctx, "tcp4", siteSide(t))
++			cancel()
++			if err != nil {
++				s.detour.probeFailed(t)
++				return
++			}
++			c.Close()
++			opened.Add(1)
++			again, wholly := s.detour.healed(t)
++			if again {
++				port.Store(true)
++				portNumber.Store(uint32(t.sitePort))
++				if wholly {
++					all.Store(true)
++				}
++			}
++		}(target)
++	}
++	wg.Wait()
++	switch {
++	case all.Load():
++		s.logf("Sorter: connections open directly again on this computer: they go directly from now on")
++	case port.Load():
++		s.logf("Sorter: TCP port %d opens directly again on this computer: it goes directly from now on", portNumber.Load())
++	case opened.Load() > 0:
++		s.logf("Sorter: %d addresses that did not open directly open again: they go directly from now on", opened.Load())
++	}
++	return int(opened.Load())
 +}
 +
 +func (s *Sorter) track(conns ...io.Closer) bool {
@@ -773,21 +1605,48 @@ index 0000000..9a5d4a9
 +	return netip.AddrPortFrom(netip.AddrFrom4(id.LocalAddress.As4()), id.LocalPort).String()
 +}
 +
++// siteSide is the site a flow goes to, as an address to dial
++func siteSide(flow flowKey) string {
++	var a [4]byte
++	binary.BigEndian.PutUint32(a[:], flow.site)
++	return netip.AddrPortFrom(netip.AddrFrom4(a), flow.sitePort).String()
++}
++
 +// handleTCP opens an app's TCP connection to one of the networks: the direct socket to the site
-+// first, then the app's side - so a site that refuses, or does not answer, is refused to the
-+// app as well. The stack calls it in a goroutine of its own.
++// first, then the app's side. One that does not open directly in openTimeout - a site that does
++// not answer, or refuses, or the computer keeps it from opening - gets no answer at all: the
++// app sends its SYN again, and that one goes through the VPN (detour.go), where a site that
++// refuses refuses it again. The stack calls it in a goroutine of its own.
 +func (s *Sorter) handleTCP(r *tcp.ForwarderRequest) {
-+	ctx, cancel := context.WithTimeout(s.ctx, dialTimeout)
-+	out, err := dial(ctx, "tcp4", farSide(r.ID()))
++	id := r.ID()
++	flow := flowOf(protoTCP, id)
++	if !s.detour.carry(flow) {
++		// its way went through the VPN after this SYN came: the next one goes there
++		r.Complete(false)
++		return
++	}
++	ctx, cancel := context.WithTimeout(s.ctx, openTimeout)
++	out, err := dial(ctx, "tcp4", farSide(id))
 +	cancel()
 +	if err != nil {
-+		s.failed.Add(1)
-+		r.Complete(true)
++		if s.ctx.Err() == nil {
++			s.notOpened(flow)
++			s.failed.Add(1)
++		}
++		s.detour.release(flow)
++		r.Complete(false)
 +		return
++	}
++	// opened directly: counted before the app learns it
++	if again, all := s.detour.opened(flow); again && all {
++		s.logf("Sorter: connections open directly again on this computer: they go directly from now on")
++	} else if again {
++		s.logf("Sorter: TCP port %d opens directly again on this computer: it goes directly from now on", flow.sitePort)
 +	}
 +	var wq waiter.Queue
 +	ep, terr := r.CreateEndpoint(&wq)
 +	if terr != nil {
++		s.detour.release(flow)
 +		r.Complete(true)
 +		out.Close()
 +		return
@@ -795,11 +1654,30 @@ index 0000000..9a5d4a9
 +	r.Complete(false)
 +	in := gonet.NewTCPConn(&wq, ep)
 +	if !s.track(in, out) {
++		s.detour.release(flow)
 +		return
 +	}
 +	s.tcpOpened.Add(1)
 +	s.relayTCP(in, out.(*net.TCPConn))
 +	s.untrack(in, out)
++	s.detour.release(flow)
++}
++
++// notOpened sends what a flow went to through the VPN from now on (detour.failed) and logs
++// the first such flow and what goes through the VPN as a whole: no addresses in the log.
++func (s *Sorter) notOpened(flow flowKey) {
++	first, port, all := s.detour.failed(flow)
++	if first {
++		s.logf("Sorter: a connection did not open directly: it and the next ones to its address go through the VPN")
++	}
++	if port {
++		s.logf("Sorter: TCP port %d does not open directly on this computer (%d addresses tried, none opened): it goes through the VPN, tried directly again every %v",
++			flow.sitePort, portFailures, healEvery)
++	}
++	if all {
++		s.logf("Sorter: nothing opens directly on this computer (%d addresses tried, none opened): all of it goes through the VPN, tried directly again every %v",
++			allFailures, healEvery)
++	}
 +}
 +
 +// relayTCP carries a connection's data both ways until both have finished, or one has and the
@@ -809,12 +1687,12 @@ index 0000000..9a5d4a9
 +	done := make(chan struct{})
 +	go func() {
 +		defer close(done)
-+		s.pipe(out, in, &halfClosed) // the app's data to the site
++		s.pipe(out, in, &halfClosed, &s.txBytes) // the app's data to the site
 +		out.CloseWrite()
 +		halfClosed.Store(true)
 +		out.SetReadDeadline(time.Now().Add(halfClosedTimeout))
 +	}()
-+	s.pipe(in, out, &halfClosed) // the site's data to the app
++	s.pipe(in, out, &halfClosed, &s.rxBytes) // the site's data to the app
 +	in.CloseWrite()
 +	halfClosed.Store(true)
 +	in.SetReadDeadline(time.Now().Add(halfClosedTimeout))
@@ -823,9 +1701,9 @@ index 0000000..9a5d4a9
 +	out.Close()
 +}
 +
-+// pipe copies src to dst until src ends or either fails; once the other way has finished, each
-+// read moves the deadline of the next one on.
-+func (s *Sorter) pipe(dst io.Writer, src net.Conn, halfClosed *atomic.Bool) {
++// pipe copies src to dst until src ends or either fails, adding what it wrote to counted; once the
++// other way has finished, each read moves the deadline of the next one on.
++func (s *Sorter) pipe(dst io.Writer, src net.Conn, halfClosed *atomic.Bool, counted *atomic.Uint64) {
 +	b := s.copies.Get().(*[]byte)
 +	defer s.copies.Put(b)
 +	for {
@@ -834,6 +1712,7 @@ index 0000000..9a5d4a9
 +			if _, werr := dst.Write((*b)[:n]); werr != nil {
 +				return
 +			}
++			counted.Add(uint64(n))
 +			if halfClosed.Load() {
 +				src.SetReadDeadline(time.Now().Add(halfClosedTimeout))
 +			}
@@ -846,41 +1725,61 @@ index 0000000..9a5d4a9
 +
 +// handleUDP opens an app's UDP flow to one of the networks (a QUIC connection, a DNS query):
 +// the stack's endpoint for it at once - the packet that began the flow goes into it - and the
-+// direct socket next. The stack calls it on its way in, so nothing here may wait.
++// direct socket next. A flow the site has not answered in answerTimeout ends, and the app's next
++// datagrams go through the VPN (detour.go). The stack calls it on its way in, so nothing here
++// may wait.
 +func (s *Sorter) handleUDP(r *udp.ForwarderRequest) {
++	id := r.ID()
++	flow := flowOf(protoUDP, id)
++	if !s.detour.carry(flow) {
++		return // its way went through the VPN: this datagram is dropped, the next ones go there
++	}
 +	var wq waiter.Queue
 +	ep, terr := r.CreateEndpoint(&wq)
 +	if terr != nil {
++		s.detour.release(flow)
 +		return
 +	}
 +	in := gonet.NewUDPConn(s.stack, &wq, ep)
-+	id := r.ID()
 +	to := farSide(id)
 +	idle := udpIdle
 +	if id.LocalPort == 53 {
 +		idle = dnsUDPIdle
 +	}
 +	go func() {
++		defer s.detour.release(flow)
 +		out, err := dial(s.ctx, "udp4", to)
 +		if err != nil {
-+			s.failed.Add(1)
++			if s.ctx.Err() == nil {
++				s.notOpened(flow)
++				s.failed.Add(1)
++			}
 +			in.Close()
 +			return
 +		}
 +		if !s.track(in, out) {
 +			return
 +		}
-+		s.udpOpened.Add(1)
-+		relayUDP(in, out, idle)
++		answered := relayUDP(in, out, idle, answerTimeout, func() {
++			s.udpOpened.Add(1)
++			s.detour.opened(flow) // a UDP flow never tries again: nothing to log
++		}, &s.rxBytes, &s.txBytes)
 +		s.untrack(in, out)
++		if !answered && s.ctx.Err() == nil {
++			s.notOpened(flow)
++			s.failed.Add(1)
++		}
 +	}()
 +}
 +
 +// relayUDP carries a flow's datagrams both ways until neither way carried any for idle, or one
-+// way fails; then closes it.
-+func relayUDP(in *gonet.UDPConn, out net.Conn, idle time.Duration) {
++// way fails, or the site has not answered within answerWithin; then closes it. answered is
++// called at the site's first datagram, and the result tells whether there was one. What it
++// carried goes to rx (the site's) and tx (the app's).
++func relayUDP(in *gonet.UDPConn, out net.Conn, idle, answerWithin time.Duration, answered func(), rx, tx *atomic.Uint64) bool {
 +	var last atomic.Int64
 +	last.Store(time.Now().UnixNano())
++	var got atomic.Bool
 +	var once sync.Once
 +	stop := func() {
 +		once.Do(func() {
@@ -888,13 +1787,20 @@ index 0000000..9a5d4a9
 +			out.Close()
 +		})
 +	}
-+	carry := func(dst, src net.Conn) {
++	carry := func(dst, src net.Conn, fromSite bool) {
 +		defer stop()
 +		b := make([]byte, udpBufferSize)
 +		for {
-+			src.SetReadDeadline(time.Now().Add(idle))
++			wait := idle
++			if fromSite && !got.Load() {
++				wait = answerWithin
++			}
++			src.SetReadDeadline(time.Now().Add(wait))
 +			n, err := src.Read(b)
 +			if err != nil {
++				if fromSite && !got.Load() {
++					return // no answer: the flow goes through the VPN
++				}
 +				var timeout net.Error
 +				if errors.As(err, &timeout) && timeout.Timeout() &&
 +					time.Since(time.Unix(0, last.Load())) < idle {
@@ -902,26 +1808,36 @@ index 0000000..9a5d4a9
 +				}
 +				return
 +			}
++			if fromSite && !got.Load() {
++				got.Store(true)
++				answered()
++			}
 +			last.Store(time.Now().UnixNano())
 +			if _, err := dst.Write(b[:n]); err != nil {
 +				return
++			}
++			if fromSite {
++				rx.Add(uint64(n))
++			} else {
++				tx.Add(uint64(n))
 +			}
 +		}
 +	}
 +	done := make(chan struct{})
 +	go func() {
 +		defer close(done)
-+		carry(out, in) // the app's datagrams to the site
++		carry(out, in, false) // the app's datagrams to the site
 +	}()
-+	carry(in, out) // the site's to the app
++	carry(in, out, true) // the site's to the app
 +	<-done
++	return got.Load()
 +}
 diff --git a/sorter/sorter_test.go b/sorter/sorter_test.go
 new file mode 100644
-index 0000000..cf3473d
+index 0000000..73686d3
 --- /dev/null
 +++ b/sorter/sorter_test.go
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,824 @@
 +/* SPDX-License-Identifier: MIT
 + *
 + * Copyright (C) 2026 LodestarVPN. All Rights Reserved.
@@ -958,6 +1874,7 @@ index 0000000..cf3473d
 +
 +var (
 +	siteDirect = netip.MustParseAddr("192.0.2.10")  // in the test's networks (TEST-NET-1)
++	siteOther  = netip.MustParseAddr("192.0.2.11")  // in them too
 +	siteAbroad = netip.MustParseAddr("192.0.2.200") // not in them
 +)
 +
@@ -974,8 +1891,12 @@ index 0000000..cf3473d
 +	cancel   context.CancelFunc
 +	listener net.Listener
 +	udpConn  net.PacketConn
-+	refused  atomic.Bool
-+	sites    atomic.Int64 // TCP connections the site has open
++	silent   net.PacketConn // a UDP site that never answers
++	refused  atomic.Bool    // direct sockets fail at once
++	noAnswer atomic.Bool    // direct TCP sockets wait for an answer that never comes
++	quietUDP atomic.Bool    // direct UDP sockets go to the silent site
++	dials    atomic.Int64   // direct sockets the sorter asked for
++	sites    atomic.Int64   // TCP connections the site has open
 +}
 +
 +func newRig(t *testing.T) *rig {
@@ -1017,15 +1938,28 @@ index 0000000..cf3473d
 +			r.udpConn.WriteTo(append([]byte("echo:"), b[:n]...), from)
 +		}
 +	}()
++	r.silent, err = net.ListenPacket("udp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
 +	tcpSite := r.listener.Addr().String()
 +	udpSite := r.udpConn.LocalAddr().String()
++	silentSite := r.silent.LocalAddr().String()
 +	dial = func(ctx context.Context, network, address string) (net.Conn, error) {
++		r.dials.Add(1)
 +		if r.refused.Load() {
 +			return nil, errors.New("refused by the test")
 +		}
 +		var d net.Dialer
 +		if strings.HasPrefix(network, "udp") {
++			if r.quietUDP.Load() {
++				return d.DialContext(ctx, network, silentSite)
++			}
 +			return d.DialContext(ctx, network, udpSite)
++		}
++		if r.noAnswer.Load() {
++			<-ctx.Done()
++			return nil, ctx.Err()
 +		}
 +		return d.DialContext(ctx, network, tcpSite)
 +	}
@@ -1093,12 +2027,77 @@ index 0000000..cf3473d
 +	r.apps.Close()
 +	r.listener.Close()
 +	r.udpConn.Close()
++	r.silent.Close()
 +}
 +
 +func (r *rig) dialTCP(to netip.Addr, port uint16) (*gonet.TCPConn, error) {
 +	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 +	defer cancel()
-+	return gonet.DialContextTCP(ctx, r.apps, tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(to.As4()), Port: port}, ipv4.ProtocolNumber)
++	return gonet.DialContextTCP(ctx, r.apps, fullAddr(to, port), ipv4.ProtocolNumber)
++}
++
++// tryTCP lets an app try a connection that is not to open directly, until the sorter has given
++// it up
++func (r *rig) tryTCP(to netip.Addr, port uint16) {
++	failed := r.sorter.failed.Load()
++	ctx, cancel := context.WithCancel(context.Background())
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		if c, err := gonet.DialContextTCP(ctx, r.apps, fullAddr(to, port), ipv4.ProtocolNumber); err == nil {
++			c.Close()
++		}
++	}()
++	ok := r.waitFor(func() bool { return r.sorter.failed.Load() > failed })
++	cancel() // the app gives up: no more SYNs of it
++	<-done
++	if !ok {
++		r.t.Fatalf("%v:%d: the sorter did not give the connection up", to, port)
++	}
++}
++
++// waitFor waits up to 3 s for cond
++func (r *rig) waitFor(cond func() bool) bool {
++	for deadline := time.Now().Add(3 * time.Second); !cond(); {
++		if time.Now().After(deadline) {
++			return false
++		}
++		time.Sleep(5 * time.Millisecond)
++	}
++	return true
++}
++
++func fullAddr(to netip.Addr, port uint16) tcpip.FullAddress {
++	return tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(to.As4()), Port: port}
++}
++
++// siteN is the n-th of some more addresses in the test's networks
++func siteN(n int) netip.Addr {
++	return netip.AddrFrom4([4]byte{192, 0, 2, byte(20 + n)})
++}
++
++// synTo and udpTo are the first packets of an app's new TCP connection and UDP flow
++func synTo(to netip.Addr, port uint16) []byte {
++	b := appPacket(6, to, port, 40)
++	b[20+12] = 5 << 4 // data offset
++	b[20+13] = 0x02   // SYN
++	return b
++}
++
++func udpTo(to netip.Addr, port uint16) []byte {
++	return appPacket(17, to, port, 28)
++}
++
++func appPacket(proto byte, to netip.Addr, port uint16, size int) []byte {
++	b := make([]byte, size)
++	b[0] = 0x45
++	b[9] = proto
++	copy(b[12:16], []byte{10, 7, 0, 2})
++	d := to.As4()
++	copy(b[16:20], d[:])
++	b[20], b[21] = 0x9c, 0x40 // the app's port 40000
++	b[22], b[23] = byte(port>>8), byte(port)
++	return b
 +}
 +
 +func TestSetContains(t *testing.T) {
@@ -1213,19 +2212,182 @@ index 0000000..cf3473d
 +		t.Fatalf("%d bytes back, the same: %v", n, bytes.Equal(h.Sum(nil), want[:]))
 +	}
 +	t.Logf("32 MB there and back in %v (%.0f Mbit/s each way)", elapsed, float64(size)*8/elapsed.Seconds()/1e6)
++	// the data each way, each byte once (not the packets: what the stack sends again is not counted)
++	if rx, tx := r.sorter.Bytes(); rx != size || tx != size {
++		t.Errorf("counted %d bytes from the site and %d to it for %d each way", rx, tx, size)
++	}
 +}
 +
-+func TestTCPRefused(t *testing.T) {
++// a connection that does not open directly gets no answer from the sorter: the app sends its
++// SYN again, and that one goes to the peer, as do new connections to that address; the other
++// addresses still open directly
++func TestTCPNotOpenedGoesThroughVPN(t *testing.T) {
 +	r := newRig(t)
 +	r.refused.Store(true)
 +	start := time.Now()
-+	c, err := r.dialTCP(siteDirect, 443)
++	ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Millisecond)
++	defer cancel()
++	c, err := gonet.DialContextTCP(ctx, r.apps, fullAddr(siteDirect, 443), ipv4.ProtocolNumber)
 +	if err == nil {
 +		c.Close()
-+		t.Fatal("a refused site connected")
++		t.Fatal("a site that did not open directly was answered by the sorter")
 +	}
-+	if time.Since(start) > 3*time.Second {
-+		t.Errorf("refused after %v: the app should learn at once", time.Since(start))
++	if elapsed := time.Since(start); elapsed < 1500*time.Millisecond {
++		t.Fatalf("the app learned in %v (%v): the sorter reset it instead of letting its SYN go through the VPN", elapsed, err)
++	}
++	if r.toPeer.Load() == 0 {
++		t.Error("the app's next SYN did not go to the peer")
++	}
++	if r.dials.Load() != 1 {
++		t.Errorf("%d direct sockets asked for, want 1", r.dials.Load())
++	}
++	if r.sorter.Takes(synTo(siteDirect, 443)) || r.sorter.Takes(synTo(siteDirect, 80)) {
++		t.Error("a new connection to that address is taken")
++	}
++	if !r.sorter.Takes(synTo(siteOther, 443)) {
++		t.Error("a connection to another address is not taken")
++	}
++	r.refused.Store(false)
++	c, err = r.dialTCP(siteOther, 443)
++	if err != nil {
++		t.Fatalf("another address: %v", err)
++	}
++	c.Close()
++	if r.sorter.failed.Load() != 1 || r.sorter.viaVPN.Load() == 0 {
++		t.Errorf("did not open %d, through the VPN %d", r.sorter.failed.Load(), r.sorter.viaVPN.Load())
++	}
++}
++
++// a site that does not answer at all: past openTimeout the same
++func TestTCPNoAnswerGoesThroughVPN(t *testing.T) {
++	defer func(d time.Duration) { openTimeout = d }(openTimeout)
++	openTimeout = 300 * time.Millisecond
++	r := newRig(t)
++	r.noAnswer.Store(true)
++	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
++	defer cancel()
++	if c, err := gonet.DialContextTCP(ctx, r.apps, fullAddr(siteDirect, 443), ipv4.ProtocolNumber); err == nil {
++		c.Close()
++		t.Fatal("a site that did not answer was answered by the sorter")
++	}
++	if r.toPeer.Load() == 0 {
++		t.Error("the app's next SYN did not go to the peer")
++	}
++	if r.sorter.Takes(synTo(siteDirect, 443)) {
++		t.Error("a new connection to that address is taken")
++	}
++}
++
++// several addresses on one TCP port that do not open, none on it that does: the computer keeps
++// the port from opening directly, and all of it goes through the VPN; other ports do not
++func TestPortGoesThroughVPN(t *testing.T) {
++	r := newRig(t)
++	r.refused.Store(true)
++	for i := 0; i < portFailures; i++ {
++		if !r.sorter.Takes(synTo(siteN(9), 443)) {
++			t.Fatalf("port 443 went through the VPN after %d addresses", i)
++		}
++		r.tryTCP(siteN(i), 443)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Fatal("port 443 is still taken after addresses on it did not open")
++	}
++	if !r.sorter.Takes(synTo(siteN(9), 80)) {
++		t.Error("port 80 went through the VPN with 443")
++	}
++	if !r.sorter.Takes(udpTo(siteN(9), 443)) {
++		t.Error("UDP to port 443 went through the VPN with TCP")
++	}
++}
++
++// a port on which a connection opened directly stays direct for the other addresses
++func TestPortThatOpenedStays(t *testing.T) {
++	r := newRig(t)
++	c, err := r.dialTCP(siteN(0), 443)
++	if err != nil {
++		t.Fatal(err)
++	}
++	c.Close()
++	r.refused.Store(true)
++	for i := 1; i <= portFailures; i++ {
++		r.tryTCP(siteN(i), 443)
++	}
++	if !r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Error("port 443 went through the VPN though a connection on it opened directly")
++	}
++}
++
++// nothing opens directly at all: everything goes through the VPN, UDP too
++func TestEverythingGoesThroughVPN(t *testing.T) {
++	r := newRig(t)
++	r.refused.Store(true)
++	for i, port := range []uint16{443, 80, 8443, 5222, 993} {
++		if !r.sorter.Takes(synTo(siteN(9), 12345)) {
++			t.Fatalf("everything went through the VPN after %d addresses", i)
++		}
++		r.tryTCP(siteN(i), port)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 12345)) {
++		t.Fatal("a new connection is taken after nothing opened directly")
++	}
++	if r.sorter.Takes(udpTo(siteN(9), 53)) {
++		t.Error("UDP is taken after nothing opened directly")
++	}
++	if r.sorter.Takes(synTo(siteAbroad, 443)) {
++		t.Error("an address outside the networks is taken")
++	}
++}
++
++// a connection the sorter carries stays with it when its address goes through the VPN
++func TestCarriedConnectionStays(t *testing.T) {
++	r := newRig(t)
++	c, err := r.dialTCP(siteDirect, 443)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	r.refused.Store(true)
++	r.tryTCP(siteDirect, 443)
++	if r.sorter.Takes(synTo(siteDirect, 443)) {
++		t.Fatal("the address did not go through the VPN")
++	}
++	before := r.toPeer.Load()
++	msg := []byte("still direct")
++	if _, err := c.Write(msg); err != nil {
++		t.Fatal(err)
++	}
++	got := make([]byte, len(msg))
++	c.SetReadDeadline(time.Now().Add(5 * time.Second))
++	if _, err := io.ReadFull(c, got); err != nil || !bytes.Equal(got, msg) {
++		t.Fatalf("echo %q, %v", got, err)
++	}
++	if r.toPeer.Load() != before {
++		t.Errorf("%d packets of the carried connection went to the peer", r.toPeer.Load()-before)
++	}
++}
++
++// a UDP flow the site does not answer ends, and the app's next datagrams go to the peer
++func TestUDPNoAnswerGoesThroughVPN(t *testing.T) {
++	defer func(d time.Duration) { answerTimeout = d }(answerTimeout)
++	answerTimeout = 300 * time.Millisecond
++	r := newRig(t)
++	r.quietUDP.Store(true)
++	c, err := gonet.DialUDP(r.apps, nil, &tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(siteDirect.As4()), Port: 443}, ipv4.ProtocolNumber)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	c.Write([]byte("initial"))
++	if !r.waitFor(func() bool { return !r.sorter.Takes(udpTo(siteDirect, 443)) }) {
++		t.Fatal("the address did not go through the VPN after the site did not answer")
++	}
++	before := r.toPeer.Load()
++	c.Write([]byte("initial again"))
++	if !r.waitFor(func() bool { return r.toPeer.Load() > before }) {
++		t.Error("the app's next datagram did not go to the peer")
++	}
++	if r.sorter.udpOpened.Load() != 0 || r.sorter.failed.Load() != 1 {
++		t.Errorf("opened %d, did not open %d", r.sorter.udpOpened.Load(), r.sorter.failed.Load())
 +	}
 +}
 +
@@ -1292,5 +2454,211 @@ index 0000000..cf3473d
 +			t.Fatal("the site's connection lives on after the sorter closed")
 +		}
 +		time.Sleep(10 * time.Millisecond)
++	}
++}
++
++// a port that went through the VPN is tried directly again after retryDirect: one connection
++// that opens brings the whole port back, and it can go through the VPN again just as at the start
++func TestPortTriesDirectAgain(t *testing.T) {
++	defer func(d time.Duration) { retryDirect = d }(retryDirect)
++	retryDirect = 300 * time.Millisecond
++	r := newRig(t)
++	r.refused.Store(true)
++	for i := 0; i < portFailures; i++ {
++		r.tryTCP(siteN(i), 443)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Fatal("port 443 is taken right after it went through the VPN")
++	}
++	time.Sleep(retryDirect + 50*time.Millisecond)
++	r.refused.Store(false)
++	c, err := r.dialTCP(siteN(8), 443)
++	if err != nil {
++		t.Fatalf("the try directly again: %v", err)
++	}
++	c.Close()
++	if !r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Error("port 443 still goes through the VPN after a connection on it opened directly again")
++	}
++	if r.sorter.Takes(synTo(siteN(0), 443)) {
++		t.Error("an address that did not open came back with the port")
++	}
++	// the computer keeps the port again: it goes through the VPN after as many addresses
++	r.refused.Store(true)
++	for i := 3; i < 3+portFailures; i++ {
++		r.tryTCP(siteN(i), 443)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Error("port 443 is taken though addresses on it did not open again")
++	}
++}
++
++// a try directly again that does not open either keeps the port through the VPN for another
++// retryDirect, and only one connection tries at a time
++func TestPortTriedAgainStays(t *testing.T) {
++	defer func(d time.Duration) { retryDirect = d }(retryDirect)
++	retryDirect = 300 * time.Millisecond
++	r := newRig(t)
++	r.refused.Store(true)
++	for i := 0; i < portFailures; i++ {
++		r.tryTCP(siteN(i), 443)
++	}
++	time.Sleep(retryDirect + 50*time.Millisecond)
++	dials := r.dials.Load()
++	r.tryTCP(siteN(8), 443)
++	if r.dials.Load() != dials+1 {
++		t.Fatalf("%d direct sockets for the try again, want 1", r.dials.Load()-dials)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Error("port 443 is taken after the try directly again did not open")
++	}
++}
++
++// quickHealing makes the tries in the background quick for a test. What it sets goes back when
++// the test and its rig are done (cleanups run last in, first out: call it before newRig),
++// because the sorter reads it from goroutines of its own.
++func quickHealing(t *testing.T) {
++	t.Helper()
++	every, gap := healEvery, maxProbeGap
++	t.Cleanup(func() { healEvery, maxProbeGap = every, gap })
++	healEvery, maxProbeGap = 20*time.Millisecond, 80*time.Millisecond
++}
++
++// an address that did not open comes back by itself once it opens: nobody has to be at a site
++// to try it again
++func TestProbeHealsAddress(t *testing.T) {
++	quickHealing(t)
++	r := newRig(t)
++	r.refused.Store(true)
++	r.tryTCP(siteDirect, 443)
++	if r.sorter.Takes(synTo(siteDirect, 443)) {
++		t.Fatal("the address did not go through the VPN")
++	}
++	if !r.sorter.Takes(synTo(siteOther, 443)) {
++		t.Fatal("another address went through the VPN with it")
++	}
++	r.refused.Store(false)
++	if !r.waitFor(func() bool { return r.sorter.Takes(synTo(siteDirect, 443)) }) {
++		t.Fatal("the address did not come back by itself after it opened")
++	}
++	// and it opens for the app
++	c, err := r.dialTCP(siteDirect, 443)
++	if err != nil {
++		t.Fatalf("connect: %v", err)
++	}
++	c.Close()
++}
++
++// everything went through the VPN, then what kept it from opening is gone: without a single
++// connection of an app everything comes back, the addresses that did not open with it
++func TestProbeHealsEverything(t *testing.T) {
++	quickHealing(t)
++	r := newRig(t)
++	r.refused.Store(true)
++	ports := []uint16{443, 80, 8443, 5222, 993}
++	for i, port := range ports {
++		r.tryTCP(siteN(i), port)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 12345)) {
++		t.Fatal("everything did not go through the VPN")
++	}
++	r.refused.Store(false)
++	if !r.waitFor(func() bool { return r.sorter.Takes(synTo(siteN(9), 12345)) }) {
++		t.Fatal("everything did not come back by itself after it opened")
++	}
++	if !r.waitFor(func() bool {
++		for i, port := range ports {
++			if !r.sorter.Takes(synTo(siteN(i), port)) {
++				return false
++			}
++		}
++		return true
++	}) {
++		t.Error("the addresses that did not open stayed behind")
++	}
++	if r.sorter.detour.on.Load() {
++		t.Error("something still goes through the VPN")
++	}
++}
++
++// a port that went through the VPN comes back by itself the same way
++func TestProbeHealsPort(t *testing.T) {
++	quickHealing(t)
++	r := newRig(t)
++	r.refused.Store(true)
++	for i := 0; i < portFailures; i++ {
++		r.tryTCP(siteN(i), 443)
++	}
++	if r.sorter.Takes(synTo(siteN(9), 443)) {
++		t.Fatal("port 443 did not go through the VPN")
++	}
++	r.refused.Store(false)
++	if !r.waitFor(func() bool { return r.sorter.Takes(synTo(siteN(9), 443)) }) {
++		t.Fatal("port 443 did not come back by itself after it opened")
++	}
++}
++
++// while the computer still keeps everything from opening, the tries in the background go on
++// and change nothing
++func TestProbeKeepsDivertedWhileBlocked(t *testing.T) {
++	quickHealing(t)
++	r := newRig(t)
++	r.refused.Store(true)
++	for i, port := range []uint16{443, 80, 8443, 5222, 993} {
++		r.tryTCP(siteN(i), port)
++	}
++	dials := r.dials.Load()
++	time.Sleep(400 * time.Millisecond)
++	if r.dials.Load() <= dials {
++		t.Error("nothing was tried in the background")
++	}
++	if r.sorter.Takes(synTo(siteN(9), 12345)) {
++		t.Error("everything came back though nothing opens")
++	}
++}
++
++// an address that goes through the VPN alone is tried less and less often
++func TestProbeBacksOff(t *testing.T) {
++	quickHealing(t)
++	r := newRig(t)
++	r.refused.Store(true)
++	r.tryTCP(siteDirect, 443)
++	dials := r.dials.Load()
++	time.Sleep(700 * time.Millisecond)
++	tried := r.dials.Load() - dials
++	// every healEvery it would be 35; with the gap doubling up to 80 ms about 9
++	if tried < 2 || tried > 15 {
++		t.Errorf("%d tries in the background in 700 ms, want a few and fewer and fewer", tried)
++	}
++}
++
++// a UDP flow that was not answered sends that address's UDP flows through the VPN for retryDirect
++// - not its TCP connections, and nothing tries it in the background
++func TestUDPAddressDoesNotHoldTCP(t *testing.T) {
++	quickHealing(t)
++	answer, retry := answerTimeout, retryDirect
++	t.Cleanup(func() { answerTimeout, retryDirect = answer, retry })
++	answerTimeout, retryDirect = 100*time.Millisecond, 400*time.Millisecond
++	r := newRig(t)
++	r.quietUDP.Store(true)
++	c, err := gonet.DialUDP(r.apps, nil, &tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4(siteDirect.As4()), Port: 443}, ipv4.ProtocolNumber)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	c.Write([]byte("initial"))
++	if !r.waitFor(func() bool { return !r.sorter.Takes(udpTo(siteDirect, 443)) }) {
++		t.Fatal("the UDP address did not go through the VPN after the site did not answer")
++	}
++	if !r.sorter.Takes(synTo(siteDirect, 443)) {
++		t.Error("a TCP connection to that address went through the VPN with its UDP flow")
++	}
++	dials := r.dials.Load()
++	time.Sleep(200 * time.Millisecond)
++	if r.dials.Load() != dials {
++		t.Error("a UDP address was tried in the background")
++	}
++	if !r.waitFor(func() bool { return r.sorter.Takes(udpTo(siteDirect, 443)) }) {
++		t.Error("the UDP address did not try directly again after retryDirect")
 +	}
 +}

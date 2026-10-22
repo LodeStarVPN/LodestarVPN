@@ -57,6 +57,8 @@ class WireguardUtilsWindows final : public WireguardUtils {
   void buildMibForwardRow(const IPAddress& prefix, void* row);
 
   quint64 m_luid = 0;
+  // the kill switch is on for this tunnel (the direct networks need a permit through it)
+  bool m_killSwitchOn = false;
   WindowsTunnelService m_tunnel;
   QPointer<WindowsRouteMonitor> m_routeMonitor;
   QPointer<WindowsFirewall> m_firewall;

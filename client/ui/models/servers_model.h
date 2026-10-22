@@ -172,6 +172,12 @@ public slots:
     bool isServerFromApiAlreadyExists(const QString &name, const QString &description) const;
     bool hasServerWithVpnKey(const QString &vpnKey) const;
 
+    // an entry of our gateway's subscription (not a config of its own, not a shared connection);
+    // the app keeps one subscription
+    bool isSubscriptionServer(const int serverIndex) const;
+    // the entries that are not: what «Delete previous configurations» takes away
+    int otherServersCount() const;
+
     // true only when the default container entry holds an actual protocol config;
     // HasInstalledContainers alone is not enough - gateway imports create the
     // container entry even when the config itself was never fetched
@@ -221,6 +227,7 @@ private:
 
     void updateContainersModel();
     void updateDefaultServerContainersModel();
+    void chooseAddedIfNoneChosen(int countBefore);
 
     QString getServerDescription(const QJsonObject &server, const int index) const;
 

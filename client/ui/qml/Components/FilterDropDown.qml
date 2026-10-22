@@ -18,8 +18,9 @@ Rectangle {
     implicitHeight: buttonContent.implicitHeight
     radius: 16
 
+    // the rows' glass and their light edge; open, the edge of a field typed in
     color: DopamineStyle.color.onyxBlack
-    border.color: popup.opened ? DopamineStyle.color.goldenApricot : DopamineStyle.color.slateGray
+    border.color: popup.opened ? "#BF6E91FF" : "#2EA9C1FF"
     border.width: 1
 
     Behavior on border.color {

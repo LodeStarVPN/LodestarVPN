@@ -32,6 +32,8 @@ public:
     Q_PROPERTY(QString currentEndpoint READ currentEndpoint NOTIFY connectionStateChanged)
     Q_PROPERTY(QString downloadSpeed READ downloadSpeed NOTIFY speedChanged)
     Q_PROPERTY(QString uploadSpeed READ uploadSpeed NOTIFY speedChanged)
+    // the server card's line, one unit for both: "↓ 64,3  ↑ 2,1 Мбит/с"
+    Q_PROPERTY(QString speedLine READ speedLine NOTIFY speedChanged)
     Q_PROPERTY(QString ping READ ping NOTIFY pingChanged)
 
     explicit ConnectionController(const QSharedPointer<ServersModel> &serversModel, const QSharedPointer<ContainersModel> &containersModel,
@@ -53,6 +55,7 @@ public:
     QString currentEndpoint() const { return m_currentEndpoint; }
     QString downloadSpeed() const { return m_downloadSpeed; }
     QString uploadSpeed() const { return m_uploadSpeed; }
+    QString speedLine() const { return m_speedLine; }
     QString ping() const { return m_ping; }
 
 public slots:
@@ -131,7 +134,10 @@ private:
     void checkDevice();
     void refuseDevice(int row, ErrorCode errorCode);
     QTimer *m_deviceCheckTimer = nullptr;
-    static constexpr int kDeviceCheckIntervalMs = 15 * 60 * 1000;
+    // every 2 minutes while connected (it was 15): a device unlinked in the panel learnt of it only
+    // then and showed the subscription meanwhile (the owner, 2026-10-21: «отвязываю, а оно не
+    // отвязывается»). One small request a device; the gateway counts its limit per device address
+    static constexpr int kDeviceCheckIntervalMs = 2 * 60 * 1000;
     static constexpr int kPreCheckTimeoutMs = 4000;
     bool m_preCheckPending = false;
     int m_tunnelRow = -1; // the entry the current tunnel was started for
@@ -150,11 +156,28 @@ private:
     QTimer *m_ipTrafficTimer = nullptr;
     bool m_ipAwaitingTraffic = false; // connected to a multi-IP server, waiting for bytes
 
-    // live speed meter (server card): computed from bytesChanged deltas
+    // Live speed (server card, subscription page): what the apps get and send - the tunnel's own
+    // counts of the VPN and of what it carried past it - each timed where it was read, over about
+    // two seconds (addSpeedSample)
+    void addSpeedSample(quint64 receivedBytes, quint64 sentBytes, qint64 sourceNs);
+    // the figure over the window of spanNs that ends at endNs (the counts' clock)
+    void showSpeed(quint64 downBytesPerSec, quint64 upBytesPerSec, qint64 spanNs, qint64 endNs);
+    QString formatSpeed(quint64 bytesPerSec) const;
+    static int speedUnit(quint64 bytesPerSec);
+
+    struct SpeedSample
+    {
+        qint64 ns = 0;
+        quint64 received = 0;
+        quint64 sent = 0;
+    };
+    QElapsedTimer m_speedClock; // the counts timed on arrival
+    QList<SpeedSample> m_speedSamples;
+    bool m_speedSamplesFromSource = false;
+    QElapsedTimer m_speedLogTimer;
     QString m_downloadSpeed;
     QString m_uploadSpeed;
-    QElapsedTimer m_speedTimer;
-    static QString formatSpeed(qint64 bytesPerSec);
+    QString m_speedLine;
 
     // live ping (server card): LivePingProbe measures it in a thread of its
     // own, a round of probes every few seconds, the quickest answer shown. A
@@ -188,7 +211,13 @@ private:
     // while some packets still arrive: with nothing arriving at all the
     // network is down and WireGuard resumes by itself once it is back, and a
     // tunnel that moves a lot works (a probe host is slow or unreachable).
-    // At most one reconnect per kStallReconnectGapMs.
+    // A tunnel through which no probe has passed yet is left alone (the probe
+    // hosts may be unreachable from its server), unless it is dead from the
+    // start: less than kStallDeadStartRxBytes received since it came up and
+    // no failed probe even got a TCP connection - on 2026-10-21 a phone's
+    // first connection showed "Connected" while nothing got through until a
+    // restart, and this watchdog, waiting for a first passed probe, never
+    // acted. At most one reconnect per kStallReconnectGapMs.
     void startStallWatch();
     void stopStallWatch();
     void probeStall();
@@ -203,11 +232,21 @@ private:
     int m_stallHostIndex = 0;
     quint64 m_stallRxPrevious = 0;    // bytes received while the previous probe ran
     quint64 m_stallRxCurrent = 0;     // ... and since the current one began
+    bool m_stallTcpSeen = false;      // a failed probe of this run of failures got a TCP connection
+    quint64 m_rxSinceConnected = 0;   // bytes the tunnel received since it came up
+    // the apps' data by the tunnel's count since the last VPN count: the speed shown goes by it
+    quint64 m_dataRxPending = 0;
+    quint64 m_dataTxPending = 0;
+    bool m_dataPending = false;       // such a count came for the VPN count that follows
+    qint64 m_pendingSampleNs = 0;     // when the VPN's count that follows was read (sampleTimed), or 0
     QElapsedTimer m_stallLastReconnect;
     static constexpr int kStallProbeIntervalMs = 30000;
     static constexpr int kStallRetryMs = 5000;
     static constexpr int kStallProbeTimeoutMs = 10000;
     static constexpr quint64 kStallBusyRxBytes = 256 * 1024;
+    // a handshake and its keepalives are a few hundred bytes; a tunnel that works brings more
+    // than this within seconds of any use (a probe alone is a few KB)
+    static constexpr quint64 kStallDeadStartRxBytes = 16 * 1024;
     static constexpr qint64 kStallReconnectGapMs = 3 * 60 * 1000;
     // ---
 

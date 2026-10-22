@@ -144,10 +144,23 @@ PageType {
             ToggleCard {
                 id: ruDirectToggle
 
+                // «via VPN» with something listed: all that is not listed opens without the VPN anyway, so the switch changes
+                // nothing - it is greyed, and says so, instead of looking like it contradicts the lists below. The sites and
+                // services lists are changed on pages of their own: it is worked out again when this one is shown again
+                property bool matters: {
+                    root.visible
+                    SitesModel.isTunnelingEnabled
+                    SitesModel.routeMode
+                    SplitPresetsModel.enabledCount
+                    return SettingsController.ruDirectMatters()
+                }
+
                 glass: "single"
+                enabled: matters
 
                 text: qsTr("Russian sites directly")
-                descriptionText: qsTr("They open without the VPN: faster, and banks and public services work as usual")
+                descriptionText: matters ? qsTr("They open without the VPN: faster, and banks and public services work as usual")
+                                         : qsTr("Not needed here: with «via VPN» everything that is not in the lists opens without the VPN anyway")
                 checked: SettingsController.isRuDirectEnabled
 
                 onToggled: function(checked) {

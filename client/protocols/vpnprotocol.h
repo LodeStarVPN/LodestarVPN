@@ -67,8 +67,17 @@ public:
 
     static VpnProtocol* factory(amnezia::DockerContainer container, const QJsonObject &configuration);
 
+
 signals:
+    // when the counts of the bytesChanged right after were read, by the reporting service's own clock
+    // (ns): the speed shown goes by it (ConnectionController::addSpeedSample); counts without one are
+    // timed on arrival
+    void sampleTimed(qint64 sampleNs);
     void bytesChanged(quint64 receivedBytes, quint64 sentBytes);
+    // what the apps got and sent since the one before, by the tunnel's count of their data, both ways
+    // it went (through the VPN and past it: AmneziaWG's sorter) - for the speed shown only: bytesChanged
+    // alone says whether the VPN works. Right before the bytesChanged of the same reading.
+    void dataBytesChanged(quint64 receivedBytes, quint64 sentBytes);
     void connectionStateChanged(Vpn::ConnectionState state);
     void timeoutTimerEvent();
     void protocolError(amnezia::ErrorCode e);
@@ -78,6 +87,8 @@ public slots:
     virtual void onTimeout(); // todo: remove?
 
     void setBytesChanged(quint64 receivedBytes, quint64 sentBytes);
+    // the totals of the apps' data so far: the difference goes out as dataBytesChanged
+    void setDataBytesChanged(quint64 receivedBytes, quint64 sentBytes);
     void setConnectionState(Vpn::ConnectionState state);
 
 protected:
@@ -85,6 +96,10 @@ protected:
     void stopTimeoutTimer();
     // the totals the next ones are counted from, nothing reported for them
     void setBytesBaseline(quint64 receivedBytes, quint64 sentBytes);
+    void setDataBytesBaseline(quint64 receivedBytes, quint64 sentBytes);
+    void setSampleNs(qint64 ns) { m_sampleNs = ns; }
+    // sampleTimed for the counts about to go out, when their moment is known
+    void emitSampleTimed();
 
     Vpn::ConnectionState m_connectionState;
 
@@ -99,6 +114,9 @@ private:
     ErrorCode m_lastError = ErrorCode::NoError;
     quint64 m_receivedBytes;
     quint64 m_sentBytes;
+    quint64 m_dataReceivedBytes = 0;
+    quint64 m_dataSentBytes = 0;
+    qint64 m_sampleNs = 0;
 };
 
 #endif // VPNPROTOCOL_H

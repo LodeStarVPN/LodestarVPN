@@ -102,7 +102,7 @@ bool AndroidController::initialize()
         {"onVpnPermissionPending", "(Z)V", reinterpret_cast<void *>(onVpnPermissionPending)},
         {"onNotificationStateChanged", "()V", reinterpret_cast<void *>(onNotificationStateChanged)},
         {"onVpnStateChanged", "(I)V", reinterpret_cast<void *>(onVpnStateChanged)},
-        {"onStatisticsUpdate", "(JJ)V", reinterpret_cast<void *>(onStatisticsUpdate)},
+        {"onStatisticsUpdate", "(JJJJJ)V", reinterpret_cast<void *>(onStatisticsUpdate)},
         {"onFileOpened", "(Ljava/lang/String;)V", reinterpret_cast<void *>(onFileOpened)},
         {"onConfigImported", "(Ljava/lang/String;)V", reinterpret_cast<void *>(onConfigImported)},
         {"onAuthResult", "(Z)V", reinterpret_cast<void *>(onAuthResult)},
@@ -588,12 +588,15 @@ void AndroidController::onVpnStateChanged(JNIEnv *env, jobject thiz, jint stateC
 }
 
 // static
-void AndroidController::onStatisticsUpdate(JNIEnv *env, jobject thiz, jlong rxBytes, jlong txBytes)
+void AndroidController::onStatisticsUpdate(JNIEnv *env, jobject thiz, jlong rxBytes, jlong txBytes,
+                                           jlong dataRxBytes, jlong dataTxBytes, jlong sampleNanos)
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
 
-    emit AndroidController::instance()->statisticsUpdated((quint64) rxBytes, (quint64) txBytes);
+    emit AndroidController::instance()->statisticsUpdated((quint64) rxBytes, (quint64) txBytes,
+                                                          (qint64) dataRxBytes, (qint64) dataTxBytes,
+                                                          (qint64) sampleNanos);
 }
 
 // static

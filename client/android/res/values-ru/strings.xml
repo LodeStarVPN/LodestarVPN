@@ -8,6 +8,10 @@
     <string name="reconnecting">Переподключение…</string>
     <string name="connect">Подключиться</string>
     <string name="disconnect">Отключиться</string>
+    <string name="speedB">Б/с</string>
+    <string name="speedKB">КБ/с</string>
+    <string name="speedMB">МБ/с</string>
+    <string name="speedGB">ГБ/с</string>
     <string name="ok">ОК</string>
     <string name="cancel">Отмена</string>
     <string name="yes">Да</string>

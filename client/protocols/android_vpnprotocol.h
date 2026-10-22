@@ -21,7 +21,10 @@ public:
     // only where counting starts: their difference was all the traffic since the connect (or of
     // the time away), and the card showed it as one second's speed
     void countFromNextStatistics() { m_baselinePending = true; }
-    void onStatistics(quint64 receivedBytes, quint64 sentBytes);
+    // the VPN's totals, the apps' data by the tunnel's count (-1: none kept, Xray), and when the
+    // service read them (its clock, ns)
+    void onStatistics(quint64 receivedBytes, quint64 sentBytes, qint64 dataReceivedBytes, qint64 dataSentBytes,
+                      qint64 sampleNs);
 
 private:
     bool m_baselinePending = false;

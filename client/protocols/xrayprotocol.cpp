@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QNetworkInterface>
 #include <QJsonDocument>
+#include <QDeadlineTimer>
 #include <QElapsedTimer>
 #include <QPointer>
 #include <QTcpSocket>
@@ -340,8 +341,11 @@ void XrayProtocol::onLiveStatsTick()
 {
     quint64 received = 0;
     quint64 sent = 0;
+    // read now: the speed shown goes by this moment, not by when the screen gets them
+    const qint64 readNs = QDeadlineTimer::current(Qt::PreciseTimer).deadlineNSecs();
     if (readTunCounters(received, sent) && received >= m_tunBaseReceived && sent >= m_tunBaseSent) {
         // cumulative since the proof; VpnProtocol turns it into per-tick deltas
+        setSampleNs(readNs);
         setBytesChanged(received - m_tunBaseReceived, sent - m_tunBaseSent);
     }
 }

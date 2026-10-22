@@ -21,6 +21,7 @@
 #include <psapi.h>
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 #include <QNetworkInterface>
 #include <QScopeGuard>
@@ -182,6 +183,7 @@ std::unique_ptr<WindowsSplitTunnel> WindowsSplitTunnel::create(
     CloseServiceHandle(handle);
   } else {
     logger.debug() << "Driver was installed";
+    updateDriverRegistration();
   }
   // 02: Now check if the service is running
   auto driver_manager =
@@ -604,12 +606,73 @@ SC_HANDLE WindowsSplitTunnel::installDriver() {
   auto serviceManager = OpenSCManager(nullptr,  // local computer
                                       nullptr,  // servicesActive database
                                       scm_rights);
+  // Started on demand: create() starts it whenever our service starts. Started
+  // by Windows at boot, a registration left behind (an uninstall keeps it)
+  // was an error at every boot.
   auto service = CreateService(
       serviceManager, DRIVER_SERVICE_NAME, displayName, SERVICE_ALL_ACCESS,
-      SERVICE_KERNEL_DRIVER, SERVICE_AUTO_START, SERVICE_ERROR_NORMAL, binPath,
-      nullptr, nullptr, nullptr, nullptr, nullptr);
+      SERVICE_KERNEL_DRIVER, SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL,
+      binPath, nullptr, nullptr, nullptr, nullptr, nullptr);
   CloseServiceHandle(serviceManager);
   return service;
+}
+// static
+// Points our registration at the driver file next to this program, started on
+// demand, as installDriver() makes it now. One made by an install in another
+// folder named a file that was gone (the app installed straight into a folder,
+// then into a subfolder of its own: the registration outlives an uninstall),
+// and the driver never loaded again - no split tunneling, and an error at
+// every boot, as older registrations had Windows start the driver itself.
+void WindowsSplitTunnel::updateDriverRegistration() {
+  QFileInfo driver(qApp->applicationDirPath() + "/" + DRIVER_FILENAME);
+  if (!driver.exists()) {
+    return;
+  }
+  const QString path = QDir::toNativeSeparators(driver.absoluteFilePath());
+  auto serviceManager = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
+  if (serviceManager == nullptr) {
+    WindowsUtils::windowsLog("Failed to open SCManager");
+    return;
+  }
+  auto service = OpenService(serviceManager, DRIVER_SERVICE_NAME,
+                             SERVICE_QUERY_CONFIG | SERVICE_CHANGE_CONFIG);
+  auto guard = qScopeGuard([&] {
+    if (service != nullptr) {
+      CloseServiceHandle(service);
+    }
+    CloseServiceHandle(serviceManager);
+  });
+  if (service == nullptr) {
+    WindowsUtils::windowsLog("Failed to open the Split Tunnel driver service");
+    return;
+  }
+  alignas(QUERY_SERVICE_CONFIG) BYTE data[8 * 1024];
+  auto config = reinterpret_cast<QUERY_SERVICE_CONFIG*>(data);
+  DWORD needed = 0;
+  if (!QueryServiceConfig(service, config, sizeof(data), &needed)) {
+    WindowsUtils::windowsLog("Failed to read the Split Tunnel driver service");
+    return;
+  }
+  // Windows keeps a driver's path in its NT form: \??\D:\...
+  QString registered = QString::fromWCharArray(config->lpBinaryPathName);
+  if (registered.startsWith("\\??\\")) {
+    registered = registered.mid(4);
+  }
+  const bool samePath = registered.compare(path, Qt::CaseInsensitive) == 0;
+  if (samePath && config->dwStartType == SERVICE_DEMAND_START) {
+    return;
+  }
+  if (!ChangeServiceConfig(service, SERVICE_NO_CHANGE, SERVICE_DEMAND_START,
+                           SERVICE_NO_CHANGE,
+                           samePath ? nullptr : (const wchar_t*)path.utf16(),
+                           nullptr, nullptr, nullptr, nullptr, nullptr,
+                           nullptr)) {
+    WindowsUtils::windowsLog("Failed to update the Split Tunnel driver service");
+    return;
+  }
+  logger.info() << "Split Tunnel driver service updated:"
+                << (samePath ? "started on demand"
+                             : "this install's driver file, started on demand");
 }
 // static
 bool WindowsSplitTunnel::uninstallDriver() {

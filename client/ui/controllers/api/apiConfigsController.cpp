@@ -224,6 +224,20 @@ namespace
         return false;
     }
 
+    // The key an entry of our gateway's subscription was added with; empty for anything else (a config
+    // of its own, a shared connection, which has no key of its own). The gateway takes a key in one
+    // form only (the panel's short uuid, exactly), so two entries with the same key are of one
+    // subscription and two different keys are two subscriptions.
+    QString subscriptionKeyOf(const QJsonObject &serverConfig)
+    {
+        const QJsonObject apiConfig = serverConfig.value(configKey::apiConfig).toObject();
+        if (apiConfig.value(QStringLiteral("connection_uuid")).toString().isEmpty() || apiConfig.value(QStringLiteral("shared")).toBool()) {
+            return QString();
+        }
+        const QString key = apiConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString();
+        return key.isEmpty() ? serverConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString() : key;
+    }
+
     void appendProtocolDataToApiPayload(const QString &protocol, const ProtocolData &protocolData, QJsonObject &apiPayload)
     {
         const QString p = canonicalServiceProtocol(protocol);
@@ -588,22 +602,18 @@ QString ApiConfigsController::getSubscriptionId() const
 
 QString ApiConfigsController::resolveSubscriptionId() const
 {
-    if (!m_subscriptionId.isEmpty()) {
-        return m_subscriptionId;
-    }
-    // recover the subscription id from an already imported gateway server
+    // the subscription the app holds: an ID typed on the services page without adding it must not
+    // stand in for it (a reload by it would take the held one's servers away)
+    const QString installed = installedSubscriptionKey();
+    return installed.isEmpty() ? m_subscriptionId : installed;
+}
+
+QString ApiConfigsController::installedSubscriptionKey() const
+{
     for (int i = 0; i < m_serversModel->getServersCount(); ++i) {
-        const QJsonObject serverConfig = m_serversModel->getServerConfig(i);
-        const QJsonObject apiConfig = serverConfig.value(configKey::apiConfig).toObject();
-        if (apiConfig.value("connection_uuid").toString().isEmpty()) {
-            continue;
-        }
-        QString subscriptionId = apiConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString();
-        if (subscriptionId.isEmpty()) {
-            subscriptionId = serverConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString();
-        }
-        if (!subscriptionId.isEmpty()) {
-            return subscriptionId;
+        const QString key = subscriptionKeyOf(m_serversModel->getServerConfig(i));
+        if (!key.isEmpty()) {
+            return key;
         }
     }
     return QString();
@@ -611,13 +621,7 @@ QString ApiConfigsController::resolveSubscriptionId() const
 
 QString ApiConfigsController::processedSubscriptionKey() const
 {
-    const QJsonObject serverConfig = m_serversModel->getServerConfig(m_serversModel->getProcessedServerIndex());
-    const QJsonObject apiConfig = serverConfig.value(configKey::apiConfig).toObject();
-    if (apiConfig.value(QStringLiteral("connection_uuid")).toString().isEmpty() || apiConfig.value(QStringLiteral("shared")).toBool()) {
-        return QString();
-    }
-    const QString key = apiConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString();
-    return key.isEmpty() ? serverConfig.value(configKey::authData).toObject().value(apiDefs::key::apiKey).toString() : key;
+    return subscriptionKeyOf(m_serversModel->getServerConfig(m_serversModel->getProcessedServerIndex()));
 }
 
 void ApiConfigsController::setSubscriptionId(const QString &subscriptionId)
@@ -835,8 +839,12 @@ bool ApiConfigsController::fillAvailableServices()
     apiPayload[configKey::appVersion] = QString(APP_VERSION);
     apiPayload[apiDefs::key::appLanguage] = m_settings->getAppLanguage().name().split("_").first();
     // the services answer depends on the subscription (its protocols,
-    // countries and status): send the entered ID, as the config request does
-    if (!m_subscriptionId.isEmpty()) {
+    // countries and status): send the entered ID, as the config request does.
+    // Not another one than the subscription the app holds: the app keeps one,
+    // and asking would take a place on that one (the services page offers to
+    // replace the held one instead)
+    const QString held = installedSubscriptionKey();
+    if (!m_subscriptionId.isEmpty() && (held.isEmpty() || held == m_subscriptionId)) {
         QJsonObject authData;
         authData[apiDefs::key::apiKey] = m_subscriptionId;
         authData[apiDefs::key::id] = m_subscriptionId;
@@ -1154,6 +1162,14 @@ bool ApiConfigsController::restoreSerivceFromAppStore()
 bool ApiConfigsController::importServiceForCountry(const QString &serverCountryCode, const QString &protocol,
                                                    const QJsonObject &connection)
 {
+    // the app keeps one subscription: another one only by replacing the held one (swapSubscription)
+    const QString held = installedSubscriptionKey();
+    if (!held.isEmpty() && !m_subscriptionId.isEmpty() && held != m_subscriptionId) {
+        qWarning() << "[SUBSCRIPTION] another subscription than the held one: not imported here";
+        m_lastImportError = ErrorCode::ApiConfigEmptyError;
+        return false;
+    }
+
     const ProtocolData protocolData = generateProtocolData(protocol);
 
     QJsonObject authData;
@@ -2631,6 +2647,30 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
             }
         }
 
+        // no country to fetch, only the gateway's word on a card it does not offer (the subscription
+        // has no free place, this device was taken off it less than a day ago - and when it may come
+        // back -, no such subscription): that is what people see. A config asked for anyway brought
+        // the refusal meant for a held subscription, «…so its servers were removed» when none were
+        bool anyCountry = false;
+        for (const auto &item : std::as_const(*workItems)) {
+            if (!item.connectionObject.value(configKey::countryCode).toString().isEmpty()) {
+                anyCountry = true;
+                break;
+            }
+        }
+        const QJsonObject card = services.first().toObject();
+        const QJsonObject about = card.value(QStringLiteral("service_description")).toObject();
+        QString word = about.value(QStringLiteral("description")).toString();
+        if (word.isEmpty()) {
+            word = about.value(QStringLiteral("card_description")).toString();
+        }
+        if (!anyCountry && !card.value(QStringLiteral("is_available")).toBool(true) && !word.isEmpty()) {
+            qWarning() << "[SUBSCRIPTION] nothing offered to fetch: the gateway's word shown";
+            emit subscriptionRefused(word);
+            callback(false);
+            return;
+        }
+
         auto anySuccess = QSharedPointer<bool>::create(false);
         auto lastError = QSharedPointer<ErrorCode>::create(ErrorCode::NoError);
         auto processNext = QSharedPointer<std::function<void()>>::create();
@@ -2675,12 +2715,16 @@ void ApiConfigsController::fetchSubscriptionConfigsAsync(const QString &subscrip
             ProtocolData protocolData = generateProtocolData(serviceProtocol);
             // the device keeps its AWG key of an entry it has: a new one would cut
             // a tunnel running on the old one (this reload is the list's refresh
-            // button, pressed while connected as well)
+            // button, pressed while connected as well). Only an entry of this same
+            // subscription: a country's connection id is the same in every one,
+            // and the gateway refuses a key another subscription's peer holds
             if (canonicalServiceProtocol(serviceProtocol) == configKey::awg && !connectionUuid.isEmpty()) {
+                const QString fetchedKey = authData.value(apiDefs::key::apiKey).toString();
                 for (int row = 0; row < m_serversModel->getServersCount(); ++row) {
                     const QJsonObject rowConfig = m_serversModel->getServerConfig(row);
                     const QJsonObject rowApi = rowConfig.value(configKey::apiConfig).toObject();
-                    if (rowApi.value(QStringLiteral("connection_uuid")).toString() == connectionUuid
+                    if (subscriptionKeyOf(rowConfig) == fetchedKey
+                        && rowApi.value(QStringLiteral("connection_uuid")).toString() == connectionUuid
                         && rowApi.value(QStringLiteral("node_id")).toString() == nodeId
                         && savedAwgClientKey(rowConfig, protocolData.wireGuardClientPrivKey,
                                              protocolData.wireGuardClientPubKey)) {
@@ -3040,6 +3084,148 @@ int ApiConfigsController::installAllSubscriptionConfigs()
     }
     qDebug() << "[SUBSCRIPTION] install all: imported" << importedCount << "of" << m_subscriptionConfigs.size();
     return importedCount;
+}
+
+void ApiConfigsController::swapSubscription(const QString &oldKey, const std::function<void(ErrorCode, int)> &callback)
+{
+    // an entry of the old subscription to speak for it, and what is chosen now: the same country
+    // over the same protocol is chosen in the new one (a country's connection id is the same in all)
+    int oldRow = -1;
+    for (int i = 0; i < m_serversModel->getServersCount() && oldRow < 0; ++i) {
+        if (subscriptionKeyOf(m_serversModel->getServerConfig(i)) == oldKey) {
+            oldRow = i;
+        }
+    }
+    const int chosen = m_serversModel->getDefaultServerIndex();
+    const QJsonObject chosenConfig = m_serversModel->getServerConfig(chosen);
+    const bool chosenWasOld = chosen >= 0 && subscriptionKeyOf(chosenConfig) == oldKey;
+    const QJsonObject chosenApi = chosenConfig.value(configKey::apiConfig).toObject();
+    const QString chosenConnection = chosenApi.value(QStringLiteral("connection_uuid")).toString();
+    const QString chosenNode = chosenApi.value(QStringLiteral("node_id")).toString();
+
+    auto finish = [this, oldKey, chosen, chosenWasOld, chosenConnection, chosenNode, callback](ErrorCode unlinkError) {
+        int removedBefore = 0;
+        for (int i = m_serversModel->getServersCount() - 1; i >= 0; --i) {
+            if (subscriptionKeyOf(m_serversModel->getServerConfig(i)) == oldKey) {
+                if (i < chosen) {
+                    ++removedBefore;
+                }
+                m_serversModel->removeServer(i);
+            }
+        }
+        // queued background refreshes name entries by index: void now
+        m_pendingSubscriptionRefresh.clear();
+
+        const int firstNew = m_serversModel->getServersCount();
+        const int imported = installAllSubscriptionConfigs();
+
+        int pick = -1;
+        if (chosenWasOld) {
+            for (int i = firstNew; i < m_serversModel->getServersCount() && pick < 0; ++i) {
+                const QJsonObject api = m_serversModel->getServerConfig(i).value(configKey::apiConfig).toObject();
+                if (api.value(QStringLiteral("connection_uuid")).toString() == chosenConnection
+                    && api.value(QStringLiteral("node_id")).toString() == chosenNode) {
+                    pick = i;
+                }
+            }
+            if (pick < 0 && firstNew < m_serversModel->getServersCount()) {
+                pick = firstNew;
+            }
+        } else if (chosen >= 0) {
+            // a config of its own stays chosen
+            pick = chosen - removedBefore;
+        }
+        if (pick >= 0 && pick < m_serversModel->getServersCount()) {
+            m_serversModel->setDefaultServerIndex(pick);
+            m_serversModel->setProcessedServerIndex(pick);
+        }
+        qDebug() << "[SUBSCRIPTION] replaced: unlink" << static_cast<int>(unlinkError) << "servers" << imported;
+        callback(unlinkError, imported);
+    };
+
+    if (oldRow < 0) {
+        finish(ErrorCode::NoError);
+        return;
+    }
+
+    // this device off the old subscription, as «Unlink» on its own row does: its place there is
+    // freed (the gateway lets a subscription unlink one device a day, and takes it back only after
+    // a day)
+    const QJsonObject oldConfig = m_serversModel->getServerConfig(oldRow);
+    const QJsonObject oldApi = oldConfig.value(configKey::apiConfig).toObject();
+    QJsonObject authData = oldApi.value(configKey::authData).toObject();
+    if (authData.isEmpty()) {
+        authData = oldConfig.value(configKey::authData).toObject();
+    }
+    GatewayRequestData gatewayRequestData { QSysInfo::productType(),
+                                            QString(APP_VERSION),
+                                            m_settings->getAppLanguage().name().split("_").first(),
+                                            m_settings->getInstallationUuid(true),
+                                            oldApi.value(configKey::userCountryCode).toString(),
+                                            oldApi.value(configKey::serverCountryCode).toString(),
+                                            oldApi.value(configKey::serviceType).toString(),
+                                            "",
+                                            authData };
+    executeRequestAsync(QString("%1v1/revoke_config"), gatewayRequestData.toJsonObject(),
+                        oldApi.value(apiDefs::key::isTestPurchase).toBool(false),
+                        [finish](ErrorCode errorCode, const QByteArray &) {
+                            // not one of its devices any more: nothing to free
+                            finish(errorCode == ErrorCode::ApiNotFoundError ? ErrorCode::NoError : errorCode);
+                        });
+}
+
+void ApiConfigsController::checkHeldSubscriptionUnlink()
+{
+    int heldRow = -1;
+    for (int i = 0; i < m_serversModel->getServersCount() && heldRow < 0; ++i) {
+        if (!subscriptionKeyOf(m_serversModel->getServerConfig(i)).isEmpty()) {
+            heldRow = i;
+        }
+    }
+    if (heldRow < 0) {
+        emit heldSubscriptionUnlinkChecked(QString());
+        return;
+    }
+
+    // the subscription's own account info, fresh (the page's copy may be an hour old): when it
+    // may unlink a device again
+    const QJsonObject serverConfig = m_serversModel->getServerConfig(heldRow);
+    const QJsonObject apiConfig = serverConfig.value(configKey::apiConfig).toObject();
+    QJsonObject authData = apiConfig.value(configKey::authData).toObject();
+    if (authData.isEmpty()) {
+        authData = serverConfig.value(configKey::authData).toObject();
+    }
+    if (!authData.contains(apiDefs::key::apiKey) && authData.contains(apiDefs::key::id)) {
+        authData[apiDefs::key::apiKey] = authData.value(apiDefs::key::id);
+    }
+    QJsonObject apiPayload;
+    apiPayload[configKey::userCountryCode] = apiConfig.value(configKey::userCountryCode).toString();
+    apiPayload[configKey::serviceType] = apiConfig.value(configKey::serviceType).toString();
+    apiPayload[configKey::authData] = authData;
+    apiPayload[configKey::appVersion] = QString(APP_VERSION);
+    apiPayload[apiDefs::key::cliVersion] = QString(APP_VERSION);
+    apiPayload[apiDefs::key::appLanguage] = m_settings->getAppLanguage().name().split("_").first();
+    apiPayload[apiDefs::key::installationUuid] = m_settings->getInstallationUuid(true);
+
+    executeRequestAsync(QString("%1v1/account_info"), apiPayload, apiConfig.value(apiDefs::key::isTestPurchase).toBool(false),
+                        [this](ErrorCode errorCode, const QByteArray &responseBody) {
+                            QString unlinkAt;
+                            if (errorCode == ErrorCode::NoError) {
+                                const QString at = QJsonDocument::fromJson(responseBody).object()
+                                                           .value(QStringLiteral("unlink_available_at")).toString();
+                                QDateTime when = QDateTime::fromString(at, Qt::ISODateWithMs);
+                                if (!when.isValid()) {
+                                    when = QDateTime::fromString(at, Qt::ISODate);
+                                }
+                                if (when.isValid() && when > QDateTime::currentDateTime()) {
+                                    // as «Active devices» says it
+                                    unlinkAt = m_settings->getAppLanguage().toString(when.toLocalTime(), QStringLiteral("d MMMM, HH:mm"));
+                                }
+                            } else {
+                                qWarning() << "[SUBSCRIPTION] held subscription's unlink not known:" << static_cast<int>(errorCode);
+                            }
+                            emit heldSubscriptionUnlinkChecked(unlinkAt);
+                        });
 }
 
 QList<QString> ApiConfigsController::getQrCodes()

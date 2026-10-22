@@ -16,6 +16,13 @@ import "../Config"
 PageType {
     id: root
 
+    // the ID typed here when it is another subscription than the one the app holds: the app keeps
+    // one (the owner, 2026-10-22), so it is offered in place of that one, and the gateway is not
+    // asked about it first (that would take a place on it)
+    property string otherKey: ""
+    // what is typed in the field (it lives in the list's header, out of the timer's sight)
+    property string typedId: ""
+
     SortFilterProxyModel {
         id: proxyApiServicesModel
 
@@ -74,11 +81,36 @@ PageType {
                 hintText: qsTr("Enter your subscription ID")
 
                 textField.onTextChanged: {
-                    ApiConfigsController.setSubscriptionId(textField.text.trim())
+                    root.typedId = textField.text.trim()
+                    ApiConfigsController.setSubscriptionId(root.typedId)
                     refreshTimer.restart()
                 }
 
                 Component.onCompleted: textField.text = ApiConfigsController.subscriptionId
+            }
+
+            ParagraphTextType {
+                Layout.fillWidth: true
+                Layout.rightMargin: 16
+                Layout.leftMargin: 16
+
+                visible: root.otherKey !== ""
+                color: DopamineStyle.color.mutedGray
+                text: qsTr("The app already has a subscription, and it keeps one: this one can be added in place of it.")
+            }
+
+            BasicButtonType {
+                Layout.fillWidth: true
+                Layout.rightMargin: 16
+                Layout.leftMargin: 16
+                Layout.bottomMargin: 16
+
+                visible: root.otherKey !== ""
+                text: qsTr("Replace the subscription")
+
+                clickedFunc: function() {
+                    PageController.askToReplaceSubscription(root.otherKey)
+                }
             }
         }
 
@@ -89,7 +121,14 @@ PageType {
 
             interval: 600
             onTriggered: {
-                if (ApiConfigsController.subscriptionId === "") {
+                const typed = root.typedId
+                if (typed === "") {
+                    root.otherKey = ""
+                    return
+                }
+                const held = ApiConfigsController.installedSubscriptionKey()
+                root.otherKey = held !== "" && typed !== held ? typed : ""
+                if (root.otherKey !== "") {
                     return
                 }
                 PageController.showBusyIndicator(true)
@@ -100,8 +139,8 @@ PageType {
 
         spacing: 0
 
-        // nothing to choose from until an ID is entered
-        model: ApiConfigsController.subscriptionId === "" ? null : proxyApiServicesModel
+        // nothing to choose from until an ID is entered, nor for another subscription than the held one
+        model: ApiConfigsController.subscriptionId === "" || root.otherKey !== "" ? null : proxyApiServicesModel
 
         delegate: ColumnLayout {
 

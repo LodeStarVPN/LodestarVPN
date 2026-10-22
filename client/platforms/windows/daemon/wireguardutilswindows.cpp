@@ -10,8 +10,10 @@
 #include <winsock2.h>
 #include <ws2ipdef.h>
 
+#include <QDeadlineTimer>
 #include <QFileInfo>
 #include <QRandomGenerator>
+#include <QScopeGuard>
 
 #include "leakdetector.h"
 #include "logger.h"
@@ -21,6 +23,57 @@
 
 namespace {
 Logger logger("WireguardUtilsWindows");
+
+// The networks other adapters' routes lead to and the LAN ranges do not hold: Radmin VPN's
+// 26.0.0.0/8, Hamachi's 25.0.0.0/8, Tailscale's 100.64.0.0/10. The kill switch let only the LAN
+// ranges past, so with our VPN on such a program's own network was closed (the owner's laptop runs
+// Radmin VPN, 2026-10-19). A route of another interface than ours and than the one the internet
+// goes by (the best default route's: a public subnet an ISP puts on the card stays closed), /8 to
+// /30: wider ones (0/0, the halves 0/1 and 128/1 another VPN puts in) are the internet's, the
+// narrower ones single hosts (a VPN's server). Radmin VPN has a default route too, far behind
+// (metric 9256): it is not the internet's.
+QList<IPAddress> otherAdapterNetworks(quint64 ownLuid, const QList<IPAddress>& lanRanges) {
+  QList<IPAddress> found;
+  PMIB_IPFORWARD_TABLE2 table = nullptr;
+  if (GetIpForwardTable2(AF_INET, &table) != NO_ERROR) {
+    return found;
+  }
+  auto guard = qScopeGuard([&] { FreeMibTable(table); });
+  quint64 internetLuid = 0;
+  ULONG internetMetric = 0xFFFFFFFFul;
+  for (ULONG i = 0; i < table->NumEntries; i++) {
+    const MIB_IPFORWARD_ROW2& row = table->Table[i];
+    if (row.InterfaceLuid.Value != ownLuid && row.DestinationPrefix.PrefixLength == 0
+        && row.Metric < internetMetric) {
+      internetMetric = row.Metric;
+      internetLuid = row.InterfaceLuid.Value;
+    }
+  }
+  for (ULONG i = 0; i < table->NumEntries; i++) {
+    const MIB_IPFORWARD_ROW2& row = table->Table[i];
+    const int length = row.DestinationPrefix.PrefixLength;
+    if (row.InterfaceLuid.Value == ownLuid || row.InterfaceLuid.Value == internetLuid
+        || length < 8 || length > 30) {
+      continue;
+    }
+    const quint32 net = ntohl(row.DestinationPrefix.Prefix.Ipv4.sin_addr.s_addr);
+    if ((net >> 28) == 0xE || (net >> 24) == 127) {
+      continue;  // multicast, loopback
+    }
+    const QHostAddress address(net);
+    bool held = false;
+    for (const IPAddress& range : lanRanges + found) {
+      if (range.prefixLength() <= length && range.contains(address)) {
+        held = true;
+        break;
+      }
+    }
+    if (!held) {
+      found.append(IPAddress(address, length));
+    }
+  }
+  return found;
+}
 };  // namespace
 
 std::unique_ptr<WireguardUtilsWindows> WireguardUtilsWindows::create(
@@ -50,9 +103,15 @@ WireguardUtilsWindows::~WireguardUtilsWindows() {
 }
 
 QList<WireguardUtils::PeerStatus> WireguardUtilsWindows::getPeerStatus() {
+  // the counts are read inside the call: its middle is their moment (the speed in the app)
+  const qint64 before = QDeadlineTimer::current(Qt::PreciseTimer).deadlineNSecs();
   QString reply = m_tunnel.uapiCommand("get=1");
+  const qint64 after = QDeadlineTimer::current(Qt::PreciseTimer).deadlineNSecs();
   PeerStatus status;
   QList<PeerStatus> peerList;
+  // the device's lines come before its peers'
+  qint64 dataRx = -1;
+  qint64 dataTx = -1;
   for (const QString& line : reply.split('\n')) {
     int eq = line.indexOf('=');
     if (eq <= 0) {
@@ -60,6 +119,13 @@ QList<WireguardUtils::PeerStatus> WireguardUtilsWindows::getPeerStatus() {
     }
     QString name = line.left(eq);
     QString value = line.mid(eq + 1);
+
+    if (name == "data_rx_bytes") {
+      dataRx = value.toLongLong();
+    }
+    if (name == "data_tx_bytes") {
+      dataTx = value.toLongLong();
+    }
 
     if (name == "public_key") {
       if (!status.m_pubkey.isEmpty()) {
@@ -84,6 +150,11 @@ QList<WireguardUtils::PeerStatus> WireguardUtilsWindows::getPeerStatus() {
   }
   if (!status.m_pubkey.isEmpty()) {
     peerList.append(status);
+  }
+  for (PeerStatus& peer : peerList) {
+    peer.m_dataRxBytes = dataRx;
+    peer.m_dataTxBytes = dataTx;
+    peer.m_sampleNs = before + (after - before) / 2;
   }
 
   return peerList;
@@ -146,6 +217,7 @@ bool WireguardUtilsWindows::addInterface(const InterfaceConfig& config) {
   m_luid = luid.Value;
   m_routeMonitor = new WindowsRouteMonitor(luid.Value, this);
 
+  m_killSwitchOn = config.m_killSwitchEnabled;
   if (config.m_killSwitchEnabled) {
     // Enable the windows firewall
     NET_IFINDEX ifindex;
@@ -163,6 +235,7 @@ bool WireguardUtilsWindows::deleteInterface() {
     m_routeMonitor->deleteLater();
   }
 
+  m_killSwitchOn = false;
   m_firewall->disableKillSwitch();
   m_tunnel.stop();
   return true;
@@ -358,6 +431,17 @@ bool WireguardUtilsWindows::setDirectNetworks(const QStringList& networks) {
     return false;
   }
   logger.debug() << "The tunnel opens" << networks.size() << "networks directly";
+  if (m_killSwitchOn && m_firewall) {
+    // The kill switch lets out the tunnel's direct sockets because they are this program's, but
+    // a program that takes their packets and sends them again (a packet filter such as zapret's,
+    // an antivirus's connection redirector) makes them the System process's, which it blocks:
+    // then no direct connection opened and everything went around by the VPN. The networks
+    // themselves are let through, whoever the system says is asking. A failure only means the
+    // direct sockets get through where nothing sends their packets again, as before.
+    if (!m_firewall->allowDirectNetworks(networks)) {
+      logger.warning() << "The direct networks are not let through the kill switch";
+    }
+  }
   return true;
 }
 
@@ -375,6 +459,16 @@ bool WireguardUtilsWindows::excludeLocalNetworks(
   // Permit LAN traffic through the firewall.
   if (!m_firewall->enableLanBypass(addresses)) {
     result = false;
+  }
+  // ...and the networks of other programs' adapters (their own routes take the traffic there,
+  // none of it goes to the internet past the VPN): a failure here leaves them closed, no more
+  const QList<IPAddress> others = otherAdapterNetworks(m_luid, addresses);
+  if (!others.isEmpty()) {
+    if (m_firewall->allowOtherNetworks(others)) {
+      logger.info() << "The kill switch lets through" << others.size() << "networks of other adapters";
+    } else {
+      logger.warning() << "The networks of other adapters are not let through the kill switch";
+    }
   }
 
   return result;

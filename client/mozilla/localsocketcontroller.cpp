@@ -512,6 +512,15 @@ void LocalSocketController::parseCommand(const QByteArray& command) {
       return;
     }
 
+    // a tunnel that keeps no count of the apps' data has none: the speed then
+    // goes by the peer's counts
+    QJsonValue dataTxBytes = obj.value("dataTxBytes");
+    QJsonValue dataRxBytes = obj.value("dataRxBytes");
+    if (dataTxBytes.isDouble() && dataRxBytes.isDouble()) {
+      emit dataBytesUpdated(dataTxBytes.toInteger(), dataRxBytes.toInteger(),
+                            obj.value("sampleNs").toInteger(0));
+    }
+
     emit statusUpdated(serverIpv4Gateway.toString(),
                        deviceIpv4Address.toString(), txBytes.toDouble(),
                        rxBytes.toDouble());

@@ -4,6 +4,8 @@
 
 #include "windowsfirewall.h"
 
+#include <algorithm>
+
 #include <comdef.h>
 #include <fwpmu.h>
 #include <guiddef.h>
@@ -432,6 +434,159 @@ bool WindowsFirewall::allowAllTraffic() {
     m_activeRules.clear();
     logger.debug() << "Firewall Disabled!";
     return true;
+}
+
+bool WindowsFirewall::allowDirectNetworks(const QStringList& networks) {
+  // the networks as runs of addresses: neighbours and overlaps become one condition
+  struct Run {
+    quint32 first;
+    quint32 last;
+  };
+  QList<Run> runs;
+  for (const QString& network : networks) {
+    const auto subnet = QHostAddress::parseSubnet(network.trimmed());
+    if (subnet.first.protocol() != QAbstractSocket::IPv4Protocol) {
+      continue;
+    }
+    // a list that carried a very short prefix would open the kill switch wide
+    if (subnet.second < 8 || subnet.second > 32) {
+      continue;
+    }
+    const quint32 mask = 0xffffffffu << (32 - subnet.second);
+    const quint32 base = subnet.first.toIPv4Address() & mask;
+    runs.append({base, base | ~mask});
+  }
+  std::sort(runs.begin(), runs.end(),
+            [](const Run& a, const Run& b) { return a.first < b.first; });
+  QList<Run> merged;
+  for (const Run& run : runs) {
+    if (!merged.isEmpty()) {
+      Run& tail = merged.last();
+      if (tail.last == 0xffffffffu || run.first <= tail.last + 1) {
+        tail.last = std::max(tail.last, run.last);
+        continue;
+      }
+    }
+    merged.append(run);
+  }
+
+  const QString key = QStringLiteral("direct networks");
+  auto result = FwpmTransactionBegin(m_sessionHandle, NULL);
+  if (result != ERROR_SUCCESS) {
+    logger.error() << "FwpmTransactionBegin0 failed. Return value:.\n" << result;
+    return false;
+  }
+  const QList<uint64_t> before = m_peerRules.values(key);
+  bool committed = false;
+  auto cleanup = qScopeGuard([&] {
+    if (committed) {
+      return;
+    }
+    FwpmTransactionAbort0(m_sessionHandle);
+    // what this call added is gone with the transaction
+    for (const uint64_t id : m_peerRules.values(key)) {
+      if (!before.contains(id)) {
+        m_peerRules.remove(key, id);
+      }
+    }
+  });
+  for (const uint64_t id : before) {
+    FwpmFilterDeleteById0(m_sessionHandle, id);
+  }
+
+  // Below the block of DNS (the medium weight), above the block of everything (the lowest)
+  constexpr int kConditionsPerFilter = 1000;
+  int filters = 0;
+  for (qsizetype from = 0; from < merged.size(); from += kConditionsPerFilter) {
+    const qsizetype count = std::min<qsizetype>(kConditionsPerFilter, merged.size() - from);
+    QList<FWP_RANGE0> ranges(count);
+    QList<FWPM_FILTER_CONDITION0> conds(count);
+    for (qsizetype i = 0; i < count; i++) {
+      memset(&ranges[i], 0, sizeof(FWP_RANGE0));
+      ranges[i].valueLow.type = FWP_UINT32;
+      ranges[i].valueLow.uint32 = merged[from + i].first;
+      ranges[i].valueHigh.type = FWP_UINT32;
+      ranges[i].valueHigh.uint32 = merged[from + i].last;
+      memset(&conds[i], 0, sizeof(FWPM_FILTER_CONDITION0));
+      conds[i].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+      conds[i].matchType = FWP_MATCH_RANGE;
+      conds[i].conditionValue.type = FWP_RANGE_TYPE;
+      conds[i].conditionValue.rangeValue = &ranges[i];
+    }
+    FWPM_FILTER0 filter;
+    memset(&filter, 0, sizeof(filter));
+    filter.filterCondition = conds.data();
+    filter.numFilterConditions = static_cast<UINT32>(count);
+    filter.action.type = FWP_ACTION_PERMIT;
+    filter.weight.type = FWP_UINT8;
+    filter.weight.uint8 = LOW_WEIGHT + 1;
+    filter.subLayerKey = ST_FW_WINFW_BASELINE_SUBLAYER_KEY;
+    filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+    if (!enableFilter(&filter, "Allow direct networks",
+                      QStringLiteral("Permit traffic to the networks the tunnel opens directly (%1 of %2)")
+                          .arg(filters + 1)
+                          .arg((merged.size() + kConditionsPerFilter - 1) / kConditionsPerFilter),
+                      key)) {
+      return false;
+    }
+    filters++;
+  }
+
+  result = FwpmTransactionCommit0(m_sessionHandle);
+  if (result != ERROR_SUCCESS) {
+    logger.error() << "FwpmTransactionCommit0 failed. Return value:.\n" << result;
+    return false;
+  }
+  committed = true;
+  for (const uint64_t id : before) {
+    m_peerRules.remove(key, id);
+  }
+  logger.info() << "Direct networks let through the kill switch:" << networks.size()
+                << "networks as" << merged.size() << "runs in" << filters << "filters";
+  return true;
+}
+
+// The networks other programs' adapters lead to (WireguardUtilsWindows::excludeLocalNetworks):
+// let through both ways as LAN is, at the weight of the LAN bypass. Unlike that one, a failure
+// takes away only what this call added: these are a convenience, the kill switch is not.
+bool WindowsFirewall::allowOtherNetworks(const QList<IPAddress>& ranges) {
+  const QString key = QStringLiteral("other networks");
+  auto result = FwpmTransactionBegin(m_sessionHandle, NULL);
+  if (result != ERROR_SUCCESS) {
+    logger.error() << "FwpmTransactionBegin0 failed. Return value:.\n" << result;
+    return false;
+  }
+  const QList<uint64_t> before = m_peerRules.values(key);
+  bool committed = false;
+  auto cleanup = qScopeGuard([&] {
+    if (committed) {
+      return;
+    }
+    FwpmTransactionAbort0(m_sessionHandle);
+    for (const uint64_t id : m_peerRules.values(key)) {
+      if (!before.contains(id)) {
+        m_peerRules.remove(key, id);
+      }
+    }
+  });
+  for (const uint64_t id : before) {
+    FwpmFilterDeleteById0(m_sessionHandle, id);
+  }
+  for (const IPAddress& prefix : ranges) {
+    if (!allowTrafficTo(prefix, LOW_WEIGHT + 1, "Allow other adapters' networks", key)) {
+      return false;
+    }
+  }
+  result = FwpmTransactionCommit0(m_sessionHandle);
+  if (result != ERROR_SUCCESS) {
+    logger.error() << "FwpmTransactionCommit0 failed. Return value:.\n" << result;
+    return false;
+  }
+  committed = true;
+  for (const uint64_t id : before) {
+    m_peerRules.remove(key, id);
+  }
+  return true;
 }
 
 bool WindowsFirewall::allowTrafficForAppOnAll(const QString& exePath,
@@ -996,7 +1151,7 @@ bool WindowsFirewall::enableFilter(FWPM_FILTER0* filter, const QString& title,
   auto result = FwpmFilterAdd0(m_sessionHandle, filter, NULL, &filterID);
   if (result != ERROR_SUCCESS) {
     logger.error() << "Failed to enable filter: " << title << " "
-                   << description;
+                   << description << "(" << result << ")";
     return false;
   }
   logger.info() << "Filter added: " << title << ":" << description;

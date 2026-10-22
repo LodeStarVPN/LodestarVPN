@@ -84,6 +84,11 @@ class ControllerImpl : public QObject {
   void statusUpdated(const QString& serverIpv4Gateway,
                      const QString& deviceIpv4Address, uint64_t txBytes,
                      uint64_t rxBytes);
+
+  // Right before statusUpdated, where the tunnel tells them: the totals of the
+  // apps' data both ways it went (through the VPN and past it, our AmneziaWG),
+  // and when the counts were read (nanoseconds of the steady clock, 0: not known).
+  void dataBytesUpdated(uint64_t txBytes, uint64_t rxBytes, qint64 sampleNs);
 };
 
 #endif  // CONTROLLERIMPL_H

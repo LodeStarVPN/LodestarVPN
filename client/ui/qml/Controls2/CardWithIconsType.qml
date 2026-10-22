@@ -13,7 +13,8 @@ Button {
     property string bodyText
     property string footerText
 
-    property string hoveredColor: DopamineStyle.color.slateGray
+    // the rows' glass, a little more of it pointed at
+    property string hoveredColor: "#217892FF"
     property string defaultColor: DopamineStyle.color.onyxBlack
 
     property string textColor: DopamineStyle.color.midnightBlack
